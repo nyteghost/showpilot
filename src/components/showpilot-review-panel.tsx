@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { entryLabel, formatMinutes, type EventCode, type EventEntry, type EventRow, type TaskNote } from "@/lib/work-tools";
+import {availableReviewMonths,availableReviewWeeks,reviewMatchesDay,reviewMatchesMonth,reviewMatchesWeek,reviewMonthLabel,reviewWeekStart,reviewWeekLabel,selectedReviewMonth,selectedReviewWeek,shiftReviewWeek} from "@/lib/showpilot-review-months";
 import {
   applyReview, emptyReviewDraft, validEntry, type ReviewDraft, type ReviewLine,
 } from "@/lib/showpilot-review";
@@ -30,6 +31,9 @@ export function ScheduleReview({
 }) {
   const [mode, setMode] = useState<"imported"|"review"|"changes">("review");
   const [search, setSearch] = useState("");
+  const [view, setView] = useState<"month"|"week"|"day"|"all">("month");
+  const [monthChoice, setMonthChoice] = useState("");
+  const [weekChoice, setWeekChoice] = useState("");
   const [date, setDate] = useState("");
   const [page, setPage] = useState(0);
   const [editing, setEditing] = useState<string | null>(null);
@@ -38,20 +42,47 @@ export function ScheduleReview({
   const [editingTask, setEditingTask] = useState<string | null>(null);
   const [taskText, setTaskText] = useState("");
   const result = useMemo(() => applyReview(proposed, suggestedTasks, draft), [proposed, suggestedTasks, draft]);
-  const changes = result.entryLines.filter((row) => row.status !== "unchanged").length
-    + result.taskLines.filter((row) => row.status !== "unchanged").length;
-  const dates = useMemo(() => [...new Set([...proposed.map((r)=>r.date),...result.entries.map((r)=>r.date)])].sort(), [proposed, result.entries]);
+  const dateCollections = useMemo(() => [
+    originalRows,
+    proposed,
+    suggestedTasks,
+    result.entryLines.flatMap(l=>[l.source,l.final].filter((e):e is EventEntry=>!!e)),
+    result.taskLines.flatMap(l=>[l.source,l.final].filter((t):t is TaskNote=>!!t)),
+  ],[originalRows,proposed,suggestedTasks,result.entryLines,result.taskLines]);
+  const dates = useMemo(() => [...new Set(dateCollections.flatMap(items=>items.map(item=>item.date)))].sort(),[dateCollections]);
+  const months = useMemo(() => availableReviewMonths(...dateCollections),[dateCollections]);
+  const weeks = useMemo(() => availableReviewWeeks(...dateCollections),[dateCollections]);
+  const month = selectedReviewMonth(months,monthChoice);
+  const week = selectedReviewWeek(weeks,weekChoice);
+  const day = dates.includes(date)?date:dates[0]??"";
+  const monthScope = view==="month" ? month : "";
+  const weekScope = view==="week" ? week : "";
+  const dayScope = view==="day" ? day : "";
+  const inView = (line:{source?:{date:string}|null;final?:{date:string}|null}):boolean =>
+    view==="all" || (view==="month"&&reviewMatchesMonth(line,monthScope))
+    || (view==="week"&&reviewMatchesWeek(line,weekScope))
+    || (view==="day"&&reviewMatchesDay(line,dayScope));
+  const changes = result.entryLines.filter((row) => row.status !== "unchanged" && inView(row)).length
+    + result.taskLines.filter((row) => row.status !== "unchanged" && inView(row)).length;
+  const originalCount = originalRows.filter(row=>inView({final:row})).length;
+  const finalCount = result.entries.filter(row=>inView({final:row})).length;
   const allowedSpaces = useMemo(() => [...new Set(proposed.map((e) => e.space))].sort(), [proposed]);
   const filtered = result.entryLines.filter((line) => {
     const e = line.final ?? line.source;
     if (!e) return false;
     if (mode === "changes" && line.status === "unchanged") return false;
-    if (date && e.date !== date && line.source?.date !== date) return false;
+    if (!inView(line)) return false;
     const q = search.trim().toLowerCase();
     return !q || [e.title,e.space,e.date,e.code,e.eventId ?? ""].join(" ").toLowerCase().includes(q);
   });
   const pageSize = 35, pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const visible = filtered.slice(Math.min(page, pageCount - 1) * pageSize, (Math.min(page, pageCount - 1) + 1) * pageSize);
+  const newItemDate = () => {
+    if(view==="day"&&day)return day;
+    if(view==="week"&&week)return proposed.find(r=>reviewWeekStart(r.date)===week)?.date??week;
+    if(view==="month"&&month)return proposed.find(r=>r.date.startsWith(month))?.date??month+"-01";
+    return proposed[0]?.date??new Date().toISOString().slice(0,10);
+  };
   const update = (next: ReviewDraft) => { setError(""); onChange(next); };
   function replaceEntry(line: ReviewLine<EventEntry>, value: EventEntry) {
     if (!validEntry(value) || !allowedSpaces.includes(value.space)) {
@@ -85,7 +116,7 @@ export function ScheduleReview({
   function restoreTask(line: ReviewLine<TaskNote>) {
     const tasks = {...draft.tasks};delete tasks[line.id];update({...draft,tasks});
   }
-  const imported = originalRows.filter((r)=> (!date || r.date === date) && (!search ||
+  const imported = originalRows.filter((r)=> inView({final:r}) && (!search ||
     [r.date,r.space,r.event??"",r.description,r.eventId??""].join(" ").toLowerCase().includes(search.toLowerCase())));
   return <section className="space-y-4 rounded-xl border border-border p-3 sm:p-4" aria-label="Two-layer engineering schedule">
     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -96,9 +127,9 @@ export function ScheduleReview({
       <Button variant="outline" size="sm" onClick={onSaveProject}>Save review project (.json)</Button>
     </div>
     <div className="grid grid-cols-3 gap-2 text-center">
-      <div className="rounded-lg bg-muted p-2"><strong className="block text-lg">{originalRows.length}</strong><span className="text-xs">Original functions</span></div>
-      <div className="rounded-lg bg-muted p-2"><strong className="block text-lg">{result.entries.length}</strong><span className="text-xs">Final entries</span></div>
-      <div className="rounded-lg bg-muted p-2"><strong className="block text-lg">{changes}</strong><span className="text-xs">Reviewed changes</span></div>
+      <div className="rounded-lg bg-muted p-2"><strong className="block text-lg">{originalCount}</strong><span className="text-xs">Original functions in view</span></div>
+      <div className="rounded-lg bg-muted p-2"><strong className="block text-lg">{finalCount}</strong><span className="text-xs">Final entries in view</span></div>
+      <div className="rounded-lg bg-muted p-2"><strong className="block text-lg">{changes}</strong><span className="text-xs">Reviewed changes in view</span></div>
     </div>
     {result.unmatchedChanges > 0 && <p className="rounded border border-amber-500 p-2 text-xs">Heads-up: {result.unmatchedChanges} saved changes no longer match the latest proposed entries. They were not applied. Export your project before discarding or reimporting.</p>}
     <div className="flex flex-wrap gap-2">
@@ -108,16 +139,36 @@ export function ScheduleReview({
     </div>
     <div className="flex flex-wrap gap-2">
       <Input className="max-w-sm" aria-label="Search events or rooms" placeholder="Search events or rooms…" value={search} onChange={(e)=>{setSearch(e.target.value);setPage(0)}}/>
-      <select className="rounded-md border border-border bg-background px-3 py-2 text-sm" aria-label="Filter by date" value={date} onChange={(e)=>{setDate(e.target.value);setPage(0)}}>
-        <option value="">All dates</option>{dates.map((d)=><option value={d} key={d}>{d}</option>)}
-      </select>
+      <label className="flex items-center gap-2 text-sm font-medium">View
+        <select className="rounded-md border border-border bg-background px-3 py-2 text-sm" aria-label="Schedule view" value={view} onChange={(e)=>{setView(e.target.value as typeof view);setPage(0);setEditing(null);setEditingTask(null)}}>
+          <option value="month">Month</option><option value="week">Week</option><option value="day">Day</option><option value="all">All dates</option>
+        </select>
+      </label>
+      {view==="month"&&<label className="flex items-center gap-2 text-sm font-medium">Month
+        <select className="rounded-md border border-border bg-background px-3 py-2 text-sm" aria-label="Choose month to edit" value={month} onChange={e=>{setMonthChoice(e.target.value);setPage(0);setEditing(null);setEditingTask(null)}}>
+          {months.map(m=><option key={m} value={m}>{reviewMonthLabel(m)}</option>)}
+        </select>
+      </label>}
+      {view==="week"&&<div className="flex flex-wrap items-center gap-2 text-sm font-medium" aria-label="Week navigation">
+        <span>Week (Mon–Sun)</span>
+        <Button variant="outline" size="sm" aria-label="Previous week" onClick={()=>{const prev=shiftReviewWeek(week,-1);if(prev)setWeekChoice(prev);setPage(0);setEditing(null);setEditingTask(null)}} disabled={!week}>Previous</Button>
+        <select className="rounded-md border border-border bg-background px-3 py-2 text-sm" aria-label="Choose week to edit" value={week} onChange={e=>{setWeekChoice(e.target.value);setPage(0);setEditing(null);setEditingTask(null)}}>
+          {[...new Set([...weeks,...(week?[week]:[])])].sort().map(w=><option key={w} value={w}>{reviewWeekLabel(w)}</option>)}
+        </select>
+        <Button variant="outline" size="sm" aria-label="Next week" onClick={()=>{const next=shiftReviewWeek(week,1);if(next)setWeekChoice(next);setPage(0);setEditing(null);setEditingTask(null)}} disabled={!week}>Next</Button>
+      </div>}
+      {view==="day"&&<label className="flex items-center gap-2 text-sm font-medium">Day
+        <select className="rounded-md border border-border bg-background px-3 py-2 text-sm" aria-label="Filter by date" value={day} onChange={(e)=>{setDate(e.target.value);setPage(0);setEditing(null);setEditingTask(null)}}>
+          {dates.map(d=><option value={d} key={d}>{d}</option>)}
+        </select>
+      </label>}
       {mode==="review" && proposed.length>0 && <Button variant="outline" size="sm" onClick={()=>{
-        const d = date || proposed[0]?.date || new Date().toISOString().slice(0,10);
+        const d = newItemDate();
         const space = allowedSpaces[0] ?? "Hall A";
         const value: EventEntry = {date:d,space,title:"New event",code:"S",start:480,end:1020};
         const id=uniqueId("manual-entry");
         update({...draft,addedEntries:[...draft.addedEntries,{id,value}]});
-        setSearch("");setDate(d);setPage(0);setEditing(id);setEditable(value);
+        setSearch("");setDate(d);if(view==="month")setMonthChoice(d.slice(0,7));if(view==="week")setWeekChoice(reviewWeekStart(d)??"");setPage(0);setEditing(id);setEditable(value);
       }}>+ Add event entry</Button>}
     </div>
     {mode==="imported" ? <div className="max-h-96 overflow-auto rounded-md border">
@@ -167,11 +218,11 @@ export function ScheduleReview({
       <div className="rounded-lg border border-border p-3">
         <div className="flex justify-between gap-2"><div><h4 className="font-semibold">Air-wall, stage and room-turn tasks</h4><p className="text-xs text-muted-foreground">Suggestions are separate from the final task instructions. Existing typed tasks in uploaded Excel schedules remain untouched.</p></div>
           {mode==="review"&&<Button size="sm" variant="outline" onClick={()=>{
-            const value:TaskNote={date:date||proposed[0]?.date||new Date().toISOString().slice(0,10),section:"HALLS",text:"Manual task"};
+            const value:TaskNote={date:newItemDate(),section:"HALLS",text:"Manual task"};
             update({...draft,addedTasks:[...draft.addedTasks,{id:uniqueId("manual-task"),value}]});
           }}>+ Add task</Button>}</div>
         <div className="mt-2 max-h-56 overflow-auto space-y-2">
-          {result.taskLines.filter(l=>mode!=="changes"||l.status!=="unchanged").filter(l=>!date||(l.final??l.source)?.date===date).map((line)=>{
+          {result.taskLines.filter(l=>mode!=="changes"||l.status!=="unchanged").filter(inView).map((line)=>{
             const t=line.final??line.source;if(!t)return null;
             return <div className="flex flex-wrap items-start justify-between gap-2 border-t pt-2 text-xs" key={line.id}>
               <div className="flex-1 min-w-48"><strong>{t.date} · {t.section}</strong> <span className="text-muted-foreground">({line.status})</span>
@@ -189,6 +240,6 @@ export function ScheduleReview({
       </div>
     </>}
     {error && <p role="alert" className="rounded border border-destructive p-2 text-xs text-destructive">{error}</p>}
-    <p className="text-xs text-muted-foreground">All edits are local to this imported report. Saving a project preserves source lines and decisions in one file. A PDF may contain functions not yet handled by the keyword classifier; review unknown and guessed MO? entries before publishing.</p>
+    <p className="text-xs text-muted-foreground">Viewing by month, week or day does not limit the saved project or Excel export: both include the entire reviewed report. All edits are local to this imported report. Saving a project preserves source lines and decisions in one file. A PDF may contain functions not yet handled by the keyword classifier; review unknown and guessed MO? entries before publishing.</p>
   </section>;
 }
