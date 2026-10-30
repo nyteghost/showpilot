@@ -1,0 +1,2 @@
+import { defineConfig } from "vite";import react from "@vitejs/plugin-react";import tailwindcss from "@tailwindcss/vite";import tsconfigPaths from "vite-tsconfig-paths";
+export default defineConfig({plugins:[react(),tailwindcss(),tsconfigPaths()],base:"./",define:{__APP_VERSION__:JSON.stringify("showpilot-beta"),__APP_COMMIT__:JSON.stringify("standalone"),__APP_BUILD_DATE__:JSON.stringify("2026-10-28")},build:{outDir:"dist",assetsInlineLimit:0}});
