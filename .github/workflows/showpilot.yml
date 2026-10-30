@@ -45,11 +45,13 @@ jobs:
       - run: bun run build
       - name: Package portable Windows application
         run: bunx electron-builder --win dir --x64 --publish never
-      - name: Create portable ZIP
+      - name: Create versioned portable ZIP
         shell: pwsh
-        run: Compress-Archive -Path "release/win-unpacked/*" -DestinationPath "release/ShowPilot-Portable-Windows.zip" -Force
+        run: |
+          $version = (Get-Content -Raw package.json | ConvertFrom-Json).version
+          Compress-Archive -Path "release/win-unpacked/*" -DestinationPath "release/ShowPilot-v${version}-Portable-Windows.zip" -Force
       - uses: actions/upload-artifact@v4
         with:
           name: showpilot-windows-portable
-          path: release/ShowPilot-Portable-Windows.zip
+          path: release/ShowPilot-v*-Portable-Windows.zip
           if-no-files-found: error
