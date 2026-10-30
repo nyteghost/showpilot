@@ -1,7 +1,8 @@
 name: ShowPilot standalone checks
+run-name: "ShowPilot ${{ github.ref_name }} build #${{ github.run_number }}"
 on:
   push:
-    branches: [main, beta, feat/showpilot-standalone]
+    branches: [main, beta]
   workflow_dispatch:
 concurrency:
   group: showpilot-${{ github.ref_name }}-validation
@@ -13,6 +14,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
       - run: bun install --no-save
+      - name: Stamp unique Main/Beta build version
+        env:
+          SHOWPILOT_BUILD_CHANNEL: ${{ github.ref_name }}
+          SHOWPILOT_BUILD_NUMBER: ${{ github.run_number }}
+        run: node scripts/stamp-build-version.mjs
       - run: bun run check
       - run: node --check desktop/main.cjs && node --check desktop/preload.cjs && node --check desktop/google-calendar.cjs && node --check desktop/ai-vault.cjs && node --check desktop/app-updates.cjs
       - run: bun test
@@ -31,14 +37,21 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
       - run: bun install --no-save
+      - name: Stamp unique Main/Beta build version
+        env:
+          SHOWPILOT_BUILD_CHANNEL: ${{ github.ref_name }}
+          SHOWPILOT_BUILD_NUMBER: ${{ github.run_number }}
+        run: node scripts/stamp-build-version.mjs
       - run: bun run build
       - name: Package portable Windows application
         run: bunx electron-builder --win dir --x64 --publish never
-      - name: Create portable ZIP
+      - name: Create versioned portable ZIP
         shell: pwsh
-        run: Compress-Archive -Path "release/win-unpacked/*" -DestinationPath "release/ShowPilot-Portable-Windows.zip" -Force
+        run: |
+          $version = (Get-Content -Raw package.json | ConvertFrom-Json).version
+          Compress-Archive -Path "release/win-unpacked/*" -DestinationPath "release/ShowPilot-v${version}-Portable-Windows.zip" -Force
       - uses: actions/upload-artifact@v4
         with:
           name: showpilot-windows-portable
-          path: release/ShowPilot-Portable-Windows.zip
+          path: release/ShowPilot-v*-Portable-Windows.zip
           if-no-files-found: error

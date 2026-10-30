@@ -1,6 +1,6 @@
 import {useEffect,useState} from "react";
 type Channel="main"|"beta";
-type Check={channel:Channel;latest:null|{runId:number;sha:string;created:string;url:string};message:string};
+type Check={channel:Channel;latest:null|{runId:number;buildNumber:number;version:string|null;sha:string;created:string;url:string};upToDate:boolean;message:string};
 type Api={status:()=>Promise<{channel:Channel;installedVersion:string}>;setChannel:(v:Channel)=>Promise<{channel:Channel}>;check:()=>Promise<Check>;open:()=>Promise<unknown>};
 declare global {interface Window {showpilotUpdates?:Api}}
 export function ShowPilotUpdates(){
@@ -26,9 +26,16 @@ export function ShowPilotUpdates(){
   <p className="text-xs text-muted-foreground">Installed version: {version||"Unknown"} · Switching channels does not replace the current app until you download that build.</p>
   <div className="flex gap-2 flex-wrap">
    <button type="button" className="rounded bg-primary text-primary-foreground px-4 py-2 text-sm disabled:opacity-50" disabled={busy} onClick={()=>void run()}>{busy?"Checking…":"Check for Updates"}</button>
-   {check?.latest&&<button type="button" className="rounded border border-border px-4 py-2 text-sm disabled:opacity-50" disabled={busy} onClick={()=>void open()}>Download from GitHub</button>}
+   {check?.latest&&!check.upToDate&&<button type="button" className="rounded border border-border px-4 py-2 text-sm disabled:opacity-50" disabled={busy} onClick={()=>void open()}>Download from GitHub</button>}
   </div>
-  {check&&<p className="text-sm">{check.message}{check.latest?<> Latest build: <code>{check.latest.sha.slice(0,9)}</code> ({new Date(check.latest.created).toLocaleDateString()}).</>:null}</p>}
+  {check&&<div className="space-y-1 rounded-md border border-border bg-muted/40 p-3" role="status">
+    <p className="text-sm font-medium">{check.message}</p>
+    {check.latest&&<>
+      <p className="text-sm"><strong>Latest {check.channel==="beta"?"Beta":"Main"}:</strong> {check.latest.version ? `v${check.latest.version}` : "Legacy build (no automatic version number)"}</p>
+      <p className="text-xs text-muted-foreground">Build #{check.latest.buildNumber} · Commit <code>{check.latest.sha.slice(0,9)}</code> · {new Date(check.latest.created).toLocaleDateString()}</p>
+      {check.upToDate&&<p className="text-xs font-semibold text-green-700 dark:text-green-400">This version is already installed.</p>}
+    </>}
+  </div>}
   <p className="text-xs text-muted-foreground">For safety, downloads open the official GitHub Actions page. Download the Windows portable artifact, close ShowPilot, and extract the updated files. Your local workspace data is kept separately.</p>
   </>}
   {error&&<p role="alert" className="text-sm text-red-500">{error}</p>}
