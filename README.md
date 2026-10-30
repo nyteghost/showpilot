@@ -25,7 +25,19 @@ Under **Settings → App Updates**, use the **Channel** dropdown:
 | **Main** | `main` | Stable/approved builds for regular use |
 | **Beta** | `beta` | New features, fixes, and tests before promotion to Main |
 
-Choose a channel, press **Check for Updates**, then **Download from GitHub** to open the appropriate verified workflow run. **Currently the updater does not silently download, overwrite, or restart the running application**. Download the ZIP, close ShowPilot, then extract the updated folder. Settings persist between launches; use **Export work data** before updating or moving to a different PC. The previous Pixel Pals repository is only a temporary Beta fallback until the new builds are established.
+Choose a channel, press **Check for Updates**, then **Download from GitHub** to open the appropriate successful workflow run. **Settings now shows your installed version and the latest available version**, as well as the GitHub build number and commit. If both versions match, ShowPilot says it is up to date. **The updater does not silently download, overwrite, or restart the running application**. Download the ZIP, close ShowPilot, then extract the updated folder. Settings persist between launches; use **Export work data** before updating or moving to another computer.
+
+### Automatic build version numbers
+
+Every GitHub Actions run receives a unique, increasing build number from `github.run_number`. A workflow script stamps the version into `package.json` **inside both temporary CI runners**, before building the browser app and Windows executable. The source manifest is not committed or changed by CI.
+
+- Beta run **#18** becomes **`0.1.18-beta`**.
+- Main run **#19** becomes **`0.1.19`**.
+- The app's **Settings → App Updates** shows the installed and latest numbered versions. The footer shows the installed version and channel.
+- The Windows ZIP is named **`ShowPilot-v<version>-Portable-Windows.zip`** inside the downloadable `showpilot-windows-portable` GitHub artifact.
+- If a workflow run fails or is cancelled, its number is skipped; the next successful run still gets a higher version. Both jobs within a run use the **same** version.
+
+To start a new release series, update the major/minor parts of the source `package.json` version. The build counter still comes from GitHub Actions. Older builds created before automatic versioning continue to display a commit identifier rather than a fabricated version.
 
 ## Features
 
