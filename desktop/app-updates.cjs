@@ -5,11 +5,8 @@ const {ipcMain,shell,app}=require("electron");
 const fs=require("node:fs");
 const path=require("node:path");
 const https=require("node:https");
-const SOURCES=[
-  {repository:"nyteghost/showpilot",branches:{main:"main",beta:"beta"}},
-  // Temporary compatibility path until standalone ShowPilot launches.
-  {repository:"nyteghost/buddy-bot-room",branches:{beta:"feat/showpilot-standalone"}},
-];
+// Both channels now live in the independent ShowPilot repository.
+const SOURCES=[{repository:"nyteghost/showpilot",branches:{main:"main",beta:"beta"}}];
 const MAX_JSON=1_500_000;
 function readJson(url,depth=0){
  return new Promise((resolve,reject)=>{
@@ -41,6 +38,20 @@ function setChannel(value){
  fs.writeFileSync(stateFile(),JSON.stringify({channel:value}),{mode:0o600});
  return value;
 }
+/** Only new, version-stamped runs have the build-number workflow title.
+ * Older runs retain their commit-only label rather than inventing a version.
+ */
+async function versionOfRun(base,run,ch){
+ const n=run.run_number;
+ if(!Number.isSafeInteger(n)||n<1||run.display_title!== "ShowPilot "+ch+" build #"+n)return null;
+ try{
+  const obj=await readJson(base+"/contents/package.json?ref="+encodeURIComponent(run.head_sha));
+  if(!obj||obj.encoding!=="base64"||typeof obj.content!=="string")return null;
+  const pkg=JSON.parse(Buffer.from(obj.content.replace(/\\s/g,""),"base64").toString("utf8"));
+  const m=/^(\\d+)\\.(\\d+)\\.\\d+(?:[-+].*)?$/.exec(pkg.version??"");
+  return m ? m[1]+"."+m[2]+"."+n+(ch==="beta"?"-beta":"") : null;
+ }catch{return null}
+}
 async function latest(ch){
  for(const source of SOURCES){
   const ref=source.branches[ch];if(!ref)continue;
@@ -53,7 +64,11 @@ async function latest(ch){
    if(run.head_branch!==ref||run.conclusion!=="success")continue;
    const arts=await readJson(base+"/actions/runs/"+run.id+"/artifacts");
    const art=(arts?.artifacts||[]).find(a=>a.name==="showpilot-windows-portable"&&!a.expired);
-   if(art)return {runId:run.id,sha:run.head_sha,channel:ch,created:run.created_at,url:run.html_url,repository:source.repository,temporary:source.repository!=="nyteghost/showpilot"};
+   if(art)return {
+    runId:run.id,buildNumber:run.run_number,sha:run.head_sha,channel:ch,
+    created:run.created_at,url:run.html_url,repository:source.repository,
+    version:await versionOfRun(base,run,ch),
+   };
   }
  }
  return null;
@@ -63,8 +78,9 @@ function setupUpdates(){
  ipcMain.handle("showpilot-update:channel",(_,value)=>({channel:setChannel(value)}));
  ipcMain.handle("showpilot-update:check",async()=>{
    const ch=channel(),found=await latest(ch);
-   return {channel:ch,latest:found,message:found
-    ? "Latest successful "+ch+" build found"+(found.temporary?" in the temporary legacy repository.":".")
+   const upToDate=!!found?.version&&found.version===app.getVersion();
+   return {channel:ch,latest:found,upToDate,message:found
+    ? upToDate?"You are running the latest "+ch+" build.":"Latest successful "+ch+" build found."
     : ch==="main"?"No stable ShowPilot release is published yet. Try Beta.":"No accessible ShowPilot beta build found."};
  });
  ipcMain.handle("showpilot-update:open",async()=>{
