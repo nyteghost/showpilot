@@ -44,7 +44,7 @@ export function availableReviewWeeks(...collections:ReadonlyArray<readonly {date
  return [...new Set(collections.flatMap(items=>items.map(x=>reviewWeekStart(x.date)).filter((v):v is string=>v!==null)))].sort();
 }
 export function selectedReviewWeek(weeks:readonly string[],choice:string,now:Date=new Date()):string{
- if(weeks.includes(choice))return choice;
+ if(weeks.includes(choice)||reviewWeekStart(choice)===choice)return choice;
  const current=reviewWeekStart(now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0")+"-"+String(now.getDate()).padStart(2,"0"));
  return (current&&weeks.includes(current)?current:weeks[0])??"";
 }
