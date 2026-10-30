@@ -25,7 +25,11 @@ Under **Settings → App Updates**, use the **Channel** dropdown:
 | **Main** | `main` | Stable/approved builds for regular use |
 | **Beta** | `beta` | New features, fixes, and tests before promotion to Main |
 
-Choose a channel, press **Check for Updates**, then **Download from GitHub** to open the appropriate verified workflow run. **Currently the updater does not silently download, overwrite, or restart the running application**. Download the ZIP, close ShowPilot, then extract the updated folder. Settings persist between launches; use **Export work data** before updating or moving to a different PC. The previous Pixel Pals repository is only a temporary Beta fallback until the new builds are established.
+Choose a channel, press **Check for Updates**, then **Download from GitHub** to open the latest successful build. Settings displays the installed and latest version (and indicates when they match), plus the build number and commit. **Updates do not yet replace or restart the running app automatically.** Download the ZIP, close ShowPilot, and extract the new files. Back up work data before major changes.
+
+### Automatic build versions
+
+GitHub Actions stamps a new version for each build using the workflow run number. For instance, Beta build #18 becomes `0.1.18-beta`, and Main build #19 becomes `0.1.19`. Failed/cancelled runs may leave gaps, but numbers always increase. Both browser and portable Windows packages from one run use the same version. Each Windows ZIP is named `ShowPilot-v<version>-Portable-Windows.zip`. Version stamping changes only the temporary build copy of `package.json`; it does not create a Git commit.
 
 ## Features
 
