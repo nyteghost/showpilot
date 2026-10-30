@@ -11,3 +11,16 @@
 .sp-logo{background:transparent;overflow:hidden;flex-shrink:0;display:grid;place-items:center}
 .sp-logo img{display:block;width:100%;height:100%;object-fit:contain}
 .sp-banner>img{border-radius:12px;flex-shrink:0}
+
+/* Keep ShowPilot navigation visible while long work pages scroll independently.
+   The entire shell is viewport-height; only the right workspace scrolls.
+   On narrow screens the nav remains an overlay with its own scrollbar. */
+html,body,#root{height:100%;min-height:0}
+.sp-shell{height:100dvh;min-height:0;overflow:hidden}
+.sp-sidebar{height:100%;min-height:0;overflow-y:auto;overscroll-behavior:contain}
+.sp-body{height:100%;min-height:0;overflow-y:auto;overscroll-behavior:contain}
+.sp-header{position:sticky;top:0;z-index:3;flex-shrink:0}
+@media(max-width:780px){
+ .sp-sidebar{height:100dvh;max-height:100dvh}
+ .sp-body{height:100dvh}
+}
