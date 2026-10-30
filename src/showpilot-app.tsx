@@ -91,7 +91,7 @@ export function App() {
           : <section className="sp-panel"><ShowServicesTools selectedTab={screen} hideTabBar page venueOnly/></section>
         }
       </main>
-      <footer className="sp-footer">ShowPilot · Cobb Convention Center-Atlanta · Beta workspace</footer>
+      <footer className="sp-footer">ShowPilot v{__APP_VERSION__} · Cobb Convention Center-Atlanta · {__APP_VERSION__.includes("-beta") ? "Beta" : "Main"} channel</footer>
     </div>
   </div>;
 }
