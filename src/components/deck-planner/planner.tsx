@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { createPortal } from "react-dom";
 import { StageLayout, type LayoutStage } from "@/components/deck-planner/stage-layout";
 import { crewPrintDocument, printCrewPages, type CrewPrintStage } from "@/lib/stage-crew-print";
+import { stageMemoryDraft } from "@/lib/showpilot-memory-notes";
 import { allocateSingleDeckStages } from "@/lib/single-deck-allocation";
 import { EDGE_MODES, NO_EXTRAS, NO_PARTS, DEFAULT_HAVE, OPENING_FT, addParts, checkParts, parseHave, rampRunFt, stageParts } from "@/lib/stage-extras";
 import { INVENTORY, FULL_STOCK, STAIR_TYPES, DEFAULT_PREFS, planStage, type Deck, type Holder, type Bridge, type Result, type Stock, type PlanPrefs } from "@/lib/deck-solver";
@@ -1429,6 +1430,7 @@ export function DeckPlanner() {
   // ---- saved plans, undo / redo ----
   const [plans, setPlans] = useState<{ name: string; savedAt: number; snap: Snapshot }[]>([]);
   const [planName, setPlanName] = useState("");
+  const [memoryStatus, setMemoryStatus] = useState("");
   useEffect(() => { setPlans(readStored(PLANS_STORE_KEY, [])); }, []);
   const persistPlans = (next: typeof plans) => { setPlans(next); writeStored(PLANS_STORE_KEY, next); };
   const lastSnap = useRef<string>("");
@@ -1590,8 +1592,28 @@ export function DeckPlanner() {
               const entry = { name, savedAt: Date.now(), snap: takeSnapshot() };
               persistPlans([entry, ...plans.filter((x) => x.name !== name)]);
               setPlanName("");
+              setMemoryStatus("");
+              // Keep existing saved plan behavior unchanged; remembering is an
+              // additional offline Markdown note, only after explicit Save.
+              if (window.showpilotMemory) void (async () => {
+                try {
+                  const memory = window.showpilotMemory!;
+                  const prefs = await memory.status();
+                  if (!prefs.configured || !prefs.rememberStages) return;
+                  const summary = stageMemoryDraft(name,{eventName,showDate,buildByDate},
+                    crewPrintStages.map(st=>({
+                      name:st.name,width:st.width,length:st.length,heightIn:st.heightIn,valid:st.valid,
+                      decks:st.decks,holders:st.holders,
+                    })));
+                  await memory.save(summary);
+                  setMemoryStatus("Saved stage reference to your Obsidian notebook as well.");
+                } catch (e) {
+                  setMemoryStatus("Stage plan saved in ShowPilot. Notebook copy failed: "+(e as Error).message);
+                }
+              })();
             }} className="deck-tap rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-40">Save</button>
           </div>
+          {memoryStatus && <p role="status" className="mt-2 text-xs text-muted-foreground">{memoryStatus}</p>}
           {plans.length === 0 ? (
             <div className="mt-2 text-xs text-muted-foreground">Nothing saved yet. Saving the same name again replaces it. Hand-placed pieces are not saved, only sizes, heights, stairs, rails and the like.</div>
           ) : (
