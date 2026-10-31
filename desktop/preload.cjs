@@ -15,3 +15,17 @@ contextBridge.exposeInMainWorld("showpilotCalendar", Object.freeze({
   forget: () => ipcRenderer.invoke("showpilot-calendar:forget"),
   updateAll: (payload) => ipcRenderer.invoke("showpilot-calendar:update-all",payload),
 }));
+
+contextBridge.exposeInMainWorld("showpilotMemory",Object.freeze({
+ status:()=>ipcRenderer.invoke("showpilot-memory:status"),
+ createDefault:()=>ipcRenderer.invoke("showpilot-memory:create-default"),
+ choose:()=>ipcRenderer.invoke("showpilot-memory:choose"),
+ preferences:(next)=>ipcRenderer.invoke("showpilot-memory:preferences",next),
+ list:(query)=>ipcRenderer.invoke("showpilot-memory:list",query),
+ search:(query)=>ipcRenderer.invoke("showpilot-memory:search",query),
+ read:(id)=>ipcRenderer.invoke("showpilot-memory:read",id),
+ save:(note)=>ipcRenderer.invoke("showpilot-memory:save",note),
+ edit:(id,content)=>ipcRenderer.invoke("showpilot-memory:edit",id,content),
+ archive:(id)=>ipcRenderer.invoke("showpilot-memory:archive",id),
+ openFolder:()=>ipcRenderer.invoke("showpilot-memory:open-folder"),
+}));
