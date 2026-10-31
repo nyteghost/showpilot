@@ -28,7 +28,7 @@ export function ShowPilotAiSettings(){
  const save=async()=>{
    if(!window.showpilotAI||!secrets?.available||!selected)return;
    setWorking(true);setStatus("");
-   try{const s=await window.showpilotAI.saveKey(selected,draft.trim());setSecrets(s);setDraft("");setProvider("");setStatus("API key encrypted using Windows protection and saved on this computer.");}
+   try{const s=await window.showpilotAI.saveKey(selected,draft.trim());setSecrets(s);setDraft("");setProvider("");setStatus("API key encrypted with your OS credential store and saved on this computer.");}
    catch(e){setStatus((e as Error).message)}
    finally{setWorking(false)}
  };
@@ -72,8 +72,8 @@ export function ShowPilotAiSettings(){
    <div className="rounded-xl border p-4 space-y-3">
      <h2 className="font-semibold flex items-center gap-2"><KeyRound size={19}/> Online AI Providers</h2>
      <p className="text-sm text-muted-foreground">Paste an API key; ShowPilot tries to recognize its provider from the prefix. This is a hint, not proof. Ambiguous keys require manual selection. Keys are never saved to browser storage or exported with work backups.</p>
-     {!window.showpilotAI?<p className="text-xs text-amber-700">Secure API key storage is available in the portable Windows application only. Browser mode can use Local WebGPU AI without keys.</p>:
-      !secrets?.available?<p className="text-xs text-amber-700">Windows credential protection is unavailable. ShowPilot will not save plaintext keys.</p>:<div className="space-y-3">
+     {!window.showpilotAI?<p className="text-xs text-amber-700">Secure API key storage is available in the Windows and Linux desktop apps. Browser mode can use Local WebGPU AI without keys.</p>:
+      !secrets?.available?<p className="text-xs text-amber-700">Secure OS credential protection is unavailable. On Linux, unlock KDE KWallet or configure libsecret; ShowPilot will not use basic-text storage or save plaintext keys.</p>:<div className="space-y-3">
        <Input type="password" autoComplete="off" spellCheck={false} aria-label="AI API key" placeholder="Paste your AI provider key" value={draft} onChange={e=>{setDraft(e.target.value);setProvider("");}}/>
        <p className="text-xs">{detection.description}</p>
        <label className="text-xs font-semibold">Provider</label>
