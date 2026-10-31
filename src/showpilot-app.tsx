@@ -8,6 +8,7 @@ import { BackupPanel } from "@/components/showpilot-backup";
 import { ShowPilotAiSettings } from "@/components/showpilot-ai-settings";
 import { GoogleCalendarSettings } from "@/components/showpilot-calendar-settings";
 import { ShowPilotUpdates } from "@/components/showpilot-updates";
+import { ShowPilotMemorySettings } from "@/components/showpilot-memory-settings";
 import showpilotIcon from "./assets/showpilot-approved.webp";
 
 type Screen = "dashboard" | "settings" | WorkTabId;
@@ -75,7 +76,7 @@ export function App() {
           <div><p className="sp-eyebrow">COBB CONVENTION CENTER-ATLANTA</p><h1>{current?.label??(screen==="settings"?"Settings & AI Providers":"Operations Overview")}</h1>
             <p className="sp-subtitle">{current?.desc??(screen==="settings"?"Configure on-device GPU AI and encrypted online provider keys.":"Your venue operations tools, together in one workspace.")}</p></div>
         </div>
-        {screen==="settings" ? <section className="sp-panel space-y-5"><ShowPilotUpdates /><GoogleCalendarSettings /><ShowPilotAiSettings /></section>
+        {screen==="settings" ? <section className="sp-panel space-y-5"><ShowPilotUpdates /><ShowPilotMemorySettings /><GoogleCalendarSettings /><ShowPilotAiSettings /></section>
         : screen==="dashboard"
           ? <div className="space-y-5">
               <div className="sp-banner"><img src={showpilotIcon} width={52} height={52} alt="" aria-hidden="true" /><div><h2>Welcome to ShowPilot</h2><p>Open a tool below to begin. Scheduling and reports run locally, with no uploaded report data sent to a server.</p></div></div>
