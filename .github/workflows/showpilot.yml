@@ -81,7 +81,23 @@ jobs:
           test "${#images[@]}" -eq 1
           test "${#archives[@]}" -eq 1
           file "${images[0]}" | grep -q ELF
-          tar -tzf "${archives[0]}" | grep -q 'showpilot'
+          tar -tzf "${archives[0]}" > release/showpilot-linux-file-list.txt
+          grep -Eq '(^|/)showpilot
+      - uses: actions/upload-artifact@v4
+        with:
+          name: showpilot-linux-appimage
+          path: |
+            release/ShowPilot-v*-Linux-x86_64.AppImage
+            release/ShowPilot-Linux-SHA256SUMS.txt
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: showpilot-linux-portable
+          path: |
+            release/ShowPilot-v*-Linux-x86_64.tar.gz
+            release/ShowPilot-Linux-SHA256SUMS.txt
+          if-no-files-found: error
+ release/showpilot-linux-file-list.txt
           (cd release && sha256sum ShowPilot-v*-Linux-x86_64.AppImage ShowPilot-v*-Linux-x86_64.tar.gz > ShowPilot-Linux-SHA256SUMS.txt)
       - uses: actions/upload-artifact@v4
         with:
