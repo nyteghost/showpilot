@@ -68,32 +68,53 @@ jobs:
           SHOWPILOT_BUILD_NUMBER: ${{ github.run_number }}
         run: node scripts/stamp-build-version.mjs
       - run: bun run build
-      - name: Package Linux x86_64 AppImage and portable tar.gz
-        run: bunx electron-builder --linux AppImage tar.gz --x64 --publish never
-      - name: Inspect Linux packages and create checksums
+      - name: Package Linux x86_64 portable archive
+        run: bunx electron-builder --linux tar.gz --x64 --publish never
+      - name: Inspect Linux archive and generate checksum
         shell: bash
         run: |
           set -euo pipefail
           shopt -s nullglob
-          images=(release/ShowPilot-v*-Linux-x86_64.AppImage)
           archives=(release/ShowPilot-v*-Linux-x86_64.tar.gz)
-          test "${#images[@]}" -eq 1
           test "${#archives[@]}" -eq 1
-          file "${images[0]}" | grep -q ELF
-          tar -tzf "${archives[0]}" > release/showpilot-linux-file-list.txt
-          grep -Eq "(^|/)showpilot$" release/showpilot-linux-file-list.txt
-          (cd release && sha256sum ShowPilot-v*-Linux-x86_64.AppImage ShowPilot-v*-Linux-x86_64.tar.gz > ShowPilot-Linux-SHA256SUMS.txt)
-      - uses: actions/upload-artifact@v4
-        with:
-          name: showpilot-linux-appimage
-          path: |
-            release/ShowPilot-v*-Linux-x86_64.AppImage
-            release/ShowPilot-Linux-SHA256SUMS.txt
-          if-no-files-found: error
+          tar -tzf "${archives[0]}" > release/linux-archive-contents.txt
+          grep -Eq "(^|/)showpilot$" release/linux-archive-contents.txt
+          (cd release && sha256sum ShowPilot-v*-Linux-x86_64.tar.gz > ShowPilot-Linux-SHA256SUMS.txt)
       - uses: actions/upload-artifact@v4
         with:
           name: showpilot-linux-portable
           path: |
             release/ShowPilot-v*-Linux-x86_64.tar.gz
+            release/ShowPilot-Linux-SHA256SUMS.txt
+          if-no-files-found: error
+  linux-appimage:
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --no-save
+      - name: Stamp identical release number for Linux AppImage
+        env:
+          SHOWPILOT_BUILD_CHANNEL: ${{ github.ref_name }}
+          SHOWPILOT_BUILD_NUMBER: ${{ github.run_number }}
+        run: node scripts/stamp-build-version.mjs
+      - run: bun run build
+      - name: Package Linux x86_64 AppImage
+        run: bunx electron-builder --linux AppImage --x64 --publish never
+      - name: Inspect AppImage and generate checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          images=(release/ShowPilot-v*-Linux-x86_64.AppImage)
+          test "${#images[@]}" -eq 1
+          file "${images[0]}" | grep -q ELF
+          (cd release && sha256sum ShowPilot-v*-Linux-x86_64.AppImage > ShowPilot-Linux-SHA256SUMS.txt)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: showpilot-linux-appimage
+          path: |
+            release/ShowPilot-v*-Linux-x86_64.AppImage
             release/ShowPilot-Linux-SHA256SUMS.txt
           if-no-files-found: error
