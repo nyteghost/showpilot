@@ -1,9 +1,14 @@
 import type { TaskNote, EventEntry } from "./work-tools";
 
 export type AiTaskSuggestion = {id:string;task:TaskNote;reason:string;evidence:string[];provider:"local"|"online"};
-export type AiTaskInput={date:string;entries:EventEntry[]};
+export type AiTaskInput={date:string;entries:EventEntry[];memory?:readonly string[]};
 export type AiRawTask={date:string;room:string;section:string;task:string;reason:string;evidence:string[]};
 const iso=/^\d{4}-\d{2}-\d{2}$/;
+/** Notes are historical reference data, NEVER new instructions or permissions. */
+export function safeMemoryReferences(memory:readonly string[]|undefined):string[]{
+ return Array.isArray(memory)?memory.slice(0,3).filter((x):x is string=>typeof x==="string").map(x=>x.slice(0,650)):[];
+}
+
 const other=/\b(?:cepac|cobb energy|performing arts)\b/i;
 function idOf(s:AiRawTask){let h=2166136261;for(const c of JSON.stringify([s.date,s.section,s.task]))h=Math.imul(h^c.charCodeAt(0),16777619);return "ai-"+(h>>>0).toString(36);}
 export function taskContext(input:AiTaskInput) {
