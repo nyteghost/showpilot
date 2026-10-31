@@ -6,6 +6,8 @@ import type { EventEntry, TaskNote } from "@/lib/work-tools";
 import { taskContext, validateTaskResponse, type AiTaskSuggestion } from "@/lib/showpilot-ai-tasks";
 import { runLocalTaskAI } from "@/lib/showpilot-ai-local";
 import { AI_PROVIDERS, type AiProviderId } from "@/lib/showpilot-ai-providers";
+import { approvedTaskMemoryDraft } from "@/lib/showpilot-memory-notes";
+import type { MemoryReference } from "@/lib/showpilot-memory-bridge";
 
 const modelKey="showpilot:ai:local-model";
 type Mode="local"|"online";
@@ -23,6 +25,7 @@ export function AiTaskAssistant({ entries, tasks, onApprove }:{
  const [suggestions,setSuggestions]=useState<AiTaskSuggestion[]>([]);
  const [edits,setEdits]=useState<Record<string,string>>({});
  const [dismissed,setDismissed]=useState<string[]>([]);
+ const [memoryRefs,setMemoryRefs]=useState<MemoryReference[]>([]);
  useEffect(()=>{if(!window.showpilotAI)return;void window.showpilotAI.status().then(s=>{
    const p=s.providers.filter((n):n is AiProviderId=>AI_PROVIDERS.some(x=>x.id===n&&x.canGenerate));
    setAvailable(p);if(p.length)setProvider(p[0]!);
@@ -30,14 +33,26 @@ export function AiTaskAssistant({ entries, tasks, onApprove }:{
  const list=suggestions.filter(s=>!dismissed.includes(s.id));
  const run=async()=>{
   if(!chosenDate||busy)return;
-  setBusy(true);setStatus("");setSuggestions([]);setDismissed([]);setEdits({});
+  setBusy(true);setStatus("");setSuggestions([]);setDismissed([]);setEdits({});setMemoryRefs([]);
   try{
    const eligible=entries.filter(e=>e.date===chosenDate);
    let result:AiTaskSuggestion[];
    if(mode==="local"){
     const model=(()=>{try{return localStorage.getItem(modelKey)||""}catch{return ""}})();
     if(!model)throw new Error("Go to Settings & AI to select and download a local model first.");
-    result=await runLocalTaskAI({date:chosenDate,entries:eligible},model,setStatus);
+    let refs:MemoryReference[]=[];
+    if(window.showpilotMemory){
+      try{
+        const memory=window.showpilotMemory;
+        if((await memory.status()).configured){
+          const keywords=[...new Set(eligible.flatMap(e=>[e.space,e.title]))].join(" ").slice(0,155);
+          refs=await memory.search(keywords);
+          setMemoryRefs(refs);
+        }
+      }catch{/* Memory is optional; local AI still works if notebook is unavailable. */}
+    }
+    result=await runLocalTaskAI({date:chosenDate,entries:eligible,
+      memory:refs.map(r=>r.title+" ("+r.category+"): "+r.excerpt)},model,setStatus);
    } else {
     if(!window.showpilotAI||!available.includes(provider))throw new Error("Connect a supported cloud provider in Settings first.");
     const context=taskContext({date:chosenDate,entries:eligible});
@@ -56,9 +71,19 @@ export function AiTaskAssistant({ entries, tasks, onApprove }:{
  const approve=(s:AiTaskSuggestion)=>{
   const text=(edits[s.id]??s.task.text).trim();
   if(!text){setStatus("Enter a task description before approving.");return;}
-  onApprove({...s.task,text});
+  const approved={...s.task,text};
+  onApprove(approved);
   setDismissed(a=>[...a,s.id]);
   setStatus("Approved task added to your reviewed schedule; Excel export will include it.");
+  if(window.showpilotMemory)void (async()=>{
+    try{
+      const memory=window.showpilotMemory!;
+      const prefs=await memory.status();
+      if(!prefs.configured||!prefs.rememberTasks)return;
+      await memory.save(approvedTaskMemoryDraft(approved,s.reason,s.evidence));
+      setStatus("Approved task added to your schedule and saved to your Obsidian notebook.");
+    }catch(e){setStatus("Task approved in schedule. Could not save notebook memory: "+(e as Error).message)}
+  })();
  };
  return <section className="space-y-3 rounded-xl border border-border p-3 sm:p-4" aria-label="AI Task Assistant">
    <div className="flex items-start gap-3">
@@ -78,8 +103,13 @@ export function AiTaskAssistant({ entries, tasks, onApprove }:{
        <Sparkles size={16}/>{busy?"Analyzing...":"Suggest engineering tasks"}
      </Button>
    </div>
-   <p className="text-xs text-muted-foreground flex items-center gap-2"><ShieldCheck size={14}/> Local mode sends no scheduling details to a cloud provider. First-time model loading requires a download; cached models can run without internet.</p>
+   <p className="text-xs text-muted-foreground flex items-center gap-2"><ShieldCheck size={14}/> Local mode reads relevant local notebook notes when connected, without sending them online. Cloud mode sends no notebook memories. First-time model loading requires a download; cached models can run without internet.</p>
    {status&&<p role="status" className="text-xs rounded bg-muted p-2">{status}</p>}
+   {memoryRefs.length>0&&<div className="rounded-lg border border-border bg-muted/30 p-3 text-xs space-y-1">
+    <strong>Related notes from your local ShowPilot notebook</strong>
+    {memoryRefs.map(n=><p key={n.id}><span className="font-semibold">{n.title}</span> · {n.category}</p>)}
+    <p className="text-muted-foreground">Used as historical hints for this local GPU request only. Confirm current room, stage and safety details before approving.</p>
+   </div>}
    {list.map(s=><div key={s.id} className="rounded-lg border p-3 space-y-2">
      <div className="flex justify-between gap-2 text-xs text-muted-foreground"><span>{s.task.date} · {s.task.section} · {s.provider==="local"?"Local GPU":"Online AI"}</span><span>Requires approval</span></div>
      <Input aria-label={"Edit suggested task "+s.id} value={edits[s.id]??s.task.text} onChange={e=>setEdits(a=>({...a,[s.id]:e.target.value}))}/>
