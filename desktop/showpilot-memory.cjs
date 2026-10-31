@@ -65,10 +65,12 @@ function notePath(root,id){
   const [cat,name]=validId(id);
   const dir=categoryDir(root,cat,false);
   const file=path.join(dir,name);
-  if(fs.existsSync(file)){
+  // lstat catches even dangling symlinks, which existsSync incorrectly treats
+  // as nonexistent. Never follow links out of the selected memory folder.
+  try{
     const st=fs.lstatSync(file);
     if(st.isSymbolicLink()||!st.isFile())throw new Error("Memory notes must be regular files.");
-  }
+  }catch(e){if(e.code!=="ENOENT")throw e;}
   return file;
 }
 function status(){
