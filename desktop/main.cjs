@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const { setupAiIpc } = require("./ai-vault.cjs");
 const { setupGoogleCalendarIpc } = require("./google-calendar.cjs");
 const { setupUpdates } = require("./app-updates.cjs");
+const { setupMemoryIpc } = require("./showpilot-memory.cjs");
 let win;
 function openApp(){
  win=new BrowserWindow({
