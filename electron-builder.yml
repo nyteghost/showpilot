@@ -15,3 +15,20 @@ win:
     - target: dir
       arch:
         - x64
+linux:
+  executableName: showpilot
+  icon: desktop/linux-icons
+  category: Office
+  synopsis: Offline-first Show Services planning and scheduling
+  artifactName: "ShowPilot-v${version}-Linux-x86_64.${ext}"
+  target:
+    - target: AppImage
+      arch:
+        - x64
+    - target: tar.gz
+      arch:
+        - x64
+# electron-builder 26 static AppImage runtime avoids the old libfuse2
+# dependency that is frequently missing on Arch/CachyOS.
+toolsets:
+  appimage: "1.0.3"
