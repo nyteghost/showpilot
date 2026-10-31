@@ -20,7 +20,7 @@ jobs:
           SHOWPILOT_BUILD_NUMBER: ${{ github.run_number }}
         run: node scripts/stamp-build-version.mjs
       - run: bun run check
-      - run: node --check desktop/main.cjs && node --check desktop/preload.cjs && node --check desktop/google-calendar.cjs && node --check desktop/ai-vault.cjs && node --check desktop/app-updates.cjs && node --check desktop/showpilot-memory.cjs
+      - run: node --check desktop/main.cjs && node --check desktop/preload.cjs && node --check desktop/google-calendar.cjs && node --check desktop/ai-vault.cjs && node --check desktop/app-updates.cjs && node --check desktop/showpilot-memory.cjs && node --check desktop/secure-storage.cjs
       - run: bun test
       - run: bun run build
       - name: Upload offline browser build
@@ -54,4 +54,46 @@ jobs:
         with:
           name: showpilot-windows-portable
           path: release/ShowPilot-v*-Portable-Windows.zip
+          if-no-files-found: error
+
+  linux-portable:
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --no-save
+      - name: Stamp identical release number for Linux
+        env:
+          SHOWPILOT_BUILD_CHANNEL: ${{ github.ref_name }}
+          SHOWPILOT_BUILD_NUMBER: ${{ github.run_number }}
+        run: node scripts/stamp-build-version.mjs
+      - run: bun run build
+      - name: Package Linux x86_64 AppImage and portable tar.gz
+        run: bunx electron-builder --linux AppImage tar.gz --x64 --publish never
+      - name: Inspect Linux packages and create checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          images=(release/ShowPilot-v*-Linux-x86_64.AppImage)
+          archives=(release/ShowPilot-v*-Linux-x86_64.tar.gz)
+          test "${#images[@]}" -eq 1
+          test "${#archives[@]}" -eq 1
+          file "${images[0]}" | grep -q ELF
+          tar -tzf "${archives[0]}" | grep -q 'showpilot'
+          (cd release && sha256sum ShowPilot-v*-Linux-x86_64.AppImage ShowPilot-v*-Linux-x86_64.tar.gz > ShowPilot-Linux-SHA256SUMS.txt)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: showpilot-linux-appimage
+          path: |
+            release/ShowPilot-v*-Linux-x86_64.AppImage
+            release/ShowPilot-Linux-SHA256SUMS.txt
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: showpilot-linux-portable
+          path: |
+            release/ShowPilot-v*-Linux-x86_64.tar.gz
+            release/ShowPilot-Linux-SHA256SUMS.txt
           if-no-files-found: error
