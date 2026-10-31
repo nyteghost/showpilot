@@ -35,4 +35,13 @@ const directory = sizes.map((size,i)=>{
 });
 await fs.writeFile(path.join(out,"showpilot.ico"),Buffer.concat([header,...directory,...images]));
 await fs.writeFile(path.join(out,"showpilot.png"),images[images.length-1]);
+// KDE/Arch/Linux desktop icons use freedesktop-compatible PNG size filenames.
+const linuxIconDir=path.join(out,"linux-icons");
+await fs.mkdir(linuxIconDir,{recursive:true});
+const linuxSizes=[16,24,32,48,64,96,128,256,512];
+for(const size of linuxSizes){
+ const img=await sharp(artwork,{density:288}).resize(size,size,{fit:"contain"}).png().toBuffer();
+ await fs.writeFile(path.join(linuxIconDir,size+"x"+size+".png"),img);
+}
 console.log("ShowPilot app icon generated:", sizes.join(","),"px");
+console.log("ShowPilot Linux icons generated:",linuxSizes.join(","),"px");
