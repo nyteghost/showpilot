@@ -8,6 +8,12 @@ const https=require("node:https");
 // Both channels now live in the independent ShowPilot repository.
 const SOURCES=[{repository:"nyteghost/showpilot",branches:{main:"main",beta:"beta"}}];
 const MAX_JSON=1_500_000;
+function updateArtifacts(platform=process.platform){
+ if(platform==="win32")return ["showpilot-windows-portable"];
+ if(platform==="linux")return ["showpilot-linux-appimage","showpilot-linux-portable"];
+ return [];
+}
+
 function readJson(url,depth=0){
  return new Promise((resolve,reject)=>{
   if(depth>3)return reject(new Error("Too many GitHub redirects"));
@@ -47,8 +53,8 @@ async function versionOfRun(base,run,ch){
  try{
   const obj=await readJson(base+"/contents/package.json?ref="+encodeURIComponent(run.head_sha));
   if(!obj||obj.encoding!=="base64"||typeof obj.content!=="string")return null;
-  const pkg=JSON.parse(Buffer.from(obj.content.replace(/\\s/g,""),"base64").toString("utf8"));
-  const m=/^(\\d+)\\.(\\d+)\\.\\d+(?:[-+].*)?$/.exec(pkg.version??"");
+  const pkg=JSON.parse(Buffer.from(obj.content.replace(/\s/g,""),"base64").toString("utf8"));
+  const m=/^(\d+)\.(\d+)\.\d+(?:[-+].*)?$/.exec(pkg.version??"");
   return m ? m[1]+"."+m[2]+"."+n+(ch==="beta"?"-beta":"") : null;
  }catch{return null}
 }
@@ -63,10 +69,11 @@ async function latest(ch){
   for(const run of (response.workflow_runs||[])){
    if(run.head_branch!==ref||run.conclusion!=="success")continue;
    const arts=await readJson(base+"/actions/runs/"+run.id+"/artifacts");
-   const art=(arts?.artifacts||[]).find(a=>a.name==="showpilot-windows-portable"&&!a.expired);
+   const art=(arts?.artifacts||[]).find(a=>updateArtifacts().includes(a.name)&&!a.expired);
    if(art)return {
     runId:run.id,buildNumber:run.run_number,sha:run.head_sha,channel:ch,
     created:run.created_at,url:run.html_url,repository:source.repository,
+    artifact:art.name,platform:process.platform,
     version:await versionOfRun(base,run,ch),
    };
   }
@@ -74,14 +81,14 @@ async function latest(ch){
  return null;
 }
 function setupUpdates(){
- ipcMain.handle("showpilot-update:status",()=>({channel:channel(),installedVersion:app.getVersion(),repository:"nyteghost/showpilot"}));
+ ipcMain.handle("showpilot-update:status",()=>({channel:channel(),installedVersion:app.getVersion(),repository:"nyteghost/showpilot",platform:process.platform,artifactFormats:updateArtifacts()}));
  ipcMain.handle("showpilot-update:channel",(_,value)=>({channel:setChannel(value)}));
  ipcMain.handle("showpilot-update:check",async()=>{
    const ch=channel(),found=await latest(ch);
    const upToDate=!!found?.version&&found.version===app.getVersion();
-   return {channel:ch,latest:found,upToDate,message:found
+   return {channel:ch,platform:process.platform,latest:found,upToDate,message:found
     ? upToDate?"You are running the latest "+ch+" build.":"Latest successful "+ch+" build found."
-    : ch==="main"?"No stable ShowPilot release is published yet. Try Beta.":"No accessible ShowPilot beta build found."};
+    : "No successful ShowPilot "+ch+" build for "+(process.platform==="linux"?"Linux":process.platform==="win32"?"Windows":"this platform")+" is available yet."};
  });
  ipcMain.handle("showpilot-update:open",async()=>{
    const found=await latest(channel());
