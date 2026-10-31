@@ -11,7 +11,7 @@ function core() {
     safeStorage:{isEncryptionAvailable:()=>true},shell:{openExternal: async()=>{} } };
   const sandbox = {
     module, exports: module.exports,
-    require:(id:string)=>id==="electron"?electron:nativeRequire(id),
+    require:(id:string)=>id==="electron"?electron:id==="./secure-storage.cjs"?nativeRequire(resolve(process.cwd(),"desktop/secure-storage.cjs")):nativeRequire(id),
     fetch:()=>{throw Error("No network in tests");},
     URL,URLSearchParams,AbortSignal,setTimeout,Buffer,console,
   };
