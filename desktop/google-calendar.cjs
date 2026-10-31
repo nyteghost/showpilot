@@ -4,6 +4,7 @@
  */
 'use strict';
 const { app, ipcMain, safeStorage, shell } = require('electron');
+const {secureStorageAvailable,secureStorageRequirement}=require('./secure-storage.cjs');
 const { createServer } = require('node:http');
 const { randomBytes, createHash } = require('node:crypto');
 const fs = require('node:fs');
@@ -19,7 +20,7 @@ let connecting = false;
 let syncing = false;
 
 function secure() {
-  if (!safeStorage.isEncryptionAvailable()) FAIL('Windows secure credential storage is unavailable. ShowPilot will not save Google tokens.');
+  if (!secureStorageAvailable(safeStorage)) FAIL(secureStorageRequirement()+' ShowPilot will not save Google tokens.');
 }
 function readSettings() {
   const file = FILE();
@@ -31,7 +32,7 @@ function readSettings() {
     const data = JSON.parse(safeStorage.decryptString(Buffer.from(raw.encrypted,'base64')));
     if (!data || typeof data !== 'object') FAIL('Invalid Calendar credentials.');
     return data;
-  } catch (e) { FAIL('Unable to decrypt Google Calendar settings on this Windows user account. Reconnect Google Calendar.'); }
+  } catch (e) { FAIL('Unable to decrypt Google Calendar settings on this OS account. Unlock your credential wallet or reconnect Google Calendar.'); }
 }
 function writeSettings(data) {
   secure();
@@ -45,7 +46,7 @@ function writeSettings(data) {
 function status() {
   try {
     const data=readSettings();
-    return {available:safeStorage.isEncryptionAvailable(),configured:!!data.client_id,connected:!!data.refresh_token,connecting,syncing};
+    return {available:secureStorageAvailable(safeStorage),configured:!!data.client_id,connected:!!data.refresh_token,connecting,syncing};
   } catch {return {available:false,configured:false,connected:false,connecting,syncing};}
 }
 function credentialFromJson(input) {
