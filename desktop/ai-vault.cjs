@@ -1,4 +1,5 @@
 const {ipcMain, safeStorage, app} = require("electron");
+const {secureStorageAvailable,secureStorageRequirement}=require("./secure-storage.cjs");
 const fs = require("node:fs");
 const path = require("node:path");
 const PROVIDERS = new Set(["openai","anthropic","google","openrouter","groq","xai","deepseek","mistral","perplexity"]);
@@ -22,10 +23,10 @@ function store(items) {
   fs.renameSync(tmp,loc);
 }
 function requireStorage() {
-  if(!safeStorage.isEncryptionAvailable())failure("Secure OS credential encryption is unavailable. API key was NOT saved.");
+  if(!secureStorageAvailable(safeStorage))failure(secureStorageRequirement()+" API key was NOT saved.");
 }
 function status() {
-  return {available:safeStorage.isEncryptionAvailable(),providers:Object.keys(vault())};
+  return {available:secureStorageAvailable(safeStorage),providers:Object.keys(vault())};
 }
 function readKey(provider) {
   if(!PROVIDERS.has(provider))failure("Unknown AI provider.");
