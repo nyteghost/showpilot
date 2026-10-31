@@ -119,8 +119,8 @@ function scan(){
       if(found.length>=MAX_LIST)break;
       if(!/^[a-z0-9][a-z0-9-]{0,115}\.md$/.test(name))continue;
       const id=cat+"/"+name;
-      const file=notePath(root,id);
       try{
+        const file=notePath(root,id);
         const st=fs.lstatSync(file);
         if(st.size>MAX_NOTE||st.size<1)continue;
         const content=fs.readFileSync(file,"utf8");
@@ -176,6 +176,7 @@ function save(data){
   // Header content is plain Markdown. No AI instruction has special privileges.
   const content="# "+data.title.trim().replace(/[\r\n]+/g," ")+"\n\n"+
     "_Saved by ShowPilot: "+timestamp+". Review against current show requirements._\n\n"+data.content.trim()+"\n";
+  if(Buffer.byteLength(content,"utf8")>MAX_NOTE)throw new Error("Memory note is too large after formatting.");
   fs.writeFileSync(path.join(dir,name),content,{encoding:"utf8",flag:"wx",mode:0o600});
   return {id,title:data.title.trim(),category:data.category};
 }
