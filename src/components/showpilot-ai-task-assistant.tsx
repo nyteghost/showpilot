@@ -51,40 +51,68 @@ export function AiTaskAssistant({ entries, tasks, onApprove, scope }:{
  }).catch(()=>{})},[]);
  const list=suggestions.filter(s=>!dismissed.includes(s.id));
  const run=async()=>{
-  if(!chosenDate||busy)return;
+  if(!scope||!weeks.length||busy)return;
+  const selectedScope=scopeVersion.current;
   setBusy(true);setStatus("");setSuggestions([]);setDismissed([]);setEdits({});setMemoryRefs([]);
   try{
-   const eligible=entries.filter(e=>e.date===chosenDate);
-   let result:AiTaskSuggestion[];
+   let model="";
    if(mode==="local"){
-    const model=(()=>{try{return localStorage.getItem(modelKey)||""}catch{return ""}})();
-    if(!model)throw new Error("Go to Settings & AI to select and download a local model first.");
-    let refs:MemoryReference[]=[];
-    if(window.showpilotMemory){
-      try{
-        const memory=window.showpilotMemory;
-        if((await memory.status()).configured){
-          const keywords=[...new Set(eligible.flatMap(e=>[e.space,e.title]))].join(" ").slice(0,155);
-          refs=await memory.search(keywords);
-          setMemoryRefs(refs);
-        }
-      }catch{/* Memory is optional; local AI still works if notebook is unavailable. */}
-    }
-    result=await runLocalTaskAI({date:chosenDate,entries:eligible,
-      memory:refs.map(r=>r.title+" ("+r.category+"): "+r.excerpt)},model,setStatus);
+     model=(()=>{try{return localStorage.getItem(modelKey)||""}catch{return ""}})();
+     if(!model)throw new Error("Choose and download a local model in Settings & AI first.");
    } else {
-    if(!window.showpilotAI||!available.includes(provider))throw new Error("Connect a supported cloud provider in Settings first.");
-    const context=taskContext({date:chosenDate,entries:eligible});
-    if(!window.confirm("Send only the selected day's event names, rooms, phases and times to "+provider+"? No PDFs, shift records or API keys are included in this request."))return;
-    setStatus("Requesting optional cloud AI task suggestions...");
-    const raw=await window.showpilotAI.suggestTasks(provider,context);
-    result=validateTaskResponse(raw,context,"online");
+     if(!window.showpilotAI||!available.includes(provider))throw new Error("Connect a supported cloud provider in Settings first.");
+     const count=weeks.length;
+     if(!window.confirm("Analyze "+count+" selected week"+(count===1?"":"s")+
+       " and use the week before and after each as context? This sends event names, rooms, phases and times in "+
+       count+" request"+(count===1?"":"s")+" to "+provider+
+       ". No PDFs, employee shifts, notebook memories or API keys will be sent."))return;
    }
+   let refs:MemoryReference[]=[];
+   if(mode==="local"&&window.showpilotMemory){
+     try{
+       const memory=window.showpilotMemory;
+       if((await memory.status()).configured){
+         const selected=new Set(eligibleDates);
+         const keywords=[...new Set(entries.filter(e=>selected.has(e.date)).flatMap(e=>[e.space,e.title]))].join(" ").slice(0,155);
+         refs=await memory.search(keywords);
+         setMemoryRefs(refs);
+       }
+     }catch{/* Notebook is optional. */}
+   }
+   const all:AiTaskSuggestion[]=[];
+   const failed:string[]=[];
+   for(let i=0;i<weeks.length;i++){
+     if(scopeVersion.current!==selectedScope)throw new Error("Schedule selection changed; rerun the assistant.");
+     const dates=weeks[i]!;
+     const input={date:dates[0]!,dates,entries,
+       memory:refs.map(r=>r.title+" ("+r.category+"): "+r.excerpt)};
+     const context=taskContext(input);
+     const progress="Analyzing selected week "+(i+1)+"/"+weeks.length+" (plus prior and following weeks)…";
+     setStatus(progress);
+     try{
+       if(mode==="local"){
+         const found=await runLocalTaskAI(input,model,message=>setStatus(progress+" "+message));
+         all.push(...found);
+       }else{
+         const raw=await window.showpilotAI!.suggestTasks(provider,context);
+         all.push(...validateTaskResponse(raw,context,"online"));
+       }
+     }catch(e){failed.push(dates[0]!+": "+aiError(e));}
+   }
+   if(scopeVersion.current!==selectedScope)throw new Error("Schedule selection changed; rerun the assistant.");
+   if(failed.length===weeks.length)throw new Error(failed.join(" | "));
    const existing=new Set(tasks.map(t=>[t.date,t.section,t.text.toLowerCase().trim()].join("|")));
-   result=result.filter(x=>!existing.has([x.task.date,x.task.section,x.task.text.toLowerCase().trim()].join("|")));
+   const unique=new Map<string,AiTaskSuggestion>();
+   for(const suggestion of all){
+     const key=[suggestion.task.date,suggestion.task.section,suggestion.task.text.toLowerCase().trim()].join("|");
+     if(!existing.has(key)&&!unique.has(key))unique.set(key,suggestion);
+   }
+   const result=[...unique.values()];
    setSuggestions(result);
-   setStatus(result.length?result.length+" suggestions to review. Nothing added automatically.":"The model returned no usable new suggestions. Your existing rule-based tasks are still available.");
-  }catch(e){setStatus("AI suggestion failed: "+(e as Error).message)}
+   setStatus((result.length?result.length+" suggestions to review.":"No usable new suggestions.")+
+     " Only the selected period can receive tasks; adjacent weeks provide context only."+
+     (failed.length?" "+failed.length+" week(s) failed: "+failed.join(" | ").slice(0,500):""));
+  }catch(e){setStatus("AI suggestion failed: "+aiError(e))}
   finally{setBusy(false)}
  };
  const approve=(s:AiTaskSuggestion)=>{
