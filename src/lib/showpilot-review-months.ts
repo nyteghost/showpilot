@@ -61,3 +61,29 @@ export function reviewWeekLabel(week:string):string{
  const endLabel=new Intl.DateTimeFormat("en-US",{month:"short",day:"numeric",year:"numeric",timeZone:"UTC"}).format(end);
  return startLabel+" – "+endLabel;
 }
+
+
+/** Scope shared by the schedule review controls and AI Task Assistant.
+ * Keep all date calculations UTC/date-only; the assistant must analyze
+ * precisely what the review selection includes, without changing exports.
+ */
+export type ReviewDateScope = {view:"month"|"week"|"day"|"all";value:string};
+export function reviewScopeDates<T extends {date:string}>(entries:readonly T[],scope:ReviewDateScope|null):string[]{
+ if(!scope)return [];
+ return [...new Set(entries.filter(item=>{
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(item.date))return false;
+  switch(scope.view){
+   case "month":return Boolean(scope.value)&&reviewMonthOf(item.date)===scope.value;
+   case "week":return Boolean(scope.value)&&reviewWeekStart(item.date)===scope.value;
+   case "day":return Boolean(scope.value)&&item.date===scope.value;
+   case "all":return true;
+  }
+ }).map(e=>e.date))].sort();
+}
+export function reviewScopeLabel(scope:ReviewDateScope|null):string{
+ if(!scope)return "No schedule selected";
+ if(scope.view==="month")return scope.value?reviewMonthLabel(scope.value):"No month selected";
+ if(scope.view==="week")return scope.value?reviewWeekLabel(scope.value):"No week selected";
+ if(scope.view==="day")return scope.value||"No day selected";
+ return "All schedule dates";
+}
