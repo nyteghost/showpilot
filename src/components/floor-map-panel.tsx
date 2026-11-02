@@ -43,11 +43,20 @@ export function FloorMapPanel() {
     try {
       const pdf = await import("@/lib/floor-map-pdf");
       let lines: string[] = []; let planFile: File | null = null;
-      for (const f of fs.filter((x) => /\.pdf$/i.test(x.name))) {
+      let summaryReport = false;
+      for (const f of fs.filter(x => /\.pdf$/i.test(x.name))) {
         const l = await pdf.readWorkOrder(f);
-        if (parseWorkOrderLines(l).length >= 3) lines = l; else planFile = f;
+        if (parseWorkOrderLines(l).length >= 3) lines = l;
+        else if (l.some(x => /better work orders/i.test(x)) && l.some(x => /booth number|bill-to account|space - order/i.test(x))) summaryReport = true;
+        else planFile = f;
       }
-      if (!planFile || !lines.length) { setStatus(!planFile ? "I need the floor plan PDF too (drop both together)." : "I need the Better Work Order Items PDF too (drop both together)."); setFiles(fs); return; }
+      if (!lines.length) {
+        setStatus(summaryReport
+          ? "This is the Better Work Orders SUMMARY, not the itemized Better Work Order Items report. It lists booths and order numbers, but not the utility descriptions and quantities needed to color booths. Export Better Work Order Items and select it together with the floor plan."
+          : "I need the itemized Better Work Order Items PDF with utility descriptions and quantities, plus the floor plan PDF. Select both together.");
+        setFiles(fs); return;
+      }
+      if (!planFile) { setStatus("Work order items found, but the FLOOR PLAN PDF with booth positions is missing. Select both files together."); setFiles(fs); return; }
       const doc = await pdf.readPlan(planFile, page);
       const ents = buildEntries(parseWorkOrderLines(lines));
       setRows(parseWorkOrderLines(lines).length); setPlan(doc); setName(planFile.name); setEntries(ents); setFiles(fs);
@@ -154,7 +163,7 @@ export function FloorMapPanel() {
         onDrop={(e) => { e.preventDefault(); setOver(false); const l = [...e.dataTransfer.files]; if (l.length) void read(l); }}
         className={`flex cursor-pointer flex-col items-center justify-center gap-1 rounded-md border border-dashed p-4 text-center text-sm hover:bg-muted ${over ? "border-primary bg-muted text-foreground" : "border-border text-muted-foreground"}`}
       >
-        <span className="flex items-center gap-2"><FileUp className="size-4" /> Drop the floor plan PDF and the Better Work Order Items PDF together</span>
+        <span className="flex items-center gap-2"><FileUp className="size-4" /> Select floor plan PDF and itemized Better Work Order Items PDF together</span>
         <span className="text-xs">Either order is fine — I tell them apart by what's inside.</span>
         <input type="file" accept="application/pdf" multiple className="sr-only" onChange={(e) => { const l = [...(e.target.files ?? [])]; if (l.length) void read(l); e.target.value = ""; }} />
       </label>
