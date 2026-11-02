@@ -29,3 +29,5 @@ contextBridge.exposeInMainWorld("showpilotMemory",Object.freeze({
  archive:(id)=>ipcRenderer.invoke("showpilot-memory:archive",id),
  openFolder:()=>ipcRenderer.invoke("showpilot-memory:open-folder"),
 }));
+
+contextBridge.exposeInMainWorld("showpilotLocal",Object.freeze({status:()=>ipcRenderer.invoke("showpilot-local:status"),configure:(next)=>ipcRenderer.invoke("showpilot-local:configure",next),chooseTemplate:()=>ipcRenderer.invoke("showpilot-local:template")}));
