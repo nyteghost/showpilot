@@ -231,3 +231,16 @@ Develop and test new changes on **`beta`**. Promote verified changes to **`main`
 ShowPilot serves **Cobb Convention Center-Atlanta**. It is an independent professional tool and should **not** schedule or cover Cobb Energy Performing Arts Centre events.
 
 The project is a custom internal operational aid, not a substitute for official work orders, approved engineering staffing policies, structural stage specifications or safety procedures.
+
+
+## ShowPilot Local Intelligence — Phase 1 (beta)
+
+The Windows portable application now includes an optional **Local Intelligence — foundation** section in Settings & AI.
+
+- Its desktop Electron IPC stores enablement, preferred backend (automatic/CUDA/CPU), and permission for future background analysis in a local settings file. These preferences do **not** launch an AI model.
+- The status reports **Not installed** until a future bundled local inference engine actually exists. Existing WebGPU AI is separate and remains available.
+- **Choose master XLSX** copies an approved Excel workbook (maximum 30 MB) to the app's local data directory as `local-intelligence/approved-schedule-template.xlsx`. Only explicitly selected files are copied. The reference is not uploaded.
+- The master template is a **reference only** in Phase 1. The current fresh Excel export is unchanged; Phase 2 must explicitly connect exports to the approved template with structural/formatting validation.
+- Neither llama.cpp nor a GGUF model is bundled yet. No model downloads or silent background scheduling edits are introduced.
+
+The portable release must continue to work without internet and without a model. Check workplace IT policy before storing company documents in local application data.
