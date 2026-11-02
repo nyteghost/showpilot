@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { entryLabel, formatMinutes, type EventCode, type EventEntry, type EventRow, type TaskNote } from "@/lib/work-tools";
@@ -20,7 +20,7 @@ const minutes = (s: string) => {
 const uniqueId = (type: string) => type + ":" + Date.now() + ":" + Math.random().toString(36).slice(2, 10);
 
 export function ScheduleReview({
-  originalRows, proposed, suggestedTasks, draft, onChange, onSaveProject,
+  originalRows, proposed, suggestedTasks, draft, onChange, onSaveProject, conflictTarget,
 }: {
   originalRows: EventRow[];
   proposed: EventEntry[];
@@ -28,7 +28,15 @@ export function ScheduleReview({
   draft: ReviewDraft;
   onChange: (draft: ReviewDraft) => void;
   onSaveProject: () => void;
+  conflictTarget?: {date:string;space:string;title:string;nonce:number}|null;
 }) {
+  const reviewRef = useRef<HTMLElement>(null);
+  useEffect(()=>{
+    if (!conflictTarget) return;
+    setMode("review");setView("day");setDate(conflictTarget.date);
+    setSearch(conflictTarget.title);setPage(0);setEditing(null);
+    requestAnimationFrame(()=>reviewRef.current?.scrollIntoView({behavior:"smooth",block:"start"}));
+  },[conflictTarget]);
   const [mode, setMode] = useState<"imported"|"review"|"changes">("review");
   const [search, setSearch] = useState("");
   const [view, setView] = useState<"month"|"week"|"day"|"all">("month");
@@ -118,7 +126,7 @@ export function ScheduleReview({
   }
   const imported = originalRows.filter((r)=> inView({final:r}) && (!search ||
     [r.date,r.space,r.event??"",r.description,r.eventId??""].join(" ").toLowerCase().includes(search.toLowerCase())));
-  return <section className="space-y-4 rounded-xl border border-border p-3 sm:p-4" aria-label="Two-layer engineering schedule">
+  return <section ref={reviewRef} className="space-y-4 rounded-xl border border-border p-3 sm:p-4" aria-label="Two-layer engineering schedule">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div>
         <h3 className="text-base font-semibold">Imported report → reviewed engineering schedule</h3>
@@ -184,7 +192,7 @@ export function ScheduleReview({
             const original=line.source, final=line.final;
             const current = final ?? original;
             if(!current)return null;
-            return <tr className="border-t align-top" key={line.id}>
+            return <tr className={"border-t align-top "+(conflictTarget && current.date===conflictTarget.date && current.title===conflictTarget.title && current.space===conflictTarget.space ? "bg-amber-500/20" : "")} key={line.id}>
               <td className="p-2 min-w-28">{current.date}<div className="font-semibold">{current.space}</div><span className="text-muted-foreground">{line.status}</span></td>
               <td className="p-2 min-w-36">{original?<><div>{entryLabel(original)}</div><div>{original.title}</div></>:<em>Manually added</em>}</td>
               <td className="p-2 min-w-40">{editing===line.id&&editable ? <div className="grid min-w-56 gap-2">
