@@ -24,3 +24,23 @@ html,body,#root{height:100%;min-height:0}
  .sp-sidebar{height:100dvh;max-height:100dvh}
  .sp-body{height:100dvh}
 }
+
+
+/* Viewport scrolling fix: the main workspace is the only vertical scrollport.
+   Keep navigation, toolbar and footer fixed in the app shell. */
+html, body, #root { height: 100%; min-height: 0; overflow: hidden; }
+.sp-shell { height: 100dvh; min-height: 0; overflow: hidden; }
+.sp-body { flex: 1 1 0; min-width: 0; min-height: 0; height: 100%; overflow: hidden; }
+.sp-header, .sp-footer { flex: 0 0 auto; }
+.sp-main {
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  margin: 0 auto;
+}
+@media (max-width: 780px) {
+  .sp-body { height: 100dvh; }
+}
