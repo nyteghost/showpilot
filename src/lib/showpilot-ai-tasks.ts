@@ -28,16 +28,21 @@ export function taskContext(input:AiTaskInput) {
    const d=new Date(day+"T12:00:00Z");d.setUTCDate(d.getUTCDate()+amount);
    return d.toISOString().slice(0,10);
  };
- const previousStart=shift(dates[0]!,-7),nextEnd=shift(dates.at(-1)!,7);
- const previous=input.entries.filter(e=>e.date>=previousStart&&e.date<dates[0]!&&allowed(e)).slice(-24).map(mapEvent);
- const following=input.entries.filter(e=>e.date>dates.at(-1)!&&e.date<=nextEnd&&allowed(e)).slice(0,24).map(mapEvent);
+ const first=new Date(dates[0]!+"T12:00:00Z");
+ const monday=shift(dates[0]!,-((first.getUTCDay()+6)%7));
+ const sunday=shift(monday,6);
+ const previousStart=shift(monday,-7),followingEnd=shift(sunday,7);
+ const previousAll=input.entries.filter(e=>e.date>=previousStart&&e.date<monday&&allowed(e));
+ const followingAll=input.entries.filter(e=>e.date>sunday&&e.date<=followingEnd&&allowed(e));
+ const selectedWeekOther=input.entries.filter(e=>e.date>=monday&&e.date<=sunday&&!chosen.has(e.date)&&allowed(e));
+ const previous=previousAll.slice(-24).map(mapEvent);
+ const following=followingAll.slice(0,24).map(mapEvent);
  return {date:dates[0]!,dates,events,rooms,
-   surroundingEvents:{previousWeek:previous,followingWeek:following},
-   contextWindow:{from:previousStart,to:nextEnd},
-   // Counts make omitted lines apparent; never imply this is the complete report.
+   surroundingEvents:{previousWeek:previous,currentWeekOtherDates:selectedWeekOther.slice(0,20).map(mapEvent),followingWeek:following},
+   contextWindow:{from:previousStart,to:followingEnd},
    totals:{selected:input.entries.filter(e=>chosen.has(e.date)&&allowed(e)).length,
-     previous:input.entries.filter(e=>e.date>=previousStart&&e.date<dates[0]!&&allowed(e)).length,
-     following:input.entries.filter(e=>e.date>dates.at(-1)!&&e.date<=nextEnd&&allowed(e)).length}};
+     previous:previousAll.length,currentWeekOther:selectedWeekOther.length,following:followingAll.length}};
+
 }
 export function validateTaskResponse(input:unknown,context:ReturnType<typeof taskContext>,provider:"local"|"online"):AiTaskSuggestion[] {
  if(!input||typeof input!=="object"||!Array.isArray((input as {suggestions?:unknown}).suggestions))throw new Error("AI did not return a valid task list.");
