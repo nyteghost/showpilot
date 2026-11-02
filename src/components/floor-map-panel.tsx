@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Download, FileUp, MapPin, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { buildEntries, cellAround, locate, mergeTexts, parseBooth, parseWorkOrderLines, placedCsv, planKey, questionsCsv, resolve, type Answers, type Box, type Entry, type Question } from "@/lib/floor-map";
+import { buildEntries, cellAround, locate, mergeTexts, parseBooth, parseWorkOrderLines, parseShowPilotItemLines, type ShowPilotItem, placedCsv, planKey, questionsCsv, resolve, type Answers, type Box, type Entry, type Question } from "@/lib/floor-map";
 import type { PlanDoc } from "@/lib/floor-map-pdf";
 
 type Saved = { answers: Answers; ok: Record<string, true> };
@@ -28,6 +28,9 @@ export function FloorMapPanel() {
   const [files, setFiles] = useState<File[]>([]);
   const [over, setOver] = useState(false);
   const [rows, setRows] = useState(0);
+  const [itemized,setItemized]=useState<ShowPilotItem[]>([]);
+  const [eventId,setEventId]=useState("");
+  const [noteHints,setNoteHints]=useState<ShowPilotItem[]>([]);
   const view = useRef<HTMLCanvasElement>(null);
   const base = useRef<HTMLCanvasElement | null>(null);
   const geom = useRef({ s: 1, band: 0 });
@@ -38,15 +41,25 @@ export function FloorMapPanel() {
   const blocking = open.filter((q) => q.kind !== "check");
   const checks = open.filter((q) => q.kind === "check");
 
+  function chooseEvent(id:string,items=itemized){
+    setEventId(id);
+    const selected=items.filter(x=>x.venue==="CGC"&&x.eventId===id);
+    setEntries(buildEntries(selected.map(x=>x.line)));
+    setRows(selected.length);
+    setNoteHints(selected.filter(x=>x.noteBooth));
+  }
   async function read(fs: File[], page = pageNo) {
     setStatus("Reading…"); setPlan(null); setSel(null); setPicks([]);
     try {
       const pdf = await import("@/lib/floor-map-pdf");
       let lines: string[] = []; let planFile: File | null = null;
       let summaryReport = false;
+      let wideItems:ShowPilotItem[]=[];
       for (const f of fs.filter(x => /\.pdf$/i.test(x.name))) {
         const l = await pdf.readWorkOrder(f);
-        if (parseWorkOrderLines(l).length >= 3) lines = l;
+        const parsedWide=parseShowPilotItemLines(l);
+        if(parsedWide.length>=3){wideItems=parsedWide;lines=l;}
+        else if (parseWorkOrderLines(l).length >= 3) lines = l;
         else if (l.some(x => /better work orders/i.test(x)) && l.some(x => /booth number|bill-to account|space - order/i.test(x))) summaryReport = true;
         else planFile = f;
       }
@@ -58,8 +71,10 @@ export function FloorMapPanel() {
       }
       if (!planFile) { setStatus("Work order items found, but the FLOOR PLAN PDF with booth positions is missing. Select both files together."); setFiles(fs); return; }
       const doc = await pdf.readPlan(planFile, page);
-      const ents = buildEntries(parseWorkOrderLines(lines));
-      setRows(parseWorkOrderLines(lines).length); setPlan(doc); setName(planFile.name); setEntries(ents); setFiles(fs);
+      setItemized(wideItems);
+      if(wideItems.length){const ids=[...new Set(wideItems.filter(x=>x.venue==="CGC").map(x=>x.eventId))];const initial=ids.length===1?ids[0]!:"";chooseEvent(initial,wideItems);}
+      else {const parsed=parseWorkOrderLines(lines);setEntries(buildEntries(parsed));setRows(parsed.length);setNoteHints([]);setEventId("");}
+      setPlan(doc); setName(planFile.name); setFiles(fs);
       setSaved(load(planKey(planFile.name, doc.prims)));
       const s = pdf.pickScale(doc.prims);
       const c = document.createElement("canvas");
@@ -168,6 +183,17 @@ export function FloorMapPanel() {
         <input type="file" accept="application/pdf" multiple className="sr-only" onChange={(e) => { const l = [...(e.target.files ?? [])]; if (l.length) void read(l); e.target.value = ""; }} />
       </label>
       <p className="text-xs text-muted-foreground">10 amp = yellow · 20 amp = orange · both = split · more than one → x#. Small squares: red 30 amp, green 60 amp, blue water, purple compressed air. Showcase power is yellow (SCase xN), track lights show A / B xN. Runs in this browser; answers you give are remembered for the same plan.</p>
+      {itemized.length>0&&<div className="rounded-md border p-3 space-y-2 text-sm">
+        <label className="block font-semibold" htmlFor="floor-event">Choose event before placing utilities</label>
+        <select id="floor-event" className="w-full rounded border bg-background p-2" value={eventId} onChange={e=>chooseEvent(e.target.value)}>
+          <option value="">Select one CGC event…</option>
+          {[...new Map(itemized.filter(x=>x.venue==="CGC").map(x=>[x.eventId,x.eventName])).entries()].map(([id,title])=><option key={id} value={id}>{title} (ID {id})</option>)}
+        </select>
+        <p className="text-xs text-muted-foreground">CEPAC items are excluded. Empty booth fields are not guessed from notes.</p>
+        {noteHints.length>0&&<details><summary className="cursor-pointer font-semibold">{noteHints.length} note-based booth hints — review manually</summary>
+         <ul className="mt-2 list-disc space-y-1 pl-5">{noteHints.map((x,i)=><li key={i}>{x.line.pre}: possible booth {x.noteBooth} (order {x.line.order}). Verify the note and use Needs your answer to place it.</li>)}</ul>
+        </details>}
+      </div>}
       {status && <p className={`text-sm ${/^Couldn|^I need/.test(status) ? "text-destructive" : ""}`} role="status">{status}</p>}
       {!plan && !status && <ol className="list-decimal space-y-0.5 pl-5 text-xs text-muted-foreground"><li>Drop the plan and the work order report.</li><li>Check the colored map — zoom in with the slider.</li><li>Answer anything under “Needs your answer” (pick the booth on the plan, or skip).</li><li>Download the picture or PDF.</li></ol>}
       {plan && resolved && (
