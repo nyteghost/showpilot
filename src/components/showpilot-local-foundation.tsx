@@ -2,7 +2,7 @@ import {useEffect,useState} from "react";
 import {Button} from "@/components/ui/button";
 import {Cpu,FileSpreadsheet,RefreshCw} from "lucide-react";
 type Status={enabled:boolean;backend:"auto"|"cuda"|"cpu";background:boolean;engine:string;engineReady:boolean;message:string;template:{stored:boolean;bytes?:number;sha256?:string}};
-type Bridge={status:()=>Promise<Status>;configure:(settings:Pick<Status,"enabled"|"backend"|"background">)=>Promise<Status>;chooseTemplate:()=>Promise<Status>};
+type Bridge={status:()=>Promise<Status>;configure:(settings:Pick<Status,"enabled"|"backend"|"background">)=>Promise<Status>;chooseTemplate:()=>Promise<Status>;readTemplate:()=>Promise<Uint8Array|null>};
 declare global {interface Window {showpilotLocal?:Bridge}}
 export function ShowPilotLocalFoundation(){
  const [state,setState]=useState<Status|null>(null);
