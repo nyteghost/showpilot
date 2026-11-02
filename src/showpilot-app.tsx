@@ -30,6 +30,13 @@ export function App() {
     const v=saved("showpilot:screen","dashboard");
     return v==="dashboard"||v==="settings"||sections.some(s=>s.id===v)?v as Screen:"dashboard";
   });
+  // Mount the workspace only after its first visit, then keep it alive across
+  // sidebar navigation. Its Event Schedule stores imported File objects and
+  // unsaved reviewer choices in React state, which unmounting would destroy.
+  const [lastWorkTab,setLastWorkTab] = useState<WorkTabId|null>(()=>{
+    const v=saved("showpilot:screen","dashboard");
+    return sections.some(s=>s.id===v)?v as WorkTabId:null;
+  });
   const [dark,setDark] = useState(()=>saved("showpilot:theme","light")==="dark");
   const [expanded,setExpanded] = useState(()=>saved("showpilot:sidebar","true")!=="false");
   const [mobileOpen,setMobileOpen] = useState(false);
@@ -41,7 +48,7 @@ export function App() {
   useEffect(()=>{try{localStorage.setItem("showpilot:screen",screen)}catch{}},[screen]);
   useEffect(()=>{try{localStorage.setItem("showpilot:sidebar",String(expanded))}catch{}},[expanded]);
 
-  const select=(next:Screen)=>{setScreen(next);setMobileOpen(false)};
+  const select=(next:Screen)=>{if(sections.some(s=>s.id===next))setLastWorkTab(next as WorkTabId);setScreen(next);setMobileOpen(false)};
   const current=sections.find(s=>s.id===screen);
   return <div className="sp-shell">
     {mobileOpen&&<button className="sp-backdrop" aria-label="Close navigation" onClick={()=>setMobileOpen(false)}/>}
@@ -90,8 +97,11 @@ export function App() {
               <BackupPanel />
               <div className="sp-note">Beta: event imports accept recognized convention-center spaces. Unknown rooms are held for manual review; CEPAC rows are excluded. Google Calendar bulk sync is available in the portable Windows app after one-time OAuth setup; .ics export works offline. Automated online vendor refresh is still pending.</div>
             </div>
-          : <section className="sp-panel"><ShowServicesTools selectedTab={screen} hideTabBar page venueOnly/></section>
+          : null
         }
+        {lastWorkTab && <div hidden={!current}>
+          <section className="sp-panel"><ShowServicesTools selectedTab={lastWorkTab} hideTabBar page venueOnly /></section>
+        </div>}
       </main>
       <footer className="sp-footer">ShowPilot v{__APP_VERSION__} · Cobb Convention Center-Atlanta · {__APP_VERSION__.includes("-beta") ? "Beta" : "Main"} channel</footer>
     </div>
