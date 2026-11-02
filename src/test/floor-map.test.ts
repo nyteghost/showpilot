@@ -108,3 +108,46 @@ describe("wide ShowPilot work order export",()=>{
   expect(data[2]!.venue).toBe("CEPAC");
  });
 });
+
+
+describe("floor map: full booth footprint with openings", () => {
+  const rect = (x:number,y:number,w:number,h:number) => [
+    {x1:x,y1:y,x2:x+w,y2:y}, {x1:x+w,y1:y,x2:x+w,y2:y+h},
+    {x1:x+w,y1:y+h,x2:x,y2:y+h}, {x1:x,y1:y+h,x2:x,y2:y},
+  ];
+  it("fills the outer square rather than an inner bottom strip", () => {
+    const outer={x:100,y:100,w:60,h:60}, strip={x:100,y:145,w:60,h:15};
+    const p:Prims={width:500,height:400,texts:[t("243",151,150)],boxes:[strip,outer],
+      segs:[...rect(100,100,60,60),{x1:100,y1:145,x2:160,y2:145}]};
+    expect(cellAround(p,155,153)).toEqual(outer);
+    expect(locate(p,mergeTexts(p.texts),"243")).toEqual(outer);
+  });
+  it("reconstructs the square when a short top-edge gap prevents a closed box", () => {
+    const strip={x:100,y:145,w:60,h:15};
+    const p:Prims={width:500,height:400,texts:[t("343",151,150)],boxes:[strip],
+      segs:[
+        {x1:100,y1:100,x2:126,y2:100},{x1:132,y1:100,x2:160,y2:100},
+        {x1:100,y1:160,x2:160,y2:160},
+        {x1:100,y1:100,x2:100,y2:160},{x1:160,y1:100,x2:160,y2:160},
+        {x1:100,y1:145,x2:160,y2:145},
+      ]};
+    expect(cellAround(p,155,153)).toEqual({x:100,y:100,w:60,h:60});
+  });
+  it("accepts a small gap in a vertical wall, but does not absorb a neighbor", () => {
+    const strip={x:100,y:145,w:60,h:15};
+    const p:Prims={width:500,height:400,texts:[],boxes:[strip,{x:160,y:100,w:60,h:60}],
+      segs:[
+        {x1:100,y1:100,x2:160,y2:100},{x1:100,y1:160,x2:160,y2:160},
+        {x1:100,y1:100,x2:100,y2:128},{x1:100,y1:134,x2:100,y2:160},
+        {x1:160,y1:100,x2:160,y2:160},{x1:100,y1:145,x2:160,y2:145},
+        ...rect(160,100,60,60),
+      ]};
+    expect(cellAround(p,155,153)).toEqual({x:100,y:100,w:60,h:60});
+    expect(cellAround(p,185,130)).toEqual({x:160,y:100,w:60,h:60});
+  });
+  it("keeps genuinely narrow shapes when a full square is not supported", () => {
+    const strip={x:100,y:145,w:60,h:15};
+    const p:Prims={width:500,height:400,texts:[],boxes:[strip],segs:rect(100,145,60,15)};
+    expect(cellAround(p,155,153)).toEqual(strip);
+  });
+});
