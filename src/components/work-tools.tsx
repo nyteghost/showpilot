@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { buildIcs, DEFAULT_SCHEDULE_NAME, editShift, entryLabel, formatMinutes, googleCalendarLink, isIsoDate, minutesToTime, newShiftId, nextMondayIso, parsePastedShifts, shiftLabel, airwallTasks, isCancelledRow, isPendingRow, sharedSpaces, summarizeEvents, taskSuggestions, timeToMinutes, withShiftIds, type EventEntry, type EventRow, type Shift, type TaskNote } from "@/lib/work-tools";
+import { buildIcs, DEFAULT_SCHEDULE_NAME, editShift, entryLabel, formatMinutes, googleCalendarLink, isIsoDate, minutesToTime, newShiftId, nextMondayIso, parsePastedShifts, shiftLabel, airwallTasks, isCancelledRow, isPendingRow, sharedSpaces, expandSpace, summarizeEvents, taskSuggestions, timeToMinutes, withShiftIds, type EventEntry, type EventRow, type Shift, type TaskNote } from "@/lib/work-tools";
 import { StandaloneVendors } from "@/components/showpilot-vendors";
 import { FloorMapPanel } from "@/components/floor-map-panel";
 import { scopeShowPilotRows } from "@/lib/showpilot-venue";
@@ -102,6 +102,21 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
   const [merged, setMerged] = useState(false);
   const [tasks, setTasks] = useState<TaskNote[]>([]);
   const [shared, setShared] = useState<string[]>([]);
+  const [conflictTarget,setConflictTarget] = useState<{date:string;space:string;title:string;nonce:number}|null>(null);
+  const bookingConflicts = (() => {
+    const byRoom = new Map<string, Map<string, EventEntry>>();
+    for (const e of entries) for (const space of expandSpace(e.space)) {
+      const key = e.date + "|" + space;
+      const bookings = byRoom.get(key) ?? new Map<string, EventEntry>();
+      const identity = e.eventId?.trim() ? "id:" + e.eventId : "title:" + e.title.trim().toLowerCase();
+      if (!bookings.has(identity)) bookings.set(identity,e);
+      byRoom.set(key,bookings);
+    }
+    return [...byRoom].filter(([,shows])=>shows.size>1).map(([key,shows])=>{
+      const [date,space]=key.split("|");
+      return {date,space,shows:[...shows.values()]};
+    }).sort((a,b)=>a.date.localeCompare(b.date)||a.space.localeCompare(b.space));
+  })();
   const [source, setSource] = useState<{ rows: EventRow[]; existing?: File; sources: number } | null>(null);
   const [withPending, setWithPending] = useState(false);
   const [pending, setPending] = useState<string[]>([]);
@@ -280,7 +295,15 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
       {suggestedEntries.length === 0 && !status && <ol className="list-decimal space-y-0.5 pl-5 text-xs text-muted-foreground"><li>Drop one or more Ungerboeck event PDFs.</li><li>Optional: drop your monthly schedule .xlsx in the same box to fill it in (engineer shifts are kept).</li><li>Download the Excel file.</li></ol>}
       {source && (
         <>
-          <ScheduleReview originalRows={source.rows} proposed={suggestedEntries} suggestedTasks={suggestedTasks} draft={draft} onChange={reviewChanged} onSaveProject={saveProject} />
+          {bookingConflicts.length > 0 && <section role="alert" className="rounded-lg border border-amber-500 bg-amber-500/10 p-3 text-sm">
+            <strong>Possible double-bookings: {bookingConflicts.length} room/day conflicts</strong>
+            <p className="mt-1 text-xs">Two distinct shows use the same physical room on the same date. Select a show to jump to its review entry; times may not overlap.</p>
+            <div className="mt-2 grid gap-2">{bookingConflicts.map(c=><div key={c.date+"|"+c.space} className="flex flex-wrap items-center gap-2">
+              <strong>{c.date} · {c.space}:</strong>
+              {c.shows.map((e,i)=><button type="button" key={i} className="rounded border border-amber-500 px-2 py-1 text-xs underline" onClick={()=>setConflictTarget({date:e.date,space:e.space,title:e.title,nonce:Date.now()})}>{e.title}</button>)}
+            </div>)}</div>
+          </section>}
+          <ScheduleReview conflictTarget={conflictTarget} originalRows={source.rows} proposed={suggestedEntries} suggestedTasks={suggestedTasks} draft={draft} onChange={reviewChanged} onSaveProject={saveProject} />
           <AiTaskAssistant entries={entries} tasks={tasks} onApprove={task => reviewChanged({...draftRef.current,addedTasks:[...draftRef.current.addedTasks,{id:"ai-task:"+Date.now()+":"+Math.random().toString(36).slice(2),value:task}]})} />
           <details className="text-xs"><summary className="cursor-pointer font-medium">Preview final Excel entries ({entries.length})</summary>
           <div className="mt-2 max-h-72 overflow-y-auto rounded-md border border-border">
