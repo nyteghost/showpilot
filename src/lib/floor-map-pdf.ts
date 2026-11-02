@@ -1,5 +1,5 @@
 // Browser-only PDF side of the Floor map tool: read the plan's text and lines with pdf.js, draw the colours, export PNG / PDF.
-import { COLORS, drawFor, type Box, type Placed, type Prims, type Seg, type TextBit } from "./floor-map";
+import { COLORS, drawFor, openOutlineBox, type Box, type Placed, type Prims, type Seg, type TextBit } from "./floor-map";
 
 type Mat = [number, number, number, number, number, number];
 const mul = (m: Mat, n: Mat): Mat => [
@@ -59,11 +59,10 @@ export async function readPlan(file: File, pageNo = 1): Promise<PlanDoc> {
       let ci = 0, cx = 0, cy = 0, sx = 0, sy = 0;
       const pts: [number, number][] = [];
       const flush = () => {
-        if (pts.length === 4 || (pts.length === 5 && pts[0]![0] === pts[4]![0] && pts[0]![1] === pts[4]![1])) {
-          const xs = pts.slice(0, 4).map((p) => p[0]), ys = pts.slice(0, 4).map((p) => p[1]);
-          const w = Math.max(...xs) - Math.min(...xs), h = Math.max(...ys) - Math.min(...ys);
-          if (pts.slice(0, 4).every((p) => xs.some((x) => Math.abs(x - p[0]) < 0.05) && ys.some((y) => Math.abs(y - p[1]) < 0.05)) && w > 0 && h > 0) boxes.push({ x: Math.min(...xs), y: Math.min(...ys), w, h });
-        }
+        // CAD booths frequently leave a doorway in one wall. Reconstruct the
+        // complete outline from the drawn edges instead of filling a strip.
+        const booth = openOutlineBox(pts);
+        if (booth && booth.w <= vp.width * 0.3 && booth.h <= vp.height * 0.3) boxes.push(booth);
         pts.length = 0;
       };
       for (let k = 0; k < pathOps.length; k++) {
