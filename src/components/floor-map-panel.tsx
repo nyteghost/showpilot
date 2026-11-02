@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Download, FileUp, MapPin, RotateCcw } from "lucide-react";
+import { Download, FileUp, MapPin, RotateCcw, ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { buildEntries, cellAround, locate, mergeTexts, parseBooth, parseWorkOrderLines, parseShowPilotItemLines, type ShowPilotItem, placedCsv, planKey, questionsCsv, resolve, type Answers, type Box, type Entry, type Question } from "@/lib/floor-map";
@@ -32,6 +32,37 @@ export function FloorMapPanel() {
   const [eventId,setEventId]=useState("");
   const [noteHints,setNoteHints]=useState<ShowPilotItem[]>([]);
   const view = useRef<HTMLCanvasElement>(null);
+  const viewport = useRef<HTMLDivElement>(null);
+  const drag = useRef<{x:number;y:number;left:number;top:number;moved:boolean}|null>(null);
+  const suppressClick = useRef(false);
+  const zoomTo=(next:number)=>{
+    const el=viewport.current;
+    const clamped=Math.max(0.75,Math.min(6,Math.round(next*4)/4));
+    if(el){
+      const cx=(el.scrollLeft+el.clientWidth/2)/zoom;
+      const cy=(el.scrollTop+el.clientHeight/2)/zoom;
+      requestAnimationFrame(()=>{
+        if(viewport.current){
+          viewport.current.scrollLeft=cx*clamped-viewport.current.clientWidth/2;
+          viewport.current.scrollTop=cy*clamped-viewport.current.clientHeight/2;
+        }
+      });
+    }
+    setZoom(clamped);
+  };
+  function startPan(e:React.MouseEvent<HTMLCanvasElement>){
+    if(e.button!==0&&e.button!==1)return;
+    const el=viewport.current;if(!el)return;
+    drag.current={x:e.clientX,y:e.clientY,left:el.scrollLeft,top:el.scrollTop,moved:false};
+  }
+  function movePan(e:React.MouseEvent<HTMLCanvasElement>){
+    const d=drag.current,el=viewport.current;if(!d||!el)return;
+    const dx=e.clientX-d.x,dy=e.clientY-d.y;
+    if(Math.abs(dx)+Math.abs(dy)>6)d.moved=true;
+    if(d.moved){el.scrollLeft=d.left-dx;el.scrollTop=d.top-dy;}
+  }
+  function stopPan(){if(drag.current?.moved)suppressClick.current=true;drag.current=null;}
+
   const base = useRef<HTMLCanvasElement | null>(null);
   const geom = useRef({ s: 1, band: 0 });
 
@@ -113,6 +144,7 @@ export function FloorMapPanel() {
   const forget = () => { const next: Saved = { answers: {}, ok: {} }; setSaved(next); save(key, next); setSel(null); setPicks([]); };
 
   function onClick(e: React.MouseEvent<HTMLCanvasElement>) {
+    if(suppressClick.current){suppressClick.current=false;return;}
     if (!sel || !plan) return;
     const v = e.currentTarget, r = v.getBoundingClientRect();
     const { s, band } = geom.current;
@@ -206,11 +238,18 @@ export function FloorMapPanel() {
             <Button size="sm" variant="outline" onClick={() => void out("placed")}><Download className="size-4" /> Colored list (CSV)</Button>
             {open.length > 0 && <Button size="sm" variant="outline" onClick={() => void out("questions")}><Download className="size-4" /> Questions (CSV)</Button>}
             <Button size="sm" variant="ghost" onClick={forget} title="Forget the answers saved for this plan"><RotateCcw className="size-4" /> Reset answers</Button>
-            <label className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">Zoom <Input type="range" min={1} max={4} step={0.5} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} className="h-6 w-24" /></label>
+            <div className="ml-auto flex items-center gap-1" role="group" aria-label="Floor plan zoom">
+              <Button size="sm" variant="outline" aria-label="Zoom out" disabled={zoom<=0.75} onClick={()=>zoomTo(zoom-0.5)}><ZoomOut className="size-4"/></Button>
+              <label className="flex items-center gap-1 text-xs text-muted-foreground">Zoom <Input aria-label="Zoom level" type="range" min={0.75} max={6} step={0.25} value={zoom} onChange={(e)=>zoomTo(Number(e.target.value))} className="h-6 w-28"/></label>
+              <span className="min-w-12 text-center text-xs">{Math.round(zoom*100)}%</span>
+              <Button size="sm" variant="outline" aria-label="Zoom in" disabled={zoom>=6} onClick={()=>zoomTo(zoom+0.5)}><ZoomIn className="size-4"/></Button>
+              <Button size="sm" variant="outline" aria-label="Reset zoom" onClick={()=>{setZoom(1);if(viewport.current){viewport.current.scrollLeft=0;viewport.current.scrollTop=0;}}}><Maximize2 className="size-4"/></Button>
+            </div>
             <label className="flex items-center gap-1 text-xs text-muted-foreground">Page <Input type="number" min={1} value={pageNo} onChange={(e) => setPageNo(Math.max(1, Number(e.target.value) || 1))} onBlur={() => files.length && void read(files, pageNo)} className="h-7 w-16" /></label>
           </div>
-          <div className="max-h-[60vh] overflow-auto rounded-md border border-border bg-white">
-            <canvas ref={view} onClick={onClick} style={{ width: `${zoom * 100}%`, cursor: sel ? "crosshair" : "default" }} />
+          <p className="text-xs text-muted-foreground">Zoom with the controls, then drag the plan to pan. While answering a booth question, a click selects a booth; dragging moves the map instead.</p>
+          <div ref={viewport} className="max-h-[65vh] overflow-auto rounded-md border border-border bg-white">
+            <canvas ref={view} onClick={onClick} onMouseDown={startPan} onMouseMove={movePan} onMouseUp={stopPan} onMouseLeave={stopPan} onAuxClick={e=>e.preventDefault()} style={{ width: `${zoom * 100}%`, cursor: drag.current ? "grabbing" : sel ? "crosshair" : "grab", maxWidth:"none", display:"block", userSelect:"none" }} />
           </div>
           {blocking.length > 0 && (<><h4 className="text-sm font-semibold">Needs your answer</h4><ul className="space-y-2">{blocking.map(renderQ)}</ul></>)}
           {checks.length > 0 && (<details><summary className="cursor-pointer text-sm font-semibold">Double-check ({checks.length})</summary><ul className="mt-2 space-y-2">{checks.map(renderQ)}</ul></details>)}
