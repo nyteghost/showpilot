@@ -336,3 +336,27 @@ export function questionsCsv(qs: Question[]): string {
 
 /** A key for remembering answers: same plan file → same answers. */
 export const planKey = (name: string, p: Prims) => `${name.replace(/\.pdf$/i, "").toLowerCase()}|${Math.round(p.width)}x${Math.round(p.height)}|${p.texts.length}`;
+
+
+/** Wide itemized "ShowPilot" / "Mobile View" exports.
+ * Keep venue and event ID distinct; note booth hints always require review.
+ */
+export type ShowPilotItem = {eventId:string;eventName:string;venue:string;line:OrderLine;noteBooth:string;note:string};
+export function parseShowPilotItemLines(lines:string[]):ShowPilotItem[]{
+ const out:ShowPilotItem[]=[];
+ const pattern=/^(.+?)\s+(\d+(?:\.\d{2})?)\s+(.+?)\s+(\d{2}\/\d{2}\/\d{2})\s+(\d{6})\s+(Open|Completed|Cancelled)(?:\s*\([A-Za-z]?\)?)?\s+(\d{4,6})\s+(.+?)\s+(\d{2}\/\d{2}\/\d{2})\s+(.+)$/i;
+ for(const raw of lines){
+  const m=raw.trim().match(pattern);
+  if(!m)continue;
+  const prefix=m[1]!.trim(), units=Number(m[2]),desc=m[3]!.trim();
+  const tail=m[10]!,venue=tail.match(/\b(CGC|CEPAC)\s*\(\d+\)/i)?.[1]?.toUpperCase()??"unknown";
+  const parts=prefix.split(/\s+/),last=parts.at(-1)??"";
+  const booth=isBoothToken(last)?last:"";
+  const exhibitor=booth?parts.slice(0,-1).join(" "):prefix;
+  if(!Number.isFinite(units)||units<=0)continue;
+  out.push({eventId:m[7]!,eventName:m[8]!.trim(),venue,
+   note:tail,noteBooth:booth?"":tail.match(/\bbooth\s*#?\s*([A-Z]{0,3}\d{1,4}(?:-[A-Z]{0,3}\d{1,4})?)\b/i)?.[1]??"",
+   line:{pre:exhibitor+(booth?" "+booth:""),units,desc,order:m[5]!}});
+ }
+ return out;
+}
