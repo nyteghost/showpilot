@@ -23,7 +23,7 @@ describe("ShowPilot local/online AI safety",()=>{
   const c=taskContext({date:"2026-10-12",entries:events});
   expect(c.events).toHaveLength(2);
   expect(JSON.stringify(c)).not.toContain("CEPAC");
-  expect(c.surroundingEvents.followingWeek.map(e=>e.title)).toContain("Tuesday Event");
+  expect(c.surroundingEvents.currentWeekOtherDates.map(e=>e.title)).toContain("Tuesday Event");
  });
  it("requires valid room/day/section and a supported explanation",()=>{
   const c=taskContext({date:"2026-10-12",entries:events});
