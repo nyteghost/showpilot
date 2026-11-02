@@ -481,6 +481,25 @@ function mergeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans
   return true;
 }
 
+/** Fail closed when an approved template does not contain every event date.
+ * The legacy in-place merger cannot yet re-date historical template sheets.
+ */
+export async function validateApprovedTemplate(file: File, entries: EventEntry[]): Promise<void> {
+ const module=await import("exceljs");
+ const ExcelJS=module.default??module;
+ const wb:XWorkbook=new ExcelJS.Workbook();
+ await wb.xlsx.load(await file.arrayBuffer());
+ const covered=new Set<string>();
+ for(const ws of wb.worksheets.filter(s=>/week/i.test(s.name))){
+  let dayRow=0;
+  ws.eachRow((row,i)=>{if(!dayRow&&String(row.getCell(2).value??"").trim().toUpperCase()==="MON")dayRow=i;});
+  if(!dayRow)continue;
+  for(let c=2;c<=8;c++){const d=cellDate(ws.getRow(dayRow+1).getCell(c).value);if(d)covered.add(d);}
+ }
+ if(!covered.size)throw new Error("The approved workbook has no recognizable weekly date rows.");
+ const missing=[...new Set(entries.map(e=>e.date))].filter(d=>!covered.has(d));
+ if(missing.length)throw new Error("The master workbook does not contain "+missing.length+" schedule dates (first: "+missing[0]+"). Use Fresh Export, or choose a matching approved workbook. Automatic template re-dating is not ready yet.");
+}
 /** Builds the weekly engineering workbook (Week #1, #2 …) or, given an existing schedule, fills its event rows. */
 export async function eventsWorkbook(entries: EventEntry[], existing?: File, tasks: TaskNote[] = []): Promise<Blob> {
   const module = await import("exceljs");
