@@ -244,3 +244,9 @@ The Windows portable application now includes an optional **Local Intelligence â
 - Neither llama.cpp nor a GGUF model is bundled yet. No model downloads or silent background scheduling edits are introduced.
 
 The portable release must continue to work without internet and without a model. Check workplace IT policy before storing company documents in local application data.
+
+
+### Approved master workbook preview export (Phase 1.5)
+In the packaged Windows app, choose an approved XLSX under **Settings & AI â†’ ShowPilot Local Intelligence**. Then import and review an event schedule and choose **Export using master template (preview)**.
+This opt-in path reads the saved local reference and validates that its weekly date rows include all requested event dates before using the existing workbook-merging exporter. If not, it displays an error; the ordinary **Download reviewed schedule (fresh)** remains available.
+**Caution:** Workbook merging preserves existing nonempty shifts and PTO but can retain historical event text. Always review output before publishing. Automated re-dating, clearing outdated event cells, and exact-template fidelity for new months remain future work. No new AI engine is required for this feature.
