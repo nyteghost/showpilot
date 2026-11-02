@@ -344,7 +344,7 @@ export const planKey = (name: string, p: Prims) => `${name.replace(/\.pdf$/i, ""
 export type ShowPilotItem = {eventId:string;eventName:string;venue:string;line:OrderLine;noteBooth:string;note:string};
 export function parseShowPilotItemLines(lines:string[]):ShowPilotItem[]{
  const out:ShowPilotItem[]=[];
- const pattern=/^(.+?)\s+(\d+(?:\.\d{2})?)\s+(.+?)\s+(\d{2}\/\d{2}\/\d{2})\s+(\d{6})\s+(Open|Completed|Cancelled)(?:\s*\([A-Za-z]?\)?)?\s+(\d{4,6})\s+(.+?)\s+(\d{2}\/\d{2}\/\d{2})\s+(.+)$/i;
+ const pattern=/^(.+?)\s+(\d+\.\d{2})\s+(.+?)\s+(\d{2}\/\d{2}\/\d{2})\s+(\d{6})\s+(Open|Completed|Cancelled)(?:\s*\([A-Za-z]?\)?)?\s+(\d{4,6})\s+(.+?)\s+(\d{2}\/\d{2}\/\d{2})\s+(.+)$/i;
  for(const raw of lines){
   const m=raw.trim().match(pattern);
   if(!m)continue;
