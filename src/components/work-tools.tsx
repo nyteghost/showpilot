@@ -258,20 +258,21 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
     try {
       const { readEventPdf, readEventSheet } = await import("@/lib/work-files");
       const pdfs = files.filter((f) => /\.pdf$/i.test(f.name));
-      // An .xlsx is either the For Scheduling report exported from Ungerboeck or your monthly schedule to fill in.
+      // XLSX may be a ShowPilot Event Schedule report, older For Scheduling report, or monthly staffing template.
       const sheets = files.filter((f) => /\.xlsx?$/i.test(f.name));
       const reports: EventRow[][] = [];
       let existing: File | undefined;
       for (const f of sheets) {
         const r = await readEventSheet(f);
         if (r) reports.push(r); else existing = f;
-        setReport((old) => `${old}\nreadEventSheet(${f.name}): ${r ? `${r.length} rows` : "null → treated as a monthly schedule to fill in, not a For Scheduling report"}`);
+        setReport((old) => `${old}\nreadEventSheet(${f.name}): ${r ? `${r.length} rows` : "null → treated as a monthly schedule to fill in, not a recognized event report"}`);
       }
       const rows = [...(await Promise.all(pdfs.map(readEventPdf))).flat(), ...reports.flat()];
       const src = { rows, sources: pdfs.length + reports.length, ...(existing ? { existing } : {}) };
       setSource(src);
-      if (!rows.length && existing) {
-        setStatus(`No events found: ${existing.name} was read as a schedule to fill in, not a For Scheduling report (cell A1 must say "For Scheduling"). Drop the Ungerboeck report on its own, or with this schedule.`);
+      if (!rows.length) {
+        setStatus("No event functions found. Export ShowPilot - Event Schedule as PDF or Excel from Ungerboeck. A staffing template alone does not contain event functions.");
+        setSource(null);
         return;
       }
       await build(src, withPending, []);
@@ -283,7 +284,7 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
   const { deliver } = useDeliver();
   return (
     <div className="space-y-3 pt-2">
-      <FilePick accept="application/pdf,.xlsx" label="1. Import Ungerboeck For Scheduling PDF/Excel — optionally also drop your existing monthly Excel template" onFiles={load} />
+      <FilePick accept="application/pdf,.xlsx" label="1. Import ShowPilot - Event Schedule (PDF or Excel) — optionally include your monthly engineering template" onFiles={load} />
       <FilePick accept=".json,application/json" label="Or resume a saved ShowPilot review project (.json)" onFile={(f) => { void loadProject(f); }} />
       <p className="text-xs text-muted-foreground">S = show · Exmi = exhibitor move in / service desk · MI = move in · MO = move out · Food = meal or reception after the show · MTG = meeting · MO? = no move-out line in the report; guessed as 3 hours after the show ends, so check it. Combined halls split into each hall. Escalators = 1 hr before first show to 1 hr after.</p>
       {status && <p className={`text-sm ${/^Could not|^No /.test(status) ? "text-destructive" : ""}`} role="status">{status}</p>}
@@ -311,7 +312,7 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
           <span><span className="font-medium">Include {pending.length} not-yet-definite events</span> (left out unless checked): {pending.slice(0, 8).join("; ")}{pending.length > 8 ? ` +${pending.length - 8} more` : ""}</span>
         </label>
       )}
-      {suggestedEntries.length === 0 && !status && <ol className="list-decimal space-y-0.5 pl-5 text-xs text-muted-foreground"><li>Drop one or more Ungerboeck event PDFs.</li><li>Optional: drop your monthly schedule .xlsx in the same box to fill it in (engineer shifts are kept).</li><li>Download the Excel file.</li></ol>}
+      {suggestedEntries.length === 0 && !status && <ol className="list-decimal space-y-0.5 pl-5 text-xs text-muted-foreground"><li>Upload a ShowPilot - Event Schedule PDF or Excel export.</li><li>Optional: drop your monthly schedule .xlsx in the same box to fill it in (engineer shifts are kept).</li><li>Download the Excel file.</li></ol>}
       {source && (
         <>
           {bookingConflicts.length > 0 && <section role="alert" className="rounded-lg border border-amber-500 bg-amber-500/10 p-3 text-sm">
