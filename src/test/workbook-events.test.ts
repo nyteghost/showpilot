@@ -129,3 +129,13 @@ describe("Excel shared event rules", () => {
     expect(updated.ws.getCell("B18").value).toBe("9a-6p");
   });
 });
+
+describe("approved master template guard",()=>{
+ it("accepts a reference workbook with matching dates and rejects a different week",async()=>{
+  const {wb}=await build([event("Hall A")]);
+  const template=new File([await wb.xlsx.writeBuffer()],"approved.xlsx");
+  const {validateApprovedTemplate}=await import("@/lib/work-files");
+  await expect(validateApprovedTemplate(template,[event("Hall A")])).resolves.toBeUndefined();
+  await expect(validateApprovedTemplate(template,[event("Hall A","S","Different week","2027-02-02")])).rejects.toThrow(/does not contain/);
+ });
+});
