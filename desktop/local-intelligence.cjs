@@ -41,9 +41,17 @@ async function chooseTemplate(){
  fs.writeFileSync(temp,bytes,{mode:0o600});fs.renameSync(temp,target);
  return status();
 }
+function readTemplate(){
+ const target=masterPath();
+ if(!fs.existsSync(target))return null;
+ const stat=fs.statSync(target);
+ if(!stat.isFile()||stat.size>30*1024*1024)throw new Error("Saved template is unavailable or too large.");
+ return fs.readFileSync(target);
+}
 function setupLocalIntelligenceIpc(){
  ipcMain.handle("showpilot-local:status",()=>status());
  ipcMain.handle("showpilot-local:configure",(_,next)=>update(next));
  ipcMain.handle("showpilot-local:template",()=>chooseTemplate());
+ ipcMain.handle("showpilot-local:read-template",()=>readTemplate());
 }
 module.exports={setupLocalIntelligenceIpc};
