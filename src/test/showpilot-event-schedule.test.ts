@@ -51,7 +51,7 @@ describe("ShowPilot - Event Schedule Excel",()=>{
   ws.getCell("A6").value="Tuesday, November 3, 2026";
   ws.getCell("A7").value="Coldwell Banker Realty Atlanta Unlocking Home Parties";
   ws.getRow(8).values=["07:30 AM","07:30 AM","Client Move-In","Ballroom ABE (BRABE)","06:00 AM","01:00 PM",42389,"Definite (30)",0];
-  const file=new NodeFile([await wb.xlsx.writeBuffer()],"ShowPilot Event Schedule.xlsx") as unknown as File;
+  const file=new NodeFile([new Uint8Array(await wb.xlsx.writeBuffer())],"ShowPilot Event Schedule.xlsx") as unknown as File;
   expect(await readEventSheet(file)).toMatchObject([
     {date:"2026-11-02",event:"Coldwell Banker Realty Atlanta Unlocking Home Parties",eventId:"42389",status:"Definite (30)",description:"Vendor Load-In"},
     {date:"2026-11-03",event:"Coldwell Banker Realty Atlanta Unlocking Home Parties",eventId:"42389"}
@@ -61,7 +61,7 @@ describe("ShowPilot - Event Schedule Excel",()=>{
   const wb=new ExcelJS.Workbook(),ws=wb.addWorksheet("Week #1");
   ws.getCell("A1").value="COBB CONVENTION CENTER-ATLANTA";
   ws.getCell("A4").value="DAY";
-  const file=new NodeFile([await wb.xlsx.writeBuffer()],"monthly.xlsx") as unknown as File;
+  const file=new NodeFile([new Uint8Array(await wb.xlsx.writeBuffer())],"monthly.xlsx") as unknown as File;
   expect(await readEventSheet(file)).toBeNull();
  });
 });
