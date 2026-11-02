@@ -2,6 +2,8 @@
 import { planWeeks, airwallHolds, needText, shiftText, workedHours, readAvail, SHOW_STAFF, ON_CALL, type Avail, type DayPlan } from "./staffing";
 import { BALLROOM_ROWS, ENGINEER_ROSTER, HALL_ROWS, weekLayouts, expandSpace, type WeekLayout, type TaskNote, DEFAULT_SCHEDULE_NAME, parseShift, reportDateToIso, type EventEntry, type EventRow, type Shift } from "./work-tools";
 
+import {readShowPilotEventSchedulePages, eventScheduleDate, type SchedulePdfPage} from "./showpilot-event-schedule";
+
 type Item = { str: string; x: number; y: number };
 
 export async function readEventPdf(file: File): Promise<EventRow[]> {
@@ -9,6 +11,28 @@ export async function readEventPdf(file: File): Promise<EventRow[]> {
   const worker = (await import("pdfjs-dist/build/pdf.worker.min.mjs?url")).default;
   pdfjs.GlobalWorkerOptions.workerSrc = worker;
   const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
+  // The user's newer export is a grouped Event Schedule, NOT "For Scheduling".
+  // Identify it from its title or dedicated Status - Event / event-hours headers.
+  const firstPage=await pdf.getPage(1);
+  const firstContent=await firstPage.getTextContent();
+  const firstText=(firstContent.items as {str?:string}[]).map(i=>i.str??"").join(" ");
+  if(/ShowPilot\s*-\s*Event Schedule/i.test(firstText) ||
+     (/Status\s*-\s*Event/i.test(firstText)&&/Event ID/i.test(firstText)&&/Start Time\s*-\s*Event/i.test(firstText))){
+    const pages:SchedulePdfPage[]=[];
+    for(let p=1;p<=pdf.numPages;p++){
+      const page=p===1?firstPage:await pdf.getPage(p);
+      const content=p===1?firstContent:await page.getTextContent();
+      const lines=new Map<number,Item[]>();
+      for(const item of content.items as {str?:string;transform?:number[]}[]){
+        if(!item.str?.trim()||!item.transform)continue;
+        const x=item.transform[4]??0,y=Math.round(item.transform[5]??0);
+        const found=[...lines.keys()].find(k=>Math.abs(k-y)<=2)??y;
+        lines.set(found,[...(lines.get(found)??[]),{str:item.str,x,y}]);
+      }
+      pages.push([...lines.entries()].sort((a,b)=>b[0]-a[0]).map(([,l])=>l.sort((a,b)=>a.x-b.x)));
+    }
+    return readShowPilotEventSchedulePages(pages);
+  }
   const rows: EventRow[] = [];
   type Cols = { usage: number; start: number; end: number; desc: number; reader: number; space: number; notes: number };
   let cols: Cols | null = null;
