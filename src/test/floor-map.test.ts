@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildEntries, cellAround, classify, drawFor, locate, mergeTexts, parseBooth, parseWorkOrderLines, planKey, resolve, type Prims, type TextBit } from "@/lib/floor-map";
+import { buildEntries, cellAround, classify, drawFor, locate, mergeTexts, parseBooth, parseWorkOrderLines, parseShowPilotItemLines, planKey, resolve, type Prims, type TextBit } from "@/lib/floor-map";
 
 const t = (s: string, x: number, y: number): TextBit => ({ s, x, y, w: s.length * 3, h: 5 });
 /** A 3-booth plan drawn with plain lines: 101 | 102 on top, 103 below, each 20 x 20. */
@@ -91,4 +91,20 @@ describe("floor map: what gets drawn", () => {
     expect(d.tag).toEqual(["x3", "SCase x4", "B x2"]);
   });
   it("remembers answers per plan file", () => expect(planKey("ASM.pdf", plan())).toBe("asm|400x300|5"));
+});
+
+describe("wide ShowPilot work order export",()=>{
+ it("extracts event, booth and CGC venue without silently applying note hints",()=>{
+  const data=parseShowPilotItemLines([
+   "Bose Bose 405 1.00 10 amp - 120v: (25' Extension Cord & 6-Outlet Power Strip) 11/16/26 307405 Open (O) 39702 Paradies Lagardere 11/17/26 Utility (POWER) POWER CGC (10)",
+   "Trans-World Eve 2.00 10 amp - 120v: extension 10/28/26 306666 Completed (C) 41160 Critical Minerals 10/28/26 Utility (POWER) Booth 928 CGC (10)",
+   "Example Co 1.00 20amp - 120v 11/17/26 307628 Completed (C) 41844 Different Venue 11/18/26 Utility (POWER) CEPAC (20)"
+  ]);
+  expect(data).toHaveLength(3);
+  expect(data[0]).toMatchObject({eventId:"39702",venue:"CGC"});
+  expect(data[0]!.line.pre).toContain("405");
+  expect(data[1]!.noteBooth).toBe("928");
+  expect(data[1]!.line.pre).not.toContain("928");
+  expect(data[2]!.venue).toBe("CEPAC");
+ });
 });
