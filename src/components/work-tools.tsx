@@ -9,6 +9,7 @@ import { StandaloneVendors } from "@/components/showpilot-vendors";
 import { FloorMapPanel } from "@/components/floor-map-panel";
 import { scopeShowPilotRows } from "@/lib/showpilot-venue";
 import { ScheduleReview } from "@/components/showpilot-review-panel";
+import type {ReviewDateScope} from "@/lib/showpilot-review-months";
 import { AiTaskAssistant } from "@/components/showpilot-ai-task-assistant";
 import { applyReview, emptyReviewDraft, fingerprintRows, parseDraft, parseReviewProject, storageKey, type ReviewDraft, type ReviewProject } from "@/lib/showpilot-review";
 
@@ -90,6 +91,7 @@ function FilePick({ accept, label, onFile, onFiles }: { accept: string; label: s
 
 function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
   const [entries, setEntries] = useState<EventEntry[]>([]);
+  const [aiScope,setAiScope] = useState<ReviewDateScope|null>(null);
   const [status, setStatus] = useState("");
   const [blob, setBlob] = useState<Blob | null>(null);
   const [freshBlob, setFreshBlob] = useState<Blob | null>(null);
@@ -320,8 +322,8 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
               {c.shows.map((e,i)=><button type="button" key={i} className="rounded border border-amber-500 px-2 py-1 text-xs underline" onClick={()=>setConflictTarget({date:e.date,space:e.space,title:e.title,nonce:Date.now()})}>{e.title}</button>)}
             </div>)}</div>
           </section>}
-          <ScheduleReview conflictTarget={conflictTarget} originalRows={source.rows} proposed={suggestedEntries} suggestedTasks={suggestedTasks} draft={draft} onChange={reviewChanged} onSaveProject={saveProject} />
-          <AiTaskAssistant entries={entries} tasks={tasks} onApprove={task => reviewChanged({...draftRef.current,addedTasks:[...draftRef.current.addedTasks,{id:"ai-task:"+Date.now()+":"+Math.random().toString(36).slice(2),value:task}]})} />
+          <ScheduleReview conflictTarget={conflictTarget} onScopeChange={setAiScope} originalRows={source.rows} proposed={suggestedEntries} suggestedTasks={suggestedTasks} draft={draft} onChange={reviewChanged} onSaveProject={saveProject} />
+          <AiTaskAssistant scope={aiScope} entries={entries} tasks={tasks} onApprove={task => reviewChanged({...draftRef.current,addedTasks:[...draftRef.current.addedTasks,{id:"ai-task:"+Date.now()+":"+Math.random().toString(36).slice(2),value:task}]})} />
           <details className="text-xs"><summary className="cursor-pointer font-medium">Preview final Excel entries ({entries.length})</summary>
           <div className="mt-2 max-h-72 overflow-y-auto rounded-md border border-border">
             <table className="w-full text-sm">
