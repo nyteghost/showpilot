@@ -186,7 +186,7 @@ export async function readEventSheet(file: File): Promise<EventRow[] | null> {
       return;
     }
     if(!day)return;
-    const id=text(row.getCell(cId).value).match(/\b\d{4,7}\b/)?.[0];
+    const id=cId?text(row.getCell(cId).value).match(/\b\d{4,7}\b/)?.[0]:undefined;
     const status=cStatus?text(row.getCell(cStatus).value):"";
     rows.push({level:2,usage:"",start,end:clock(row.getCell(cEnd).value),
       description:text(row.getCell(cDesc).value),space:text(row.getCell(cSpace).value),
