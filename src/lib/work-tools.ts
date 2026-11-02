@@ -92,13 +92,13 @@ export function classifyEvent(row: EventRow): EventCode | null {
 }
 
 /** Merges rows per date + space + show + code (earliest start, latest end). */
-export function summarizeEvents(rows: EventRow[]): EventEntry[] {
+export function summarizeEvents(rows: EventRow[], preserveCombinedSpaces = false): EventEntry[] {
   const map = new Map<string, EventEntry>();
   for (const row of rows) {
     const code = classifyEvent(row);
     if (!code) continue;
     const start = parseReportTime(row.start), end = parseReportTime(row.end);
-    for (const space of expandSpace(row.space || "Unassigned")) {
+    for (const space of preserveCombinedSpaces ? [/chattahoochee|brfull/i.test(row.space) ? "BallRoom ABCDEFG" : sheetRowFor(row.space || "Unassigned")] : expandSpace(row.space || "Unassigned")) {
       const key = JSON.stringify([row.date, space, row.eventId ?? "", row.event || row.description, code]);
       const prev = map.get(key);
       if (prev) { prev.start = Math.min(prev.start, start); prev.end = Math.max(prev.end, end); }
