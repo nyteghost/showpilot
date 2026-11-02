@@ -5,6 +5,7 @@ const { setupAiIpc } = require("./ai-vault.cjs");
 const { setupGoogleCalendarIpc } = require("./google-calendar.cjs");
 const { setupUpdates } = require("./app-updates.cjs");
 const { setupMemoryIpc } = require("./showpilot-memory.cjs");
+const {setupLocalIntelligenceIpc}=require("./local-intelligence.cjs");
 let win;
 function openApp(){
  win=new BrowserWindow({
@@ -30,5 +31,5 @@ function openApp(){
  });
  win.on("closed",()=>{win=null});
 }
-app.whenReady().then(()=>{setupAiIpc();setupGoogleCalendarIpc();setupUpdates();setupMemoryIpc();openApp();app.on("activate",()=>{if(BrowserWindow.getAllWindows().length===0)openApp()})});
+app.whenReady().then(()=>{setupAiIpc();setupGoogleCalendarIpc();setupUpdates();setupMemoryIpc();setupLocalIntelligenceIpc();openApp();app.on("activate",()=>{if(BrowserWindow.getAllWindows().length===0)openApp()})});
 app.on("window-all-closed",()=>{if(process.platform!=="darwin")app.quit()});
