@@ -164,6 +164,48 @@ export function mergeTexts(texts: TextBit[]): TextBit[] {
   return out;
 }
 
+/** Reconstruct an axis-aligned CAD booth outline that has a small opening.
+ * A typical booth is drawn with three intact sides plus two short sections
+ * on the fourth side; that 6-point path is not a closed PDF rectangle.
+ * Requiring real edge coverage avoids inventing a booth from nearby labels.
+ */
+export function openOutlineBox(points: readonly (readonly [number, number])[]): Box | null {
+  if (points.length < 4 || points.length > 18) return null;
+  const xs=points.map(p=>p[0]),ys=points.map(p=>p[1]);
+  const x=Math.min(...xs),y=Math.min(...ys);
+  const w=Math.max(...xs)-x,h=Math.max(...ys)-y;
+  if (w<6||h<6||w/h<0.33||w/h>3.5) return null;
+  const tol=0.65;
+  const edges: [number,number][][]=[[],[],[],[]];
+  let diagonal=0;
+  for (let i=1;i<points.length;i++) {
+    const a=points[i-1]!,b=points[i]!;
+    if(Math.abs(a[0]-b[0])<=tol){
+      if (Math.abs(a[0]-x)<=tol) edges[0]!.push([a[1],b[1]]);
+      else if (Math.abs(a[0]-(x+w))<=tol) edges[1]!.push([a[1],b[1]]);
+    }else if(Math.abs(a[1]-b[1])<=tol){
+      if(Math.abs(a[1]-y)<=tol)edges[2]!.push([a[0],b[0]]);
+      else if(Math.abs(a[1]-(y+h))<=tol)edges[3]!.push([a[0],b[0]]);
+    }else diagonal++;
+  }
+  if(diagonal>0)return null;
+  const coverage=(ranges: [number,number][],lo:number,hi:number)=>{
+    const intervals=ranges.map(([a,b])=>[Math.max(lo,Math.min(a,b)),Math.min(hi,Math.max(a,b))] as const)
+      .filter(([a,b])=>b>a).sort((a,b)=>a[0]-b[0]);
+    let covered=0,prior=lo;
+    for(const [a,b] of intervals){const first=Math.max(prior,a);if(b>first)covered+=b-first;prior=Math.max(prior,b);}
+    return covered/(hi-lo);
+  };
+  const cov=[
+    coverage(edges[0]!,y,y+h),coverage(edges[1]!,y,y+h),
+    coverage(edges[2]!,x,x+w),coverage(edges[3]!,x,x+w)
+  ];
+  const sturdy=cov.filter(v=>v>=0.88).length;
+  // Allow one gapped door side, but never a missing wall or open aisle.
+  if(sturdy<3||Math.min(...cov)<0.25)return null;
+  return {x,y,w,h};
+}
+
 /** For booths with a small opening or an internal divider, the tightest
  * rectangle around the booth number may be just a narrow strip.
  * Prefer the *outer* booth footprint only when its geometry is well supported.
