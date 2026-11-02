@@ -297,7 +297,7 @@ function writeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans
     return row;
   };
   ws.mergeCells("A1:I1"); ws.mergeCells("A2:I2");
-  put(1, ["COBB GALLERIA CENTRE"]);
+  put(1, ["COBB CONVENTION CENTER-ATLANTA"]);
   put(2, ["Engineering Schedule (Subject to Change)"]);
   put(3, [null, null, "FROM:", { formula: "B5" }, "TO:", { formula: "H5" }]);
   put(4, ["DAY", ...DAYS, "TOTAL"]);
