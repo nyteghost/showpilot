@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { entryLabel, formatMinutes, type EventCode, type EventEntry, type EventRow, type TaskNote } from "@/lib/work-tools";
-import {availableReviewMonths,availableReviewWeeks,reviewMatchesDay,reviewMatchesMonth,reviewMatchesWeek,reviewMonthLabel,reviewWeekStart,reviewWeekLabel,selectedReviewMonth,selectedReviewWeek,shiftReviewWeek} from "@/lib/showpilot-review-months";
+import {type ReviewDateScope,availableReviewMonths,availableReviewWeeks,reviewMatchesDay,reviewMatchesMonth,reviewMatchesWeek,reviewMonthLabel,reviewWeekStart,reviewWeekLabel,selectedReviewMonth,selectedReviewWeek,shiftReviewWeek} from "@/lib/showpilot-review-months";
 import {
   applyReview, emptyReviewDraft, validEntry, type ReviewDraft, type ReviewLine,
 } from "@/lib/showpilot-review";
@@ -20,7 +20,7 @@ const minutes = (s: string) => {
 const uniqueId = (type: string) => type + ":" + Date.now() + ":" + Math.random().toString(36).slice(2, 10);
 
 export function ScheduleReview({
-  originalRows, proposed, suggestedTasks, draft, onChange, onSaveProject, conflictTarget,
+  originalRows, proposed, suggestedTasks, draft, onChange, onSaveProject, conflictTarget, onScopeChange,
 }: {
   originalRows: EventRow[];
   proposed: EventEntry[];
@@ -29,6 +29,7 @@ export function ScheduleReview({
   onChange: (draft: ReviewDraft) => void;
   onSaveProject: () => void;
   conflictTarget?: {date:string;space:string;title:string;nonce:number}|null;
+  onScopeChange?: (scope:ReviewDateScope)=>void;
 }) {
   const reviewRef = useRef<HTMLElement>(null);
   useEffect(()=>{
@@ -66,6 +67,11 @@ export function ScheduleReview({
   const monthScope = view==="month" ? month : "";
   const weekScope = view==="week" ? week : "";
   const dayScope = view==="day" ? day : "";
+  // Review date filters are the only authority for AI Task Assistant scope.
+  // Search text is intentionally excluded: it is a visual table filter.
+  useEffect(()=>{
+    onScopeChange?.({view,value:view==="month"?month:view==="week"?week:view==="day"?day:""});
+  },[onScopeChange,view,month,week,day]);
   const inView = (line:{source?:{date:string}|null;final?:{date:string}|null}):boolean =>
     view==="all" || (view==="month"&&reviewMatchesMonth(line,monthScope))
     || (view==="week"&&reviewMatchesWeek(line,weekScope))
