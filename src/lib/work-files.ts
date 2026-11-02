@@ -286,23 +286,28 @@ function unmergeEventSpaces(ws: XSheet, w: WeekLayout, byLabel: Map<string, numb
 }
 
 function writeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans: Map<string, DayPlan> = new Map()) {
-  const font = { name: "Aptos Narrow", size: 20, bold: true };
+  const font = { name: "Arial", size: 12, bold: true };
   const wrap = { wrapText: true, vertical: "middle" as const, horizontal: "center" as const };
-  ws.columns = [{ width: 41 }, ...DAYS.map(() => ({ width: 32 })), { width: 30 }];
+  ws.columns = [{ width: 47 }, ...[29,46,38,37,41,47,38].map(width => ({ width })), { width: 62 }];
+  ws.views = [{state:"frozen", xSplit:1, ySplit:5}];
+  ws.pageSetup = {orientation:"landscape", fitToPage:true, fitToWidth:1, fitToHeight:0, paperSize:9};
   const put = (r: number, vals: (string | number | Date | { formula: string } | null)[], bold = true) => {
     const row = ws.getRow(r);
     vals.forEach((v, c) => { if (v === null) return; const cell = row.getCell(c + 1); cell.value = v as never; cell.font = { ...font, bold: c === 0 || bold }; cell.alignment = wrap; });
     return row;
   };
   ws.mergeCells("A1:I1"); ws.mergeCells("A2:I2");
-  put(1, ["COBB CONVENTION CENTER-ATLANTA"]);
+  put(1, ["COBB GALLERIA CENTRE"]);
   put(2, ["Engineering Schedule (Subject to Change)"]);
   put(3, [null, null, "FROM:", { formula: "B5" }, "TO:", { formula: "H5" }]);
   put(4, ["DAY", ...DAYS, "TOTAL"]);
   put(5, [null, ...w.dates.map(toDate)]);
   for (let c = 2; c <= 8; c++) ws.getRow(5).getCell(c).numFmt = "m/d/yy";
   ws.getRow(3).getCell(4).numFmt = "m/d/yy"; ws.getRow(3).getCell(6).numFmt = "m/d/yy";
-  put(6, ["CCC", ...w.cgc], false); put(7, ["CCC BARS", null, null, null, null, null, null, null, "CCC BARS"]);
+  put(6, ["CGC", ...w.cgc], false);
+  // Row 7 is intentionally blank: the reference schedule has a separate
+  // performing-arts row here, but ShowPilot must never export CEPAC events.
+  put(8, ["CGC BARS", null, null, null, null, null, null, null, "CGC BARS"]);
   let r = 9;
   for (const p of ENGINEER_ROSTER) {
     put(r, [p.name, ...w.dates.map((d) => engineerCell(plans, p.name, d)?.top || null)]);
@@ -310,7 +315,10 @@ function writeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans
     put(r + 2, [p.title]);
     r += 3;
   }
-  put(r++, ["CCC Escalator and SD", ...DAYS]);
+  // Reference template places the CGC service section on row 51.
+  while (r < 50) r++;
+  put(r++, ["Temps"]);
+  put(r++, ["CGC Escalator and SD", ...DAYS]);
   put(r++, ["Escalator", ...w.escalator], false);
   put(r, ["Service Desk", ...w.serviceDesk], false);
   w.serviceDesk.forEach((t, i) => { if (t) paint(ws.getRow(r).getCell(i + 2), ["MI"]); });
@@ -331,7 +339,22 @@ function writeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans
   section("HALLS", HALL_ROWS);
   section("BALLROOM", BALLROOM_ROWS);
   if (w.other.length) section("OTHER SPACES", w.other);
-  for (let i = 3; i < r; i++) ws.getRow(i).height = 54;
+  // Mirror the compact staffing grid of the supplied November 2026 workbook.
+  for (let i = 1; i < r; i++) ws.getRow(i).height = i <= 5 ? 32 : 32;
+  for (const label of [...HALL_ROWS, ...BALLROOM_ROWS]) {
+    const row = byLabel.get(label.toLowerCase());
+    if (row) ws.getRow(row).height = label.startsWith("BallRoom") ? 65 : 45;
+  }
+  ws.getRow(1).font = {name:"Arial",size:17,bold:true};
+  ws.getRow(2).font = {name:"Arial",size:15,bold:true};
+  for (const i of [4, 51, 54, 60]) {
+    const row = ws.getRow(i);
+    for(let c=1;c<=9;c++){
+      const cell=row.getCell(c);
+      cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFDAE6F0"}};
+      cell.font={name:"Arial",size:12,bold:true,color:{argb:"FF172A3A"}};
+    }
+  }
   mergeEventSpaces(ws, w, byLabel, new Map(w.dates.map((d, i) => [d, i + 2])));
   fitRows(ws);
   outline(ws, 4, r - 1, 1, 9);
