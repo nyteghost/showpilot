@@ -51,9 +51,16 @@ const startTab = (): TabId => {
 
 export function ShowServicesTools({ page = false, selectedTab, hideTabBar = false, venueOnly = false }: { page?: boolean; selectedTab?: WorkTabId; hideTabBar?: boolean; venueOnly?: boolean } = {}) {
   const [tab, setTab] = useState<TabId>("events");
+  // Keep each visited tab mounted. Radix normally unmounts inactive TabsContent,
+  // which used to erase imported files, review edits, and unresolved booth work.
+  // Unvisited tools remain lazy so opening Event Schedule does not load them all.
+  const [visited, setVisited] = useState<TabId[]>(() => [selectedTab ?? "events"]);
   useEffect(() => { if (!selectedTab) setTab(startTab()); }, [selectedTab]); // after mount so server and browser render the same first frame
   const pick = (v: string) => { setTab(v as TabId); try { localStorage.setItem(TAB_KEY, v); } catch { /* private window */ } };
   const activeTab = selectedTab ?? tab;
+  useEffect(() => {
+    setVisited(previous => previous.includes(activeTab) ? previous : [...previous, activeTab]);
+  }, [activeTab]);
   const cur = TABS.find((x) => x.id === activeTab) ?? TABS[0];
   return <Tabs value={activeTab} onValueChange={pick}>
           {!hideTabBar && <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1">
@@ -65,11 +72,11 @@ export function ShowServicesTools({ page = false, selectedTab, hideTabBar = fals
             <p className="text-sm text-muted-foreground">{cur.hint}</p>
             {!page && <a href={`/work?tab=${tab}`} target="_blank" rel="noreferrer" className="inline-flex shrink-0 items-center gap-1 text-xs text-primary underline"><ExternalLink className="size-3.5" /> Open as its own page</a>}
           </div>
-          <TabsContent value="events"><EventsTab venueOnly={venueOnly} /></TabsContent>
-          <TabsContent value="shifts"><ShiftsTab /></TabsContent>
-          <TabsContent value="deck"><DeckTab /></TabsContent>
-          <TabsContent value="vendors"><StandaloneVendors /></TabsContent>
-          <TabsContent value="floor"><FloorMapPanel /></TabsContent>
+          {visited.includes("events") && <TabsContent forceMount value="events" className="data-[state=inactive]:hidden"><EventsTab venueOnly={venueOnly} /></TabsContent>}
+          {visited.includes("shifts") && <TabsContent forceMount value="shifts" className="data-[state=inactive]:hidden"><ShiftsTab /></TabsContent>}
+          {visited.includes("deck") && <TabsContent forceMount value="deck" className="data-[state=inactive]:hidden"><DeckTab /></TabsContent>}
+          {visited.includes("vendors") && <TabsContent forceMount value="vendors" className="data-[state=inactive]:hidden"><StandaloneVendors /></TabsContent>}
+          {visited.includes("floor") && <TabsContent forceMount value="floor" className="data-[state=inactive]:hidden"><FloorMapPanel /></TabsContent>}
         </Tabs>;
 }
 
