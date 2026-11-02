@@ -136,7 +136,9 @@ const clock = (v: unknown): string => {
   return `${String(h % 12 || 12).padStart(2, "0")}:${String(m).padStart(2, "0")} ${h >= 12 ? "PM" : "AM"}`;
 };
 
-/** Reads the For Scheduling report exported to Excel. Returns null when the workbook is some other sheet (a monthly schedule). */
+/** Recognizes either the legacy For Scheduling workbook or the newer grouped
+ * "ShowPilot - Event Schedule" export, without mistaking staffing sheets for events.
+ */
 export async function readEventSheet(file: File): Promise<EventRow[] | null> {
   const module = await import("exceljs");
   const ExcelJS = module.default ?? module;
@@ -144,28 +146,52 @@ export async function readEventSheet(file: File): Promise<EventRow[] | null> {
   await wb.xlsx.load(await file.arrayBuffer());
   const ws = wb.worksheets[0];
   if (!ws) return null;
-  const text = (v: unknown) => (v && typeof v === "object" && "result" in (v as object) ? String((v as { result: unknown }).result ?? "") : v === null || v === undefined ? "" : String(v)).trim();
-  if (!/^for scheduling$/i.test(text(ws.getRow(1).getCell(1).value))) return null;
-  const head = ws.getRow(2);
-  const col = (name: string) => { for (let c = 1; c <= 15; c++) if (text(head.getCell(c).value).toLowerCase() === name.toLowerCase()) return c; return 0; };
-  const [cStart, cEnd, cEvent, cDesc, cSpace, cId] = [col("Start Time"), col("End Time"), col("Event"), col("Description"), col("Space"), col("Event ID")];
-  const cStatus = col("Status - Event");
-  if (!cStart || !cEnd || !cDesc || !cSpace) return null;
-  const months = ["january","february","march","april","may","june","july","august","september","october","november","december"];
-  const rows: EventRow[] = [];
-  let day = "", eventName = "";
-  ws.eachRow((row, n) => {
-    if (n < 3) return;
-    const a = text(row.getCell(1).value);
-    const dm = a.match(/^(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),\s+([A-Za-z]+)\s+(\d{1,2}),\s+(\d{4})/);
-    if (dm) { day = `${dm[3]}-${String(months.indexOf((dm[1] ?? "").toLowerCase()) + 1).padStart(2, "0")}-${(dm[2] ?? "").padStart(2, "0")}`; eventName = ""; return; }
-    const start = clock(row.getCell(cStart).value);
-    // The line above an event's rows carries its name in column B (e.g. "Georgia Bridal Show").
-    const named = text(row.getCell(2).value);
-    if (!start && named) { eventName = named; return; }
-    if (!day || !start) return;
-    const id = text(row.getCell(cId || 99).value).match(/\d{3,}/)?.[0];
-    rows.push({ level: 2, usage: "", start, end: clock(row.getCell(cEnd).value), description: text(row.getCell(cDesc).value), space: text(row.getCell(cSpace).value), event: (cEvent ? text(row.getCell(cEvent).value) : "") || eventName, ...(id ? { eventId: id } : {}), ...(cStatus && text(row.getCell(cStatus).value) ? { status: text(row.getCell(cStatus).value) } : {}), date: day });
+  const text = (v: unknown):string => {
+    if(v&&typeof v==="object"){
+      if("result" in v)return text((v as {result:unknown}).result);
+      if("richText" in v&&Array.isArray((v as {richText:unknown[]}).richText))
+        return (v as {richText:{text:string}[]}).richText.map(x=>x.text).join("").trim();
+      if("text" in v)return String((v as {text:unknown}).text??"").trim();
+    }
+    return v===null||v===undefined?"":String(v).trim();
+  };
+  const firstRows=Array.from({length:Math.min(10,ws.rowCount)},(_,r)=>
+    Array.from({length:Math.min(20,ws.columnCount||20)},(_,c)=>text(ws.getRow(r+1).getCell(c+1).value)));
+  const legacy=firstRows.slice(0,3).some(row=>row.some(v=>/^for scheduling$/i.test(v)));
+  const newer=firstRows.slice(0,5).some(row=>row.some(v=>/^showpilot\s*-\s*event schedule$/i.test(v)));
+  const headerRow=firstRows.findIndex(row=>["Start Time","End Time","Description","Space","Event ID"]
+    .every(heading=>row.some(v=>v.toLowerCase()===heading.toLowerCase())));
+  if(headerRow<0)return null;
+  const header=firstRows[headerRow]!;
+  const col=(name:string)=>header.findIndex(v=>v.toLowerCase()===name.toLowerCase())+1;
+  const cStart=col("Start Time"),cEnd=col("End Time"),cDesc=col("Description"),cSpace=col("Space"),
+    cId=col("Event ID"),cStatus=col("Status - Event"),cEvent=col("Event");
+  const grouped=newer||(!legacy&&cStatus>0&&col("Start Time - Event")>0);
+  if(!legacy&&!grouped)return null;
+  if(!cStart||!cEnd||!cDesc||!cSpace)return null;
+  const rows:EventRow[]=[];
+  let day="",eventName="";
+  ws.eachRow((row,n)=>{
+    if(n<=headerRow+1)return;
+    const left=[1,2,3].map(c=>text(row.getCell(c).value)).filter(Boolean);
+    const parsed=left.map(eventScheduleDate).find(Boolean)??"";
+    if(parsed){day=parsed;eventName="";return;}
+    const start=clock(row.getCell(cStart).value);
+    if(!start) {
+      // A group title is generally in A or B; its attendance summary is at
+      // the far right. Wrapped text inside Description is not a group title.
+      const first=text(row.getCell(1).value)||text(row.getCell(2).value);
+      if(first&&first!==day&&!eventScheduleDate(first)&&!text(row.getCell(cDesc).value)&&!text(row.getCell(cSpace).value))
+        eventName=first;
+      return;
+    }
+    if(!day)return;
+    const id=text(row.getCell(cId).value).match(/\b\d{4,7}\b/)?.[0];
+    const status=cStatus?text(row.getCell(cStatus).value):"";
+    rows.push({level:2,usage:"",start,end:clock(row.getCell(cEnd).value),
+      description:text(row.getCell(cDesc).value),space:text(row.getCell(cSpace).value),
+      event:(cEvent?text(row.getCell(cEvent).value):"")||eventName,
+      ...(id?{eventId:id}:{}),...(status?{status}:{}),date:day});
   });
   return rows;
 }
