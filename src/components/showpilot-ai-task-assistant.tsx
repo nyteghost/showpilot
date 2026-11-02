@@ -139,18 +139,20 @@ export function AiTaskAssistant({ entries, tasks, onApprove, scope }:{
        <p className="text-xs text-muted-foreground">Suggests air-wall, stage and room-turn checks. Recommendations never change engineer shifts and require your approval.</p></div>
    </div>
    <div className="flex flex-wrap gap-3 items-center">
-     <label className="text-sm">Date <select aria-label="AI task date" className="rounded border bg-background px-3 py-2" value={chosenDate} onChange={e=>setDate(e.target.value)}>{dates.map(d=><option value={d} key={d}>{d}</option>)}</select></label>
+     <p className="text-sm"><strong>Schedule selection:</strong> {reviewScopeLabel(scope)}
+       <span className="block text-xs text-muted-foreground">{eligibleDates.length} show day(s), {weeks.length} analysis batch(es). Each batch reads the week before and after.</span>
+     </p>
      <label className="text-sm">Mode <select aria-label="AI task mode" className="rounded border bg-background px-3 py-2" value={mode} onChange={e=>setMode(e.target.value as Mode)}>
        <option value="local">Local GPU (private, no server)</option><option value="online">Cloud provider (optional)</option>
      </select></label>
      {mode==="online"&&<label className="text-sm">Provider <select className="rounded border bg-background px-3 py-2" value={provider} onChange={e=>setProvider(e.target.value as AiProviderId)}>
        {available.map(x=><option value={x} key={x}>{AI_PROVIDERS.find(a=>a.id===x)?.name}</option>)}
      </select></label>}
-     <Button size="sm" onClick={()=>void run()} disabled={!chosenDate||busy||(mode==="online"&&!available.length)}>
+     <Button size="sm" onClick={()=>void run()} disabled={!scope||!eligibleDates.length||busy||(mode==="online"&&!available.length)}>
        <Sparkles size={16}/>{busy?"Analyzing...":"Suggest engineering tasks"}
      </Button>
    </div>
-   <p className="text-xs text-muted-foreground flex items-center gap-2"><ShieldCheck size={14}/> Local mode reads relevant local notebook notes when connected, without sending them online. Cloud mode sends no notebook memories. First-time model loading requires a download; cached models can run without internet.</p>
+   <p className="text-xs text-muted-foreground flex items-center gap-2"><ShieldCheck size={14}/> The selected dates are the only dates eligible for tasks. Adjacent weeks provide context. Local mode can use notebook notes; cloud mode does not transmit notebook memories. First-time model loading requires a download; cached models can run without internet.</p>
    {status&&<p role="status" className="text-xs rounded bg-muted p-2">{status}</p>}
    {memoryRefs.length>0&&<div className="rounded-lg border border-border bg-muted/30 p-3 text-xs space-y-1">
     <strong>Related notes from your local ShowPilot notebook</strong>
