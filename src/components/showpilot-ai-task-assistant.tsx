@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Sparkles, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,17 +6,36 @@ import type { EventEntry, TaskNote } from "@/lib/work-tools";
 import { taskContext, validateTaskResponse, type AiTaskSuggestion } from "@/lib/showpilot-ai-tasks";
 import { runLocalTaskAI } from "@/lib/showpilot-ai-local";
 import { AI_PROVIDERS, type AiProviderId } from "@/lib/showpilot-ai-providers";
+import { reviewScopeDates, reviewScopeLabel, reviewWeekStart, type ReviewDateScope } from "@/lib/showpilot-review-months";
 import { approvedTaskMemoryDraft } from "@/lib/showpilot-memory-notes";
 import type { MemoryReference } from "@/lib/showpilot-memory-bridge";
 
 const modelKey="showpilot:ai:local-model";
+function aiError(e:unknown):string {
+ if(e instanceof Error&&e.message)return e.message;
+ if(typeof e==="string"&&e.trim())return e;
+ if(e&&typeof e==="object"){
+  const o=e as {message?:unknown;reason?:unknown;cause?:unknown};
+  for(const v of [o.message,o.reason,o.cause])if(typeof v==="string"&&v.trim())return v;
+  try{const description=JSON.stringify(e);if(description&&description!=="{}")return description.slice(0,300)}catch{}
+ }
+ return "Unknown AI runtime error; inspect the model status in Settings & AI.";
+}
 type Mode="local"|"online";
-export function AiTaskAssistant({ entries, tasks, onApprove }:{
- entries:EventEntry[]; tasks:TaskNote[]; onApprove:(task:TaskNote)=>void;
+export function AiTaskAssistant({ entries, tasks, onApprove, scope }:{
+ entries:EventEntry[]; tasks:TaskNote[]; scope:ReviewDateScope|null; onApprove:(task:TaskNote)=>void;
 }) {
- const dates=useMemo(()=>[...new Set(entries.map(e=>e.date))].sort(),[entries]);
- const [date,setDate]=useState("");
- const chosenDate=dates.includes(date)?date:dates[0]??"";
+ const scopeKey=(scope?.view??"none")+":"+(scope?.value??"");
+ const selectedDates=useMemo(()=>reviewScopeDates(entries,scope),[entries,scopeKey]);
+ const eligibleDates=useMemo(()=>selectedDates.filter(d=>entries.some(e=>e.date===d&&
+   ["S","MI","Exmi","MO"].includes(e.code)&&!/\\b(?:cepac|cobb energy|performing arts)\\b/i.test(e.space))),[entries,selectedDates]);
+ const weeks=useMemo(()=>{
+   const grouped=new Map<string,string[]>();
+   for(const d of eligibleDates){const wk=reviewWeekStart(d)??d;grouped.set(wk,[...(grouped.get(wk)??[]),d]);}
+   return [...grouped.entries()].sort(([a],[b])=>a.localeCompare(b)).map(([,ds])=>ds);
+ },[eligibleDates]);
+ const scopeVersion=useRef(scopeKey);
+ scopeVersion.current=scopeKey;
  const [mode,setMode]=useState<Mode>("local");
  const [available,setAvailable]=useState<AiProviderId[]>([]);
  const [provider,setProvider]=useState<AiProviderId>("openai");
