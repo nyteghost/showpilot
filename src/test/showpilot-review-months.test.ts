@@ -1,5 +1,5 @@
 import {describe,it,expect} from "vitest";
-import {availableReviewMonths,availableReviewWeeks,reviewMatchesMonth,reviewMatchesWeek,reviewMatchesDay,reviewMonthLabel,reviewWeekLabel,reviewWeekStart,shiftReviewWeek,selectedReviewMonth,selectedReviewWeek} from "@/lib/showpilot-review-months";
+import {availableReviewMonths,availableReviewWeeks,reviewMatchesMonth,reviewMatchesWeek,reviewMatchesDay,reviewScopeDates,reviewScopeLabel,reviewMonthLabel,reviewWeekLabel,reviewWeekStart,shiftReviewWeek,selectedReviewMonth,selectedReviewWeek} from "@/lib/showpilot-review-months";
 
 describe("ShowPilot Event Schedule month, week and day views",()=>{
  it("identifies months from source and final dates and picks the current month where present",()=>{
@@ -39,5 +39,19 @@ describe("ShowPilot Event Schedule month, week and day views",()=>{
   expect(reviewWeekStart("2026-13-01")).toBeNull();
   expect(reviewWeekStart("invalid")).toBeNull();
   expect(availableReviewWeeks([{date:"invalid"}])).toEqual([]);
+ });
+});
+
+describe("AI assistant follows schedule selection",()=>{
+ const events=[{date:"2026-11-01"},{date:"2026-11-02"},{date:"2026-11-09"},{date:"2026-11-15"},{date:"2026-12-01"}];
+ it("uses the review week rather than an unrelated AI date",()=>{
+  expect(reviewScopeDates(events,{view:"week",value:"2026-11-09"})).toEqual(["2026-11-09","2026-11-15"]);
+  expect(reviewScopeLabel({view:"week",value:"2026-11-09"})).toContain("Nov 9");
+ });
+ it("uses selected month or day without crossing boundaries",()=>{
+  expect(reviewScopeDates(events,{view:"month",value:"2026-11"})).toEqual(["2026-11-01","2026-11-02","2026-11-09","2026-11-15"]);
+  expect(reviewScopeDates(events,{view:"day",value:"2026-11-02"})).toEqual(["2026-11-02"]);
+  expect(reviewScopeDates(events,{view:"all",value:""})).toHaveLength(5);
+  expect(reviewScopeDates(events,null)).toEqual([]);
  });
 });
