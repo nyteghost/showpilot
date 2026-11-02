@@ -1,6 +1,6 @@
 // Browser-only file readers for work tools. Libraries load on demand.
 import { planWeeks, airwallHolds, needText, shiftText, workedHours, readAvail, SHOW_STAFF, ON_CALL, type Avail, type DayPlan } from "./staffing";
-import { BALLROOM_ROWS, ENGINEER_ROSTER, HALL_ROWS, weekLayouts, type WeekLayout, type TaskNote, DEFAULT_SCHEDULE_NAME, parseShift, reportDateToIso, type EventEntry, type EventRow, type Shift } from "./work-tools";
+import { BALLROOM_ROWS, ENGINEER_ROSTER, HALL_ROWS, weekLayouts, expandSpace, type WeekLayout, type TaskNote, DEFAULT_SCHEDULE_NAME, parseShift, reportDateToIso, type EventEntry, type EventRow, type Shift } from "./work-tools";
 
 type Item = { str: string; x: number; y: number };
 
@@ -463,7 +463,9 @@ export async function eventsWorkbook(entries: EventEntry[], existing?: File, tas
   const module = await import("exceljs");
   const ExcelJS = module.default ?? module;
   const wb: XWorkbook = new ExcelJS.Workbook();
-  const weeks = weekLayouts(entries);
+  // Keep combined rooms as one review item, but place them in each physical room on the Excel sheets.
+  const sheetEntries = entries.flatMap(e => expandSpace(e.space).map(space => ({ ...e, space })));
+  const weeks = weekLayouts(sheetEntries);
   if (existing) await wb.xlsx.load(await existing.arrayBuffer());
   const sheets = wb.worksheets.filter((s) => /week/i.test(s.name));
   // PTO and shifts you already typed into the engineer rows are read first, so the plan works around them.
@@ -485,7 +487,7 @@ export async function eventsWorkbook(entries: EventEntry[], existing?: File, tas
     });
   }
   const dates = [...new Set(entries.map((e) => e.date))].sort();
-  const plans = new Map(planWeeks(dates, entries, avail, undefined, airwallHolds(tasks, entries)).map((p) => [p.date, p] as const));
+  const plans = new Map(planWeeks(dates, sheetEntries, avail, undefined, airwallHolds(tasks, sheetEntries)).map((p) => [p.date, p] as const));
   let n = sheets.length;
   for (const w of weeks) {
     if (sheets.some((s) => mergeWeekSheet(s, w, tasks, plans))) continue;
