@@ -3,7 +3,8 @@ import { Briefcase, CalendarClock, CalendarDays, CalendarPlus, CalendarSync, Dow
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { KeepAliveTabContent } from "@/components/showpilot-keep-alive-tab";
 import { buildIcs, DEFAULT_SCHEDULE_NAME, editShift, entryLabel, formatMinutes, googleCalendarLink, isIsoDate, minutesToTime, newShiftId, nextMondayIso, parsePastedShifts, shiftLabel, airwallTasks, isCancelledRow, isPendingRow, sharedSpaces, expandSpace, summarizeEvents, taskSuggestions, timeToMinutes, withShiftIds, type EventEntry, type EventRow, type Shift, type TaskNote } from "@/lib/work-tools";
 import { StandaloneVendors } from "@/components/showpilot-vendors";
 import { FloorMapPanel } from "@/components/floor-map-panel";
@@ -72,11 +73,11 @@ export function ShowServicesTools({ page = false, selectedTab, hideTabBar = fals
             <p className="text-sm text-muted-foreground">{cur.hint}</p>
             {!page && <a href={`/work?tab=${tab}`} target="_blank" rel="noreferrer" className="inline-flex shrink-0 items-center gap-1 text-xs text-primary underline"><ExternalLink className="size-3.5" /> Open as its own page</a>}
           </div>
-          {visited.includes("events") && <TabsContent forceMount value="events" className="data-[state=inactive]:hidden"><EventsTab venueOnly={venueOnly} /></TabsContent>}
-          {visited.includes("shifts") && <TabsContent forceMount value="shifts" className="data-[state=inactive]:hidden"><ShiftsTab /></TabsContent>}
-          {visited.includes("deck") && <TabsContent forceMount value="deck" className="data-[state=inactive]:hidden"><DeckTab /></TabsContent>}
-          {visited.includes("vendors") && <TabsContent forceMount value="vendors" className="data-[state=inactive]:hidden"><StandaloneVendors /></TabsContent>}
-          {visited.includes("floor") && <TabsContent forceMount value="floor" className="data-[state=inactive]:hidden"><FloorMapPanel /></TabsContent>}
+          {visited.includes("events") && <KeepAliveTabContent value="events"><EventsTab venueOnly={venueOnly} /></KeepAliveTabContent>}
+          {visited.includes("shifts") && <KeepAliveTabContent value="shifts"><ShiftsTab /></KeepAliveTabContent>}
+          {visited.includes("deck") && <KeepAliveTabContent value="deck"><DeckTab /></KeepAliveTabContent>}
+          {visited.includes("vendors") && <KeepAliveTabContent value="vendors"><StandaloneVendors /></KeepAliveTabContent>}
+          {visited.includes("floor") && <KeepAliveTabContent value="floor"><FloorMapPanel /></KeepAliveTabContent>}
         </Tabs>;
 }
 
