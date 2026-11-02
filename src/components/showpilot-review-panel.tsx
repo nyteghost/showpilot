@@ -33,8 +33,8 @@ export function ScheduleReview({
   const reviewRef = useRef<HTMLElement>(null);
   useEffect(()=>{
     if (!conflictTarget) return;
-    setMode("review");setView("day");setDate(conflictTarget.date);
-    setSearch(conflictTarget.title);setPage(0);setEditing(null);
+    setMode("review");setView("week");setWeekChoice(reviewWeekStart(conflictTarget.date) ?? "");setDate(conflictTarget.date);
+    setSearch("");setPage(0);setEditing(null);
     requestAnimationFrame(()=>reviewRef.current?.scrollIntoView({behavior:"smooth",block:"start"}));
   },[conflictTarget]);
   const [mode, setMode] = useState<"imported"|"review"|"changes">("review");
@@ -84,6 +84,14 @@ export function ScheduleReview({
     return !q || [e.title,e.space,e.date,e.code,e.eventId ?? ""].join(" ").toLowerCase().includes(q);
   });
   const pageSize = 35, pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  useEffect(()=>{
+    if (!conflictTarget) return;
+    const index = filtered.findIndex(line=>{
+      const e=line.final??line.source;
+      return e?.date===conflictTarget.date && e.space===conflictTarget.space && e.title===conflictTarget.title;
+    });
+    if (index>=0) setPage(Math.floor(index / pageSize));
+  },[conflictTarget, view, weekChoice, search, result]);
   const visible = filtered.slice(Math.min(page, pageCount - 1) * pageSize, (Math.min(page, pageCount - 1) + 1) * pageSize);
   const newItemDate = () => {
     if(view==="day"&&day)return day;
@@ -192,7 +200,7 @@ export function ScheduleReview({
             const original=line.source, final=line.final;
             const current = final ?? original;
             if(!current)return null;
-            return <tr className={"border-t align-top "+(conflictTarget && current.date===conflictTarget.date && current.title===conflictTarget.title && current.space===conflictTarget.space ? "bg-amber-500/20" : "")} key={line.id}>
+            return <tr ref={node=>{if(node && conflictTarget && current.date===conflictTarget.date && current.title===conflictTarget.title && current.space===conflictTarget.space) node.scrollIntoView({behavior:"smooth",block:"center"});}} className={"border-t align-top "+(conflictTarget && current.date===conflictTarget.date && current.title===conflictTarget.title && current.space===conflictTarget.space ? "bg-amber-500/20" : "")} key={line.id}>
               <td className="p-2 min-w-28">{current.date}<div className="font-semibold">{current.space}</div><span className="text-muted-foreground">{line.status}</span></td>
               <td className="p-2 min-w-36">{original?<><div>{entryLabel(original)}</div><div>{original.title}</div></>:<em>Manually added</em>}</td>
               <td className="p-2 min-w-40">{editing===line.id&&editable ? <div className="grid min-w-56 gap-2">
