@@ -164,7 +164,7 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
     setVenueReview([...new Set(scope.needsReview.map((r) => r.space || "(no space)"))].sort());
     setPending([...new Set(live.filter(isPendingRow).map((r) => (r.event || r.description) + " (" + r.status + ")"))].sort());
     const rows = includePending ? live : live.filter((r) => !isPendingRow(r));
-    const proposals = summarizeEvents(rows);
+    const proposals = summarizeEvents(rows, true);
     const dayList = [...new Set(live.map((r) => r.date))].sort();
     const statuses = new Map<string, number>();
     for (const r of src.rows) statuses.set(r.status ?? "(none)", (statuses.get(r.status ?? "(none)") ?? 0) + 1);
