@@ -30,4 +30,4 @@ contextBridge.exposeInMainWorld("showpilotMemory",Object.freeze({
  openFolder:()=>ipcRenderer.invoke("showpilot-memory:open-folder"),
 }));
 
-contextBridge.exposeInMainWorld("showpilotLocal",Object.freeze({status:()=>ipcRenderer.invoke("showpilot-local:status"),configure:(next)=>ipcRenderer.invoke("showpilot-local:configure",next),chooseTemplate:()=>ipcRenderer.invoke("showpilot-local:template")}));
+contextBridge.exposeInMainWorld("showpilotLocal",Object.freeze({status:()=>ipcRenderer.invoke("showpilot-local:status"),configure:(next)=>ipcRenderer.invoke("showpilot-local:configure",next),chooseTemplate:()=>ipcRenderer.invoke("showpilot-local:template"),readTemplate:()=>ipcRenderer.invoke("showpilot-local:read-template")}));
