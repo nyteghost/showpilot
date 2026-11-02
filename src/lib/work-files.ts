@@ -159,14 +159,14 @@ export async function readEventSheet(file: File): Promise<EventRow[] | null> {
     Array.from({length:Math.min(20,ws.columnCount||20)},(_,c)=>text(ws.getRow(r+1).getCell(c+1).value)));
   const legacy=firstRows.slice(0,3).some(row=>row.some(v=>/^for scheduling$/i.test(v)));
   const newer=firstRows.slice(0,5).some(row=>row.some(v=>/^showpilot\s*-\s*event schedule$/i.test(v)));
-  const headerRow=firstRows.findIndex(row=>["Start Time","End Time","Description","Space","Event ID"]
+  const headerRow=firstRows.findIndex(row=>["Start Time","End Time","Description","Space"]
     .every(heading=>row.some(v=>v.toLowerCase()===heading.toLowerCase())));
   if(headerRow<0)return null;
   const header=firstRows[headerRow]!;
   const col=(name:string)=>header.findIndex(v=>v.toLowerCase()===name.toLowerCase())+1;
   const cStart=col("Start Time"),cEnd=col("End Time"),cDesc=col("Description"),cSpace=col("Space"),
     cId=col("Event ID"),cStatus=col("Status - Event"),cEvent=col("Event");
-  const grouped=newer||(!legacy&&cStatus>0&&col("Start Time - Event")>0);
+  const grouped=newer||(!legacy&&cId>0&&cStatus>0&&col("Start Time - Event")>0);
   if(!legacy&&!grouped)return null;
   if(!cStart||!cEnd||!cDesc||!cSpace)return null;
   const rows:EventRow[]=[];
