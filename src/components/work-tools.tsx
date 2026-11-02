@@ -93,6 +93,8 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
   const [status, setStatus] = useState("");
   const [blob, setBlob] = useState<Blob | null>(null);
   const [freshBlob, setFreshBlob] = useState<Blob | null>(null);
+  const [templateBusy,setTemplateBusy] = useState(false);
+  const [templateMessage,setTemplateMessage] = useState("");
   const [suggestedEntries, setSuggestedEntries] = useState<EventEntry[]>([]);
   const [suggestedTasks, setSuggestedTasks] = useState<TaskNote[]>([]);
   const [draft, setDraft] = useState<ReviewDraft>(emptyReviewDraft);
@@ -198,6 +200,21 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
     setStatus(src.sources + " reports · " + proposals.length + " suggested entries. Review them before exporting."
       + (src.existing ? " Typed shifts and PTO in the existing workbook remain protected." : ""));
     await compileReview(proposals, notes, nextDraft, src.existing);
+  }
+  async function exportApprovedTemplate(){
+    if(!window.showpilotLocal||templateBusy)return;
+    setTemplateBusy(true);setTemplateMessage("");
+    try{
+      const bytes=await window.showpilotLocal.readTemplate();
+      if(!bytes)throw new Error("Choose an approved master workbook in Settings & AI first.");
+      const file=new File([new Uint8Array(bytes)],"approved-schedule-template.xlsx");
+      const lib=await import("@/lib/work-files");
+      await lib.validateApprovedTemplate(file,entries);
+      const output=await lib.eventsWorkbook(entries,file,tasks);
+      lib.downloadBlob(output,"showpilot-approved-template-preview.xlsx");
+      setTemplateMessage("Template-based preview saved. Verify old event cells and schedule formatting before using it.");
+    }catch(e){setTemplateMessage("No export created: "+(e as Error).message);}
+    finally{setTemplateBusy(false);}
   }
   function reviewChanged(next: ReviewDraft) {
     saveDraftForCurrent(next);
@@ -329,6 +346,8 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
           )}
           <div className="flex flex-wrap gap-2">
             {freshBlob && <Button size="sm" onClick={() => deliver(freshBlob, "showpilot-reviewed-schedule.xlsx")}><Download className="size-4" /> Download reviewed schedule (fresh)</Button>}
+            {freshBlob && window.showpilotLocal && <Button variant="outline" size="sm" disabled={templateBusy} onClick={()=>void exportApprovedTemplate()}><Download className="size-4"/> {templateBusy?"Checking template…":"Export using master template (preview)"}</Button>}
+            {templateMessage&&<p role="status" className="text-xs text-amber-700 dark:text-amber-300">{templateMessage}</p>}
             {blob && merged && <Button variant="outline" size="sm" onClick={() => deliver(blob, "showpilot-updated-template.xlsx")}><Download className="size-4" /> Update original Excel template</Button>}
           </div>
           {merged && <p className="text-xs text-amber-700 dark:text-amber-300">Updating an existing workbook preserves its typed shifts, PTO and task cells. Removed or changed events may remain in nonempty legacy cells; use the fresh reviewed export for an exact record of accepted events.</p>}
