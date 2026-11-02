@@ -164,7 +164,87 @@ export function mergeTexts(texts: TextBit[]): TextBit[] {
   return out;
 }
 
-/** The booth drawn around a point: the smallest closed box that holds it, else the nearest lines on all four sides. */
+/** For booths with a small opening or an internal divider, the tightest
+ * rectangle around the booth number may be just a narrow strip.
+ * Prefer the *outer* booth footprint only when its geometry is well supported.
+ */
+function fullBoothAround(p: Prims, px: number, py: number, narrow: Box): Box | null {
+  const horizontalStrip = narrow.w > narrow.h * 1.8;
+  const verticalStrip = narrow.h > narrow.w * 1.8;
+  if (!horizontalStrip && !verticalStrip) return null;
+
+  const contains = (b: Box) =>
+    px >= b.x - 0.8 && px <= b.x + b.w + 0.8 &&
+    py >= b.y - 0.8 && py <= b.y + b.h + 0.8;
+  const plausible = (b: Box) => {
+    const ratio = b.w / b.h;
+    const area = b.w * b.h, stripArea = narrow.w * narrow.h;
+    return b.w >= 12 && b.h >= 12 && b.w <= p.width * 0.3 && b.h <= p.height * 0.3 &&
+      ratio >= 0.7 && ratio <= 1.45 && area >= stripArea * 1.7 &&
+      area <= stripArea * 20 && contains(b) &&
+      (horizontalStrip
+        ? Math.abs(b.x - narrow.x) <= Math.max(1.5, narrow.w * 0.05) &&
+          Math.abs(b.w - narrow.w) <= Math.max(2, narrow.w * 0.09)
+        : Math.abs(b.y - narrow.y) <= Math.max(1.5, narrow.h * 0.05) &&
+          Math.abs(b.h - narrow.h) <= Math.max(2, narrow.h * 0.09));
+  };
+
+  // A closed rectangle from the PDF is strongest evidence. Do not let
+  // an internal horizontal divider override it just because it is tighter.
+  const closed = p.boxes.filter(plausible).sort((a, b) => a.w * a.h - b.w * b.h)[0];
+  if (closed) return closed;
+
+  // Some CAD plans leave a small door/opening in the outer perimeter, so
+  // pdf.js cannot report a closed box. Reconstruct only if both opposite
+  // edges and both remaining edges are mostly present; never infer from
+  // the booth label or a single neighboring line alone.
+  if (!horizontalStrip) return null;
+  const x1 = narrow.x, x2 = narrow.x + narrow.w, w = narrow.w;
+  const nearby = p.segs.filter(s =>
+    Math.min(s.x1, s.x2) <= x2 + 1.5 && Math.max(s.x1, s.x2) >= x1 - 1.5 &&
+    Math.min(s.y1, s.y2) <= py + w * 1.5 && Math.max(s.y1, s.y2) >= py - w * 1.5);
+  const hLines = nearby.filter(s => Math.abs(s.y1 - s.y2) < 0.4 &&
+    Math.abs(s.x2 - s.x1) >= 3);
+  const vLines = nearby.filter(s => Math.abs(s.x1 - s.x2) < 0.4 &&
+    Math.abs(s.y2 - s.y1) >= 3);
+  if (!hLines.length || !vLines.length) return null;
+
+  const coverage = (intervals: [number, number][], min: number, max: number) => {
+    const sorted = intervals.map(([a, b]) => [Math.max(min, a), Math.min(max, b)] as const)
+      .filter(([a, b]) => b > a).sort((a, b) => a[0] - b[0]);
+    let sum = 0, last = min;
+    for (const [a, b] of sorted) {
+      const from = Math.max(last, a);
+      if (b > from) sum += b - from;
+      last = Math.max(last, b);
+    }
+    return sum / (max - min);
+  };
+  const hSupport = (y: number) => coverage(hLines
+    .filter(s => Math.abs(s.y1 - y) <= 0.85)
+    .map(s => [Math.min(s.x1, s.x2), Math.max(s.x1, s.x2)]), x1, x2);
+  const vSupport = (x: number, top: number, bottom: number) => coverage(vLines
+    .filter(s => Math.abs(s.x1 - x) <= 0.85)
+    .map(s => [Math.min(s.y1, s.y2), Math.max(s.y1, s.y2)]), top, bottom);
+
+  const ys = [...new Set(hLines
+    .filter(s => Math.max(s.x1, s.x2) >= x1 + 3 && Math.min(s.x1, s.x2) <= x2 - 3)
+    .map(s => Math.round(s.y1 * 2) / 2))].sort((a, b) => a - b);
+  let best: Box | null = null;
+  for (const top of ys) for (const bottom of ys) {
+    if (top >= py || bottom <= py || bottom <= top) continue;
+    const candidate = {x:x1, y:top, w, h:bottom-top};
+    if (!plausible(candidate)) continue;
+    if (hSupport(top) < 0.65 || hSupport(bottom) < 0.65) continue;
+    if (vSupport(x1, top, bottom) < 0.72 || vSupport(x2, top, bottom) < 0.72) continue;
+    if (!best || candidate.w * candidate.h < best.w * best.h) best = candidate;
+  }
+  return best;
+}
+
+/** The booth drawn around a point: prefer a supported full footprint over a
+ * narrow inner strip; otherwise keep the existing smallest-cell behavior.
+ */
 export function cellAround(p: Prims, px: number, py: number): Box | null {
   const maxW = p.width * 0.3;
   const maxH = p.height * 0.3;
@@ -175,8 +255,9 @@ export function cellAround(p: Prims, px: number, py: number): Box | null {
     if (!best || b.w * b.h < best.w * best.h) best = b;
   }
   const ray = rayCell(p, px, py);
-  if (best && ray) return best.w * best.h <= ray.w * ray.h * 1.6 ? best : ray; // prefer whichever is the tighter plausible cell
-  return best ?? ray;
+  const tight = best && ray ? (best.w * best.h <= ray.w * ray.h * 1.6 ? best : ray) : best ?? ray;
+  if (!tight) return null;
+  return fullBoothAround(p, px, py, tight) ?? tight;
 }
 
 function rayCell(p: Prims, px: number, py: number): Box | null {
