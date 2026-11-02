@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildEntries, cellAround, classify, drawFor, locate, mergeTexts, parseBooth, parseWorkOrderLines, parseShowPilotItemLines, planKey, resolve, type Prims, type TextBit } from "@/lib/floor-map";
+import { buildEntries, cellAround, classify, drawFor, locate, mergeTexts, parseBooth, openOutlineBox, parseWorkOrderLines, parseShowPilotItemLines, planKey, resolve, type Prims, type TextBit } from "@/lib/floor-map";
 
 const t = (s: string, x: number, y: number): TextBit => ({ s, x, y, w: s.length * 3, h: 5 });
 /** A 3-booth plan drawn with plain lines: 101 | 102 on top, 103 below, each 20 x 20. */
@@ -149,5 +149,40 @@ describe("floor map: full booth footprint with openings", () => {
     const strip={x:100,y:145,w:60,h:15};
     const p:Prims={width:500,height:400,texts:[],boxes:[strip],segs:rect(100,145,60,15)};
     expect(cellAround(p,155,153)).toEqual(strip);
+  });
+});
+
+describe("CAD floor plan: open doorway booth geometry", () => {
+  it("recognizes actual booth 111 outer edges despite doorway in its bottom side", () => {
+    const pts: [number,number][]=[
+      [786.01245,508.09680],[791.95679,508.09680],
+      [791.95679,478.37521],[762.23517,478.37521],
+      [762.23517,508.09680],[768.17950,508.09680]
+    ];
+    const b=openOutlineBox(pts);
+    expect(b).not.toBeNull();
+    expect(b!.x).toBeCloseTo(762.23517,3);
+    expect(b!.y).toBeCloseTo(478.37521,3);
+    expect(b!.w).toBeCloseTo(29.72162,3);
+    expect(b!.h).toBeCloseTo(29.72159,3);
+    const p:Prims={width:1224,height:792,texts:[t("111",782,490)],
+      boxes:[b!,{x:762.23517,y:500,w:29.72162,h:8.0968}],segs:[]};
+    expect(cellAround(p,786,501)).toEqual(b);
+  });
+  it("recognizes the same booth when the opening is on the opposite edge", () => {
+    const pts: [number,number][]=[
+      [768.17950,418.93201],[762.23517,418.93201],
+      [762.23517,389.20267],[791.95679,389.20267],
+      [791.95679,418.93201],[786.01245,418.93201]
+    ];
+    expect(openOutlineBox(pts)).toMatchObject({
+      x:762.23517,y:389.20267
+    });
+  });
+  it("rejects two or fewer intact walls and arbitrary interior lines", () => {
+    const openU:[number,number][]=[[100,100],[100,130],[130,130],[130,100]];
+    expect(openOutlineBox(openU)).toBeNull();
+    const diagonal:[number,number][]=[[100,100],[130,100],[130,130],[100,130],[120,110]];
+    expect(openOutlineBox(diagonal)).toBeNull();
   });
 });
