@@ -24,9 +24,9 @@ async function build(entries: EventEntry[], existing?: File) {
 }
 
 describe("ShowPilot venue-specific exports", () => {
-  it("brands newly generated sheets for Cobb Galleria Centre and excludes CEPAC placeholders", async () => {
+  it("brands newly generated sheets for Cobb Convention Center-Atlanta and excludes CEPAC placeholders", async () => {
     const { ws, room } = await build([event("Hall A")]);
-    expect(String(ws.getCell("A1").value)).toBe("COBB GALLERIA CENTRE");
+    expect(String(ws.getCell("A1").value)).toBe("COBB CONVENTION CENTER-ATLANTA");
     expect(room("CGC").value).toBeTruthy();
     const labels: string[] = [];
     ws.eachRow((row) => { labels.push(String(row.getCell(1).value ?? "")); });
