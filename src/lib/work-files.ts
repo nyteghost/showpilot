@@ -653,7 +653,9 @@ export async function eventsWorkbook(entries: EventEntry[], existing?: File, tas
       wb.definedNames.model=[];
     }
   }
-  const sheets = wb.worksheets.filter((s) => /week/i.test(s.name));
+  const sheets = wb.worksheets.filter((ws) => /^Week\s*#\d+$/i.test(ws.name));
+  if(existing && (!sheets.length || sheets.some(ws=>!isExactCgcEngineeringTemplate(ws))))
+    throw new Error("The uploaded workbook is not the original engineering template. Choose the 11 November 2026 workbook with HALLS in row 54 and BALLROOM in row 60.");
   // PTO and shifts you already typed into the engineer rows are read first, so the plan works around them.
   const avail: Record<string, Record<string, Avail>> = {};
   for (const ws of sheets) {
