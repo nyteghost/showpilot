@@ -255,6 +255,10 @@ describe("exact November 2026 engineering workbook fidelity",()=>{
    ws.getCell("A1").value="SOURCE WORKBOOK BRANDING — KEEP EXACT";
    ws.getCell("B18").value="PTO";
    ws.getCell("B18").font={name:"Arial",size:12,bold:true};
+   ws.getCell("B21").value=null;
+   ws.getCell("B6").value="ORIGINAL CGC HOURS";
+   ws.getCell("B52").value="ORIGINAL ESCALATOR";
+   ws.getCell("C53").value="ORIGINAL DESK";
    ws.getCell("H55").fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF224466"}};
    ws.getColumn(1).width=24.5;
    ws.getRow(55).height=72;
@@ -266,6 +270,10 @@ describe("exact November 2026 engineering workbook fidelity",()=>{
    const exported=roundtrip.worksheets[0]!;
    expect(exported.getCell("A1").value).toBe("SOURCE WORKBOOK BRANDING — KEEP EXACT");
    expect(exported.getCell("B18").value).toBe("PTO");
+   expect(exported.getCell("B21").value).toBeNull();
+   expect(exported.getCell("B6").value).toBe("ORIGINAL CGC HOURS");
+   expect(exported.getCell("B52").value).toBe("ORIGINAL ESCALATOR");
+   expect(exported.getCell("C53").value).toBe("ORIGINAL DESK");
    expect(exported.getCell("B18").font).toMatchObject({name:"Arial",size:12,bold:true});
    expect(exported.getColumn(1).width).toBe(24.5);
    expect(exported.getRow(55).height).toBe(72);
