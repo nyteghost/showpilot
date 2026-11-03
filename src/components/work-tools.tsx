@@ -104,8 +104,6 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
   const [entries, setEntries] = useState<EventEntry[]>([]);
   const [aiScope,setAiScope] = useState<ReviewDateScope|null>(null);
   const [status, setStatus] = useState("");
-  const [blob, setBlob] = useState<Blob | null>(null);
-  const [freshBlob, setFreshBlob] = useState<Blob | null>(null);
   const [exportBusy,setExportBusy] = useState(false);
   const [exportStatus,setExportStatus] = useState("");
   const [previewOpen,setPreviewOpen]=useState(false);
@@ -119,7 +117,6 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
   const [draft, setDraft] = useState<ReviewDraft>(emptyReviewDraft);
   const draftRef = useRef<ReviewDraft>(emptyReviewDraft());
   const fingerprintRef = useRef("");
-  const compileRef = useRef(0);
   const [merged, setMerged] = useState(false);
   const [tasks, setTasks] = useState<TaskNote[]>([]);
   const [shared, setShared] = useState<string[]>([]);
@@ -168,28 +165,13 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
       draftRef.current = next; setDraft(next); return next;
     }
   }
-  async function compileReview(proposals: EventEntry[], notes: TaskNote[], nextDraft: ReviewDraft, existing?: File) {
-    const token = ++compileRef.current;
-    const approved = applyReview(proposals, notes, nextDraft);
+  function compileReview(proposals: EventEntry[],notes: TaskNote[],nextDraft: ReviewDraft) {
+    // Never prebuild a differently formatted workbook during editing.
+    // The user-provided Excel template is read only for preview or download.
+    const approved=applyReview(proposals,notes,nextDraft);
     setEntries(approved.entries);
     setTasks(approved.tasks);
     setShared(sharedSpaces(approved.entries));
-    setBlob(null); setFreshBlob(null);
-    if (!approved.entries.length) return;
-    try {
-      const { eventsWorkbook } = await import("@/lib/work-files");
-      // Fresh export honors removals. Existing templates retain typed shifts and PTO.
-      const fresh = await eventsWorkbook(approved.entries, undefined, approved.tasks);
-      if (compileRef.current !== token) return;
-      setFreshBlob(fresh);
-      if (existing) {
-        const merged = await eventsWorkbook(approved.entries, existing, approved.tasks);
-        if (compileRef.current !== token) return;
-        setBlob(merged);
-      } else setBlob(fresh);
-    } catch (e) {
-      if (compileRef.current === token) setStatus("Could not build reviewed Excel schedule: " + (e as Error).message);
-    }
   }
   async function build(src: { rows: EventRow[]; existing?: File; sources: number }, includePending: boolean, approved: string[] = [], overrideDraft?: ReviewDraft) {
     const nextDraft = draftFor(src.rows, overrideDraft);
@@ -218,7 +200,7 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
     setMerged(!!src.existing);
     setStatus(src.sources + " reports · " + proposals.length + " suggested entries. Review them before exporting."
       + (src.existing ? " Typed shifts and PTO in the existing workbook remain protected." : ""));
-    await compileReview(proposals, notes, nextDraft, src.existing);
+    compileReview(proposals, notes, nextDraft);
   }
   const currentExportLabel=aiScope?.view==="week"?"selected week":
     aiScope?.view==="month"?"selected month":aiScope?.view==="day"?"selected day":"full report";
@@ -271,7 +253,7 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
   }
   function reviewChanged(next: ReviewDraft) {
     saveDraftForCurrent(next);
-    void compileReview(suggestedEntries, suggestedTasks, next, source?.existing);
+    compileReview(suggestedEntries, suggestedTasks, next);
   }
   function saveProject() {
     if (!source) return;
@@ -284,7 +266,7 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
     setTimeout(()=>URL.revokeObjectURL(url),30000);
   }
   async function loadProject(f:File) {
-    setStatus("Opening saved review project…");++compileRef.current;
+    setStatus("Opening saved review project…");
     try {
       if (f.size > 16_000_000) throw new Error("Project exceeds 16 MB.");
       const p = parseReviewProject(await f.text());
@@ -295,8 +277,8 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
     }catch(e){setStatus("Could not open ShowPilot project: "+(e as Error).message);}
   }
   async function load(files: File[]) {
-    ++compileRef.current;
-    setStatus("Reading…"); setBlob(null); setFreshBlob(null); setSource(null); setSuggestedEntries([]);
+    
+    setStatus("Reading…");  setSource(null); setSuggestedEntries([]);
     setApprovedSpaces([]); setVenueReview([]); setVenueExcluded(0);
     const head = [`ShowPilot Events report · ${new Date().toISOString()}`, `build: ${__APP_VERSION__} ${__APP_COMMIT__} ${__APP_BUILD_DATE__}`];
     setReport(head.join("\n"));
@@ -399,16 +381,16 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
             </details>
           )}
           <div className="flex flex-wrap items-center gap-2">
-            {freshBlob && <label className="flex items-center gap-2 text-sm">Original template
+            {entries.length>0 && <label className="flex items-center gap-2 text-sm">Original template
               <select value={selectedTemplate} onChange={e=>setPreviewKind(e.target.value as "original"|"approved")}
                 className="rounded border bg-background px-2 py-1.5" aria-label="Choose the exact engineering template">
                 {source?.existing && <option value="original">Uploaded Excel workbook</option>}
                 {window.showpilotLocal && <option value="approved">Saved master workbook (Settings &amp; AI)</option>}
               </select>
             </label>}
-            {freshBlob && <Button size="sm" variant="outline" disabled={!aiScope||previewBusy}
+            {entries.length>0 && <Button size="sm" variant="outline" disabled={!aiScope||previewBusy}
               onClick={()=>void openExcelPreview()}><Eye className="size-4"/> {previewBusy?"Building preview…":"Preview original Excel"}</Button>}
-            {freshBlob && <Button size="sm" disabled={!aiScope||exportBusy}
+            {entries.length>0 && <Button size="sm" disabled={!aiScope||exportBusy}
               onClick={()=>void exportSelected(selectedTemplate)}><Download className="size-4"/>
               {exportBusy?"Exporting…":"Download "+currentExportLabel+" (original layout)"}</Button>}
             {exportStatus&&<p role="status" className="w-full text-xs text-muted-foreground">{exportStatus}</p>}
