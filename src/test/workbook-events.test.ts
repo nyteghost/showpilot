@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Blob as NodeBlob, File as NodeFile } from "node:buffer";
 import ExcelJS from "exceljs";
 import { eventsWorkbook, legendFill, LEGEND_FILL } from "@/lib/work-files";
+import { scopedScheduleData } from "@/lib/showpilot-export-scope";
 import { BALLROOM_ROWS, summarizeEvents, type EventCode, type EventEntry } from "@/lib/work-tools";
 
 Object.defineProperty(globalThis, "Blob", { value: NodeBlob, configurable: true });
@@ -137,5 +138,50 @@ describe("approved master template guard",()=>{
   const {validateApprovedTemplate}=await import("@/lib/work-files");
   await expect(validateApprovedTemplate(template,[event("Hall A")])).resolves.toBeUndefined();
   await expect(validateApprovedTemplate(template,[event("Hall A","S","Different week","2027-02-02")])).rejects.toThrow(/does not contain/);
+ });
+});
+
+describe("Week-view Excel export and compact CGC layout",()=>{
+ const first=event("Hall A","S","Week one","2026-11-02");
+ const selected=event("BallRoom A","MI","Selected week","2026-11-09");
+ const after=event("Hall B","S","Following week","2026-11-16");
+ it("filters review entries and tasks to the selected week without AI context weeks",()=>{
+   const tasks=[{date:"2026-11-02",section:"HALLS" as const,text:"old task"},
+                {date:"2026-11-09",section:"BALLROOM" as const,text:"this week task"},
+                {date:"2026-11-16",section:"HALLS" as const,text:"next task"}];
+   const scoped=scopedScheduleData([first,selected,after],tasks,{view:"week",value:"2026-11-09"});
+   expect(scoped.entries.map(e=>e.title)).toEqual(["Selected week"]);
+   expect(scoped.tasks.map(t=>t.text)).toEqual(["this week task"]);
+   expect(scoped.singleWeek).toBe("2026-11-09");
+ });
+ it("exports one single worksheet with Monday-Sunday headers and compact styles",async()=>{
+   const out=await eventsWorkbook([selected],undefined,[],{singleWeek:"2026-11-09"});
+   const wb=new ExcelJS.Workbook();
+   await wb.xlsx.load(await out.arrayBuffer());
+   expect(wb.worksheets.map(s=>s.name)).toEqual(["Week #1"]);
+   const ws=wb.worksheets[0]!;
+   expect(ws.getCell("A1").value).toBe("COBB CONVENTION CENTER-ATLANTA");
+   expect((ws.getCell("B5").value as Date).toISOString().slice(0,10)).toBe("2026-11-09");
+   expect((ws.getCell("H5").value as Date).toISOString().slice(0,10)).toBe("2026-11-15");
+   expect(ws.getColumn(1).width).toBeLessThan(30);
+   expect(ws.getColumn(2).width).toBeLessThan(30);
+   expect(ws.getRow(12).height).toBeLessThan(25);
+   expect(ws.getCell("A4").fill).toMatchObject({fgColor:{argb:"FF131313"}});
+   expect(ws.getCell("B5").fill).toMatchObject({fgColor:{argb:"FFFFFF99"}});
+ });
+ it("keeps ONLY the matching original template week without overwriting its border style",async()=>{
+   const template=await build([first,selected]);
+   const prior=template.wb.worksheets.find(s=>s.name==="Week #2")!;
+   prior.getCell("B4").border={top:{style:"dotted",color:{argb:"FF123456"}}};
+   const original=new File([new Uint8Array(await template.wb.xlsx.writeBuffer())],"original.xlsx");
+   const out=await eventsWorkbook([selected],original,[],{singleWeek:"2026-11-09"});
+   const wb=new ExcelJS.Workbook();await wb.xlsx.load(await out.arrayBuffer());
+   expect(wb.worksheets.map(s=>s.name)).toEqual(["Week #2"]);
+   expect(wb.worksheets[0]!.getCell("B4").border.top?.style).toBe("dotted");
+ });
+ it("refuses to quietly export a different template week",async()=>{
+   const template=await build([first]);
+   const file=new File([new Uint8Array(await template.wb.xlsx.writeBuffer())],"wrong.xlsx");
+   await expect(eventsWorkbook([selected],file,[],{singleWeek:"2026-11-09"})).rejects.toThrow(/selected week/);
  });
 });
