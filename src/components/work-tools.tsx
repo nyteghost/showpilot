@@ -11,6 +11,7 @@ import { FloorMapPanel } from "@/components/floor-map-panel";
 import { scopeShowPilotRows } from "@/lib/showpilot-venue";
 import { ScheduleReview } from "@/components/showpilot-review-panel";
 import type {ReviewDateScope} from "@/lib/showpilot-review-months";
+import {scopedScheduleData} from "@/lib/showpilot-export-scope";
 import { AiTaskAssistant } from "@/components/showpilot-ai-task-assistant";
 import { applyReview, emptyReviewDraft, fingerprintRows, parseDraft, parseReviewProject, storageKey, type ReviewDraft, type ReviewProject } from "@/lib/showpilot-review";
 
@@ -104,6 +105,8 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
   const [blob, setBlob] = useState<Blob | null>(null);
   const [freshBlob, setFreshBlob] = useState<Blob | null>(null);
   const [templateBusy,setTemplateBusy] = useState(false);
+  const [exportBusy,setExportBusy] = useState(false);
+  const [exportStatus,setExportStatus] = useState("");
   const [templateMessage,setTemplateMessage] = useState("");
   const [suggestedEntries, setSuggestedEntries] = useState<EventEntry[]>([]);
   const [suggestedTasks, setSuggestedTasks] = useState<TaskNote[]>([]);
@@ -211,19 +214,40 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
       + (src.existing ? " Typed shifts and PTO in the existing workbook remain protected." : ""));
     await compileReview(proposals, notes, nextDraft, src.existing);
   }
+  const currentExportLabel=aiScope?.view==="week"?"selected week":
+    aiScope?.view==="month"?"selected month":aiScope?.view==="day"?"selected day":"full report";
+  const fileSuffix=(scope:string)=>scope.replace(/[^a-zA-Z0-9_-]/g,"-");
+  async function exportSelected(kind:"fresh"|"original") {
+    if(exportBusy||!aiScope)return;
+    setExportBusy(true);setExportStatus("");
+    try {
+      const chosen=scopedScheduleData(entries,tasks,aiScope);
+      const original=kind==="original"?source?.existing:undefined;
+      if(kind==="original"&&!original)throw new Error("No original engineering template was uploaded.");
+      const lib=await import("@/lib/work-files");
+      const output=await lib.eventsWorkbook(chosen.entries,original,chosen.tasks,
+        chosen.singleWeek?{singleWeek:chosen.singleWeek}:{});
+      lib.downloadBlob(output,"ShowPilot-"+fileSuffix(chosen.period)+(kind==="original"?"-original-layout":"")+".xlsx");
+      setExportStatus("Exported "+currentExportLabel+(chosen.singleWeek?" as ONE worksheet.":"")+
+        (original?" Original template formatting was retained where possible.":""));
+    }catch(e){setExportStatus("Export not generated: "+(e as Error).message);}
+    finally{setExportBusy(false)}
+  }
   async function exportApprovedTemplate(){
-    if(!window.showpilotLocal||templateBusy)return;
+    if(!window.showpilotLocal||templateBusy||!aiScope)return;
     setTemplateBusy(true);setTemplateMessage("");
     try{
+      const chosen=scopedScheduleData(entries,tasks,aiScope);
       const bytes=await window.showpilotLocal.readTemplate();
       if(!bytes)throw new Error("Choose an approved master workbook in Settings & AI first.");
       const file=new File([new Uint8Array(bytes)],"approved-schedule-template.xlsx");
       const lib=await import("@/lib/work-files");
-      await lib.validateApprovedTemplate(file,entries);
-      const output=await lib.eventsWorkbook(entries,file,tasks);
-      lib.downloadBlob(output,"showpilot-approved-template-preview.xlsx");
-      setTemplateMessage("Template-based preview saved. Verify old event cells and schedule formatting before using it.");
-    }catch(e){setTemplateMessage("No export created: "+(e as Error).message);}
+      await lib.validateApprovedTemplate(file,chosen.entries);
+      const output=await lib.eventsWorkbook(chosen.entries,file,chosen.tasks,
+        chosen.singleWeek?{singleWeek:chosen.singleWeek}:{});
+      lib.downloadBlob(output,"ShowPilot-"+fileSuffix(chosen.period)+"-approved-template.xlsx");
+      setTemplateMessage("Exported "+currentExportLabel+" using the approved template. Check existing event cells before publishing.");
+    }catch(e){setTemplateMessage("No template export created: "+(e as Error).message);}
     finally{setTemplateBusy(false);}
   }
   function reviewChanged(next: ReviewDraft) {
@@ -356,10 +380,11 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
             </details>
           )}
           <div className="flex flex-wrap gap-2">
-            {freshBlob && <Button size="sm" onClick={() => deliver(freshBlob, "showpilot-reviewed-schedule.xlsx")}><Download className="size-4" /> Download reviewed schedule (fresh)</Button>}
+            {freshBlob && <Button size="sm" disabled={!aiScope||exportBusy} onClick={() => void exportSelected("fresh")}><Download className="size-4" /> {exportBusy?"Exporting…":"Download "+currentExportLabel+" (fresh)"}</Button>}
             {freshBlob && window.showpilotLocal && <Button variant="outline" size="sm" disabled={templateBusy} onClick={()=>void exportApprovedTemplate()}><Download className="size-4"/> {templateBusy?"Checking template…":"Export using master template (preview)"}</Button>}
+            {exportStatus&&<p role="status" className="text-xs text-muted-foreground">{exportStatus}</p>}
             {templateMessage&&<p role="status" className="text-xs text-amber-700 dark:text-amber-300">{templateMessage}</p>}
-            {blob && merged && <Button variant="outline" size="sm" onClick={() => deliver(blob, "showpilot-updated-template.xlsx")}><Download className="size-4" /> Update original Excel template</Button>}
+            {blob && merged && <Button variant="outline" size="sm" disabled={!aiScope||exportBusy} onClick={() => void exportSelected("original")}><Download className="size-4" /> Update original template ({currentExportLabel})</Button>}
           </div>
           {merged && <p className="text-xs text-amber-700 dark:text-amber-300">Updating an existing workbook preserves its typed shifts, PTO and task cells. Removed or changed events may remain in nonempty legacy cells; use the fresh reviewed export for an exact record of accepted events.</p>}
         </>
