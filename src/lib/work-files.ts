@@ -1,6 +1,6 @@
 // Browser-only file readers for work tools. Libraries load on demand.
 import { planWeeks, airwallHolds, needText, shiftText, workedHours, readAvail, SHOW_STAFF, ON_CALL, type Avail, type DayPlan } from "./staffing";
-import { BALLROOM_ROWS, ENGINEER_ROSTER, HALL_ROWS, weekLayouts, expandSpace, type WeekLayout, type TaskNote, DEFAULT_SCHEDULE_NAME, parseShift, reportDateToIso, type EventEntry, type EventRow, type Shift } from "./work-tools";
+import { BALLROOM_ROWS, ENGINEER_ROSTER, HALL_ROWS, weekLayouts, mondayOf as mondayIso, expandSpace, type WeekLayout, type TaskNote, DEFAULT_SCHEDULE_NAME, parseShift, reportDateToIso, type EventEntry, type EventRow, type Shift } from "./work-tools";
 
 import {readShowPilotEventSchedulePages, eventScheduleDate, type SchedulePdfPage} from "./showpilot-event-schedule";
 
@@ -336,10 +336,12 @@ function unmergeEventSpaces(ws: XSheet, w: WeekLayout, byLabel: Map<string, numb
 }
 
 function writeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans: Map<string, DayPlan> = new Map()) {
-  const font = { name: "Arial", size: 12, bold: true };
+  const font = { name: "Calibri", size: 9, bold: true };
   const wrap = { wrapText: true, vertical: "middle" as const, horizontal: "center" as const };
-  ws.columns = [{ width: 47 }, ...[29,46,38,37,41,47,38].map(width => ({ width })), { width: 62 }];
-  ws.views = [{state:"frozen", xSplit:1, ySplit:5}];
+  // Match the compact CGC engineering roster instead of the old poster-width
+  // export. Keep seven date columns B–H and the totals/legend column I.
+  ws.columns = [{width:25},...DAYS.map(()=>({width:21})),{width:16}];
+  ws.views = [{state:"frozen",xSplit:1,ySplit:5}];
   ws.pageSetup = {orientation:"landscape", fitToPage:true, fitToWidth:1, fitToHeight:0, paperSize:9};
   const put = (r: number, vals: (string | number | Date | { formula: string } | null)[], bold = true) => {
     const row = ws.getRow(r);
@@ -389,21 +391,64 @@ function writeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans
   section("HALLS", HALL_ROWS);
   section("BALLROOM", BALLROOM_ROWS);
   if (w.other.length) section("OTHER SPACES", w.other);
-  // Mirror the compact staffing grid of the supplied November 2026 workbook.
-  for (let i = 1; i < r; i++) ws.getRow(i).height = i <= 5 ? 32 : 32;
-  for (const label of [...HALL_ROWS, ...BALLROOM_ROWS]) {
-    const row = byLabel.get(label.toLowerCase());
-    if (row) ws.getRow(row).height = label.startsWith("BallRoom") ? 65 : 45;
-  }
-  ws.getRow(1).font = {name:"Arial",size:17,bold:true};
-  ws.getRow(2).font = {name:"Arial",size:15,bold:true};
-  for (const i of [4, 51, 54, 60]) {
-    const row = ws.getRow(i);
+  // Compact reference-sheet styling: three short rows per employee, dark
+  // section bands, highlighted dates and distinct hall/ballroom band colors.
+  const edge = {style:"thin" as const,color:{argb:"FF1C1C1C"}};
+  const baseBorder={top:edge,left:edge,right:edge,bottom:edge};
+  for(let i=1;i<r;i++){
+    const row=ws.getRow(i);
+    row.height=i===1?21:i===2?17:i===3?16:i===5?19:15;
     for(let c=1;c<=9;c++){
       const cell=row.getCell(c);
-      cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFDAE6F0"}};
-      cell.font={name:"Arial",size:12,bold:true,color:{argb:"FF172A3A"}};
+      cell.border=baseBorder;
+      cell.font={name:"Calibri",size:9,bold:c===1};
+      cell.alignment={horizontal:"center",vertical:"middle",wrapText:true};
     }
+  }
+  // Branding remains the venue's official new name.
+  ws.getCell("A1").font={name:"Calibri",size:12,bold:true};
+  ws.getCell("A2").font={name:"Calibri",size:10,bold:true};
+  const band=(row:number,color:string,fg="FFFFFFFF")=>{
+    for(let c=1;c<=9;c++){
+      const cell=ws.getRow(row).getCell(c);
+      cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:color}};
+      cell.font={name:"Calibri",size:9,bold:true,color:{argb:fg}};
+    }
+    ws.getRow(row).height=18;
+  };
+  band(4,"FF131313");band(6,"FF131313");band(8,"FF131313");
+  for(let c=2;c<=8;c++){
+    const cell=ws.getRow(5).getCell(c);
+    cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFFFFF99"}};
+    cell.font={name:"Calibri",size:9,bold:true,color:{argb:"FF111111"}};
+  }
+  // Three-row roster: name, badge/worked hours, job title.
+  for(let er=9;er<9+ENGINEER_ROSTER.length*3;er+=3){
+    ws.getRow(er).height=17;
+    ws.getRow(er+1).height=15;
+    ws.getRow(er+2).height=14;
+    ws.getRow(er+2).getCell(1).font={name:"Calibri",size:8,italic:true};
+    ws.getRow(er+1).getCell(1).font={name:"Calibri",size:8,bold:true};
+  }
+  for(const [label,idx] of byLabel){
+    const row=ws.getRow(idx);
+    row.height=label.startsWith("ballroom")?54:44;
+    row.getCell(1).font={name:"Calibri",size:9,bold:true};
+    for(let c=2;c<=8;c++){
+      const cell=row.getCell(c);
+      cell.font={...cell.font,name:"Calibri",size:9};
+      cell.alignment={vertical:"middle",horizontal:"center",wrapText:true};
+    }
+  }
+  // Section headers use the established CGC convention: green halls and
+  // pale-salmon ballrooms; no CEPAC block is created.
+  for(let i=9+ENGINEER_ROSTER.length*3;i<r;i++){
+    const name=String(ws.getRow(i).getCell(1).value??"").trim().toUpperCase();
+    if(name==="CGC ESCALATOR AND SD")band(i,"FF131313");
+    else if(name==="HALLS")band(i,"FF92D050","FF111111");
+    else if(name==="BALLROOM")band(i,"FFF5B79F","FF111111");
+    else if(name==="OTHER SPACES")band(i,"FF131313");
+    else if(name==="TASKS")ws.getRow(i).height=38;
   }
   mergeEventSpaces(ws, w, byLabel, new Map(w.dates.map((d, i) => [d, i + 2])));
   fitRows(ws);
@@ -551,7 +596,7 @@ export async function validateApprovedTemplate(file: File, entries: EventEntry[]
  if(missing.length)throw new Error("The master workbook does not contain "+missing.length+" schedule dates (first: "+missing[0]+"). Use Fresh Export, or choose a matching approved workbook. Automatic template re-dating is not ready yet.");
 }
 /** Builds the weekly engineering workbook (Week #1, #2 …) or, given an existing schedule, fills its event rows. */
-export async function eventsWorkbook(entries: EventEntry[], existing?: File, tasks: TaskNote[] = []): Promise<Blob> {
+export async function eventsWorkbook(entries: EventEntry[], existing?: File, tasks: TaskNote[] = [], options: {singleWeek?:string} = {}): Promise<Blob> {
   const module = await import("exceljs");
   const ExcelJS = module.default ?? module;
   const wb: XWorkbook = new ExcelJS.Workbook();
@@ -559,6 +604,23 @@ export async function eventsWorkbook(entries: EventEntry[], existing?: File, tas
   const sheetEntries = entries.flatMap(e => expandSpace(e.space).map(space => ({ ...e, space })));
   const weeks = weekLayouts(sheetEntries);
   if (existing) await wb.xlsx.load(await existing.arrayBuffer());
+  if(options.singleWeek){
+    if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(options.singleWeek))throw new Error("Invalid selected week.");
+    // Week-only export must never include the other five weeks in a template.
+    // Refuse incompatible templates rather than keeping unrelated old events.
+    if(entries.some(e=>mondayIso(e.date)!==options.singleWeek))throw new Error("Entries outside the selected week cannot be exported.");
+    if(existing){
+      const matches=wb.worksheets.filter(ws=>{
+        if(!/week/i.test(ws.name))return false;
+        let header=0;
+        ws.eachRow((row,n)=>{if(!header&&String(row.getCell(2).value??"").trim().toUpperCase()==="MON")header=n;});
+        const first=header?cellDate(ws.getRow(header+1).getCell(2).value):null;
+        return first===options.singleWeek;
+      });
+      if(matches.length!==1)throw new Error("The uploaded Excel template must contain exactly one worksheet for the selected week ("+options.singleWeek+"). Choose a matching template or export fresh.");
+      for(const sheet of [...wb.worksheets])if(sheet!==matches[0])wb.removeWorksheet(sheet.id);
+    }
+  }
   const sheets = wb.worksheets.filter((s) => /week/i.test(s.name));
   // PTO and shifts you already typed into the engineer rows are read first, so the plan works around them.
   const avail: Record<string, Record<string, Avail>> = {};
@@ -585,7 +647,7 @@ export async function eventsWorkbook(entries: EventEntry[], existing?: File, tas
     if (sheets.some((s) => mergeWeekSheet(s, w, tasks, plans))) continue;
     writeWeekSheet(wb.addWorksheet(`Week #${++n}`), w, tasks, plans);
   }
-  addStaffingSheets(wb, [...plans.values()]);
+  if(!options.singleWeek)addStaffingSheets(wb, [...plans.values()]);
   const out = await wb.xlsx.writeBuffer();
   return new Blob([out], { type: XLSX_MIME });
 }
