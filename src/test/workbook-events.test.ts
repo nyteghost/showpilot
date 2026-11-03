@@ -292,6 +292,13 @@ describe("exact November 2026 engineering workbook fidelity",()=>{
    await expect(eventsWorkbook(conflicting,source,[],{singleWeek:"2026-11-02",preserveTemplateLayout:true}))
       .rejects.toThrow(/merged-room conflict/);
  });
+ it("refuses to paint a Hall A-only show over an existing Hall A+B merge",async()=>{
+   const original=await build([event("Hall AB","S","Previously combined","2026-11-07")]);
+   const template=new File([new Uint8Array(await original.wb.xlsx.writeBuffer())],"original.xlsx");
+   await expect(eventsWorkbook([event("Hall A","S","Single hall show","2026-11-07")],
+     template,[],{singleWeek:"2026-11-02",preserveTemplateLayout:true}))
+     .rejects.toThrow(/does not occupy every room/);
+ });
  it("retains the original source week without attaching new Staffing tabs",async()=>{
    const week=event("BallRoom A","S","Leadership Cobb","2026-11-02");
    const original=await build([week]);
