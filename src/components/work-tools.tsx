@@ -241,7 +241,7 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
       await lib.validateApprovedTemplate(original,chosen.entries);
     }
     const blob=await lib.eventsWorkbook(chosen.entries,original,chosen.tasks,
-      chosen.singleWeek?{singleWeek:chosen.singleWeek}:{});
+      chosen.singleWeek?{singleWeek:chosen.singleWeek,preserveTemplateLayout:true}:{preserveTemplateLayout:true});
     return {blob,period:chosen.period,week:!!chosen.singleWeek};
   }
   async function exportSelected(kind:ExportFormat){
