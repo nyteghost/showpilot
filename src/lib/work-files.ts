@@ -698,6 +698,7 @@ export async function eventsWorkbook(entries: EventEntry[], existing?: File, tas
   let n = sheets.length;
   for (const w of weeks) {
     if (sheets.some((s) => mergeWeekSheet(s, w, tasks, plans))) continue;
+    if(existing)throw new Error("The exact engineering template has no worksheet for week "+w.monday+". A differently formatted worksheet will not be generated.");
     writeWeekSheet(wb.addWorksheet(`Week #${++n}`), w, tasks, plans);
   }
   if(!options.singleWeek)addStaffingSheets(wb, [...plans.values()]);
