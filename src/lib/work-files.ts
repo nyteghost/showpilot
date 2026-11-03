@@ -577,6 +577,24 @@ function mergeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans
       mid.value = e.mid; mid.alignment = { vertical: "middle", horizontal: "center" };
     }
   }
+  // An original Excel template may have old green/blue/red legend fills on
+  // completely empty room cells. These were leaking into new schedule exports
+  // and made all empty HALLS/BALLROOM cells look like move-ins.
+  // Clear only our known activity colors, and only on *empty* cells.
+  const oldActivityColors=new Set<string>(Object.values(LEGEND_FILL));
+  for(const label of [...HALL_ROWS,...BALLROOM_ROWS]){
+    const row=byLabel.get(label.toLowerCase());
+    if(!row)continue;
+    for(const c of cols.values()){
+      const cell=ws.getRow(row).getCell(c);
+      if(cell.value!==null&&cell.value!==undefined&&String(cell.value).trim()!=="")continue;
+      const fill=cell.fill;
+      if(fill?.type==="pattern"&&fill.fgColor?.argb&&oldActivityColors.has(fill.fgColor.argb.toUpperCase())){
+        cell.fill={type:"pattern",pattern:"none"};
+        cell.font={...cell.font,bold:false};
+      }
+    }
+  }
   mergeEventSpaces(ws, w, byLabel, cols);
   fitRows(ws);
   // Keep the original workbook borders. Its owner-defined style is canonical.
@@ -626,6 +644,9 @@ export async function eventsWorkbook(entries: EventEntry[], existing?: File, tas
       });
       if(matches.length!==1)throw new Error("The uploaded Excel template must contain exactly one worksheet for the selected week ("+options.singleWeek+"). Choose a matching template or export fresh.");
       for(const sheet of [...wb.worksheets])if(sheet!==matches[0])wb.removeWorksheet(sheet.id);
+      // Print-area defined names from removed sheets can leave invalid
+      // localSheetId pointers in standalone one-week XLSX files.
+      wb.definedNames.model=[];
     }
   }
   const sheets = wb.worksheets.filter((s) => /week/i.test(s.name));
