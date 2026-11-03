@@ -172,26 +172,42 @@ export function reportDateToIso(d: string): string {
 }
 
 /** Maps Ungerboeck spaces to the weekly sheet rows. */
-export function sheetRowFor(space: string): string {
-  const s = space.toLowerCase();
-  const hall = s.match(/exhibit hall ([a-d]+)/);
-  if (hall) return `Hall ${(hall[1] ?? "").toUpperCase()}`;
-  const ball = s.match(/ballroom ([a-g]+)/);
-  if (ball) return `BallRoom ${(ball[1] ?? "").toUpperCase()}`;
-  const conc = s.match(/concourse ([a-d]+)/);
-  if (conc) return `Concourse ${(conc[1] ?? "").toUpperCase()}`;
-  return space;
+/** Parse a CGC hall group without mistaking a ballroom for a hall.
+ * Ungerboeck may return "Exhibit Hall AB", "Hall AB", "Halls A/B", or
+ * an unqualified "AB" code (which the user's CGC convention assigns to halls).
+ */
+function hallLetters(space:string):string|null{
+ const compact=space.trim().replace(/\s*[/&,]\s*/g,"").replace(/\s+/g," ");
+ const match=compact.match(/(?:^|\b)(?:(?:Exhibit|Expo)\s+)?Halls?\s*([A-D]{1,4})(?=\b|\s*\()/i)
+   ?? compact.match(/^(?:EH|H)([A-D]{1,4})(?:\s*\([^)]*\))?$/i)
+   ?? compact.match(/^([A-D]{2,4})$/i);
+ if(!match)return null;
+ const letters=[...new Set((match[1]??"").toUpperCase())].sort().join("");
+ return letters||null;
 }
-
-/** Splits combined spaces into individual sheet rows: "Exhibit Hall AB" → Hall A, Hall B; Chattahoochee/BRFULL → BallRoom A–G. */
-export function expandSpace(space: string): string[] {
-  const s = space.toLowerCase();
-  if (/chattahoochee|brfull/.test(s)) return [..."ABCDEFG"].map((l) => `BallRoom ${l}`);
-  const hall = s.match(/exhibit hall ([a-d]+)\b/);
-  if (hall) return [...(hall[1] ?? "").toUpperCase()].map((l) => `Hall ${l}`);
-  const ball = s.match(/ballroom ([a-g]+)\b/);
-  if (ball) return [...(ball[1] ?? "").toUpperCase()].map((l) => `BallRoom ${l}`);
-  return [sheetRowFor(space)];
+function ballroomLetters(space:string):string|null{
+ const s=space.trim().replace(/\s*[/&,]\s*/g,"");
+ if(/chattahoochee|brfull/i.test(s))return "ABCDEFG";
+ const match=s.match(/\bBall\s*rooms?\s*([A-G]{1,7})(?=\b|\s*\()/i)
+   ?? s.match(/^BR([A-G]{1,7})(?:\s*\([^)]*\))?$/i);
+ return match?[...new Set((match[1]??"").toUpperCase())].sort().join(""):null;
+}
+/** Preserve combined locations in review; expand to physical room rows only on export. */
+export function sheetRowFor(space: string): string {
+ const ballroom=ballroomLetters(space);
+ if(ballroom)return "BallRoom "+ballroom;
+ const halls=hallLetters(space);
+ if(halls)return "Hall "+halls;
+ const conc=space.match(/\bconcourse\s*([A-D]{1,4})/i);
+ return conc?"Concourse "+(conc[1]??"").toUpperCase():space;
+}
+/** "Hall AB" is two physical rooms. Never output an invented "Other Spaces" section. */
+export function expandSpace(space:string):string[]{
+ const ballroom=ballroomLetters(space);
+ if(ballroom)return [...ballroom].map(c=>"BallRoom "+c);
+ const halls=hallLetters(space);
+ if(halls)return [...halls].map(c=>"Hall "+c);
+ return [sheetRowFor(space)];
 }
 
 /** Fixed sheet order: halls, ballrooms, then anything else. */
@@ -428,11 +444,10 @@ export function taskSuggestions(rows: EventRow[]): TaskNote[] {
 // ---------- air walls ----------
 const letters = (space: string): { section: "HALLS" | "BALLROOM"; group: string } | null => {
   const s = space.toLowerCase();
-  const hall = s.match(/exhibit hall ([a-d]+)\b/);
-  if (hall) return { section: "HALLS", group: (hall[1] ?? "").toUpperCase() };
-  if (/chattahoochee|brfull/.test(s)) return { section: "BALLROOM", group: "ABCDEFG" };
-  const ball = s.match(/ballroom ([a-g]+)\b/);
-  if (ball) return { section: "BALLROOM", group: (ball[1] ?? "").toUpperCase() };
+  const halls=hallLetters(s);
+  if(halls)return {section:"HALLS",group:halls};
+  const ball=ballroomLetters(s);
+  if(ball)return {section:"BALLROOM",group:ball};
   return null;
 };
 
