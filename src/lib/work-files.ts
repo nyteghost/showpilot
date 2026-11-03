@@ -561,6 +561,33 @@ function mergeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans
         owned.set(address,event.signature);
       }
     }
+    // An event in only Hall A cannot be written into an existing merged
+    // Hall A+B cell: Excel would silently show it in Hall B too. Require
+    // all physical rooms covered by the preserved merge to agree.
+    const roomByRow=new Map<number,string>();
+    for(const label of [...HALL_ROWS,...BALLROOM_ROWS]){
+      const row=byLabel.get(label.toLowerCase());
+      if(row)roomByRow.set(row,label);
+    }
+    for(const range of ws.model.merges??[]){
+      const [from,to]=range.split(":");
+      if(!from||!to)continue;
+      const top=ws.getCell(from),bottom=ws.getCell(to);
+      const column=Number(top.col);
+      if(column!==Number(bottom.col)||Number(top.row)===Number(bottom.row))continue;
+      const day=[...cols].find(([,c])=>c===column)?.[0];
+      if(!day)continue;
+      const i=w.dates.indexOf(day);
+      if(i<0)continue;
+      const rooms=Array.from({length:Number(bottom.row)-Number(top.row)+1},(_,n)=>roomByRow.get(Number(top.row)+n))
+        .filter((label):label is string=>!!label);
+      if(rooms.length<2)continue;
+      const signatures=rooms.map(label=>w.rows[label]?.[i]?.signature??"");
+      if(!signatures.some(Boolean))continue;
+      if(signatures.some(sig=>!sig||sig!==signatures[0]))
+        throw new Error("Source workbook merged-room conflict on "+day+" at "+range+
+          ": the selected show does not occupy every room already joined in the template. Review the original merged-room layout; ShowPilot will not modify it.");
+    }
   }else unmergeEventSpaces(ws, w, byLabel, cols);
   const write = (label: string, i: number, text: string, codes?: string[]) => {
     const date = w.dates[i];
