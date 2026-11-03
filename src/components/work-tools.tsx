@@ -106,16 +106,14 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
   const [status, setStatus] = useState("");
   const [blob, setBlob] = useState<Blob | null>(null);
   const [freshBlob, setFreshBlob] = useState<Blob | null>(null);
-  const [templateBusy,setTemplateBusy] = useState(false);
   const [exportBusy,setExportBusy] = useState(false);
   const [exportStatus,setExportStatus] = useState("");
   const [previewOpen,setPreviewOpen]=useState(false);
   const [previewBusy,setPreviewBusy]=useState(false);
-  const [previewKind,setPreviewKind]=useState<"fresh"|"original"|"approved">("fresh");
+  const [previewKind,setPreviewKind]=useState<"original"|"approved">("original");
   const [previewWorkbook,setPreviewWorkbook]=useState<PreviewWorkbook|null>(null);
   const [previewTitle,setPreviewTitle]=useState("");
 
-  const [templateMessage,setTemplateMessage] = useState("");
   const [suggestedEntries, setSuggestedEntries] = useState<EventEntry[]>([]);
   const [suggestedTasks, setSuggestedTasks] = useState<TaskNote[]>([]);
   const [draft, setDraft] = useState<ReviewDraft>(emptyReviewDraft);
@@ -225,7 +223,8 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
   const currentExportLabel=aiScope?.view==="week"?"selected week":
     aiScope?.view==="month"?"selected month":aiScope?.view==="day"?"selected day":"full report";
   const fileSuffix=(scope:string)=>scope.replace(/[^a-zA-Z0-9_-]/g,"-");
-  type ExportFormat="fresh"|"original"|"approved";
+  type ExportFormat="original"|"approved";
+  const selectedTemplate:ExportFormat=(previewKind==="original"&&source?.existing)?"original":(window.showpilotLocal?"approved":"original");
   // Preview and Download share exactly the same generator.
   async function makeSelectedWorkbook(kind:ExportFormat):Promise<{blob:Blob;period:string;week:boolean}>{
     if(!aiScope)throw new Error("Choose a Month, Week or Day in Edit Schedule first.");
@@ -245,38 +244,27 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
       chosen.singleWeek?{singleWeek:chosen.singleWeek}:{});
     return {blob,period:chosen.period,week:!!chosen.singleWeek};
   }
-  async function exportSelected(kind:"fresh"|"original"){
+  async function exportSelected(kind:ExportFormat){
     if(exportBusy)return;
     setExportBusy(true);setExportStatus("");
     try{
       const out=await makeSelectedWorkbook(kind);
       const lib=await import("@/lib/work-files");
-      lib.downloadBlob(out.blob,"ShowPilot-"+fileSuffix(out.period)+(kind==="original"?"-original-layout":"")+".xlsx");
-      setExportStatus("Exported "+currentExportLabel+(out.week?" as ONE worksheet.":"")+
-        (kind==="original"?" Original template formatting kept where possible.":""));
+      lib.downloadBlob(out.blob,"ShowPilot-"+fileSuffix(out.period)+"-original-template.xlsx");
+      setExportStatus("Exported "+currentExportLabel+" using the unchanged source workbook structure."+
+        (out.week?" Exactly one visible worksheet.":""));
     }catch(e){setExportStatus("Export not generated: "+(e as Error).message);}
     finally{setExportBusy(false)}
-  }
-  async function exportApprovedTemplate(){
-    if(templateBusy)return;
-    setTemplateBusy(true);setTemplateMessage("");
-    try{
-      const out=await makeSelectedWorkbook("approved");
-      const lib=await import("@/lib/work-files");
-      lib.downloadBlob(out.blob,"ShowPilot-"+fileSuffix(out.period)+"-approved-template.xlsx");
-      setTemplateMessage("Exported "+currentExportLabel+" using the approved template. Check existing event cells before publishing.");
-    }catch(e){setTemplateMessage("No template export created: "+(e as Error).message);}
-    finally{setTemplateBusy(false)}
   }
   async function openExcelPreview(){
     if(previewBusy)return;
     setPreviewBusy(true);setExportStatus("");
     try{
-      const out=await makeSelectedWorkbook(previewKind);
+      const out=await makeSelectedWorkbook(selectedTemplate);
       const lib=await import("@/lib/showpilot-excel-preview");
       const book=await lib.readWorkbookPreview(out.blob);
       setPreviewWorkbook(book);
-      setPreviewTitle(currentExportLabel+" · "+previewKind+" format");
+      setPreviewTitle(currentExportLabel+" · original engineering workbook");
       setPreviewOpen(true);
     }catch(e){setExportStatus("Could not preview Excel: "+(e as Error).message);}
     finally{setPreviewBusy(false)}
@@ -411,22 +399,23 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
             </details>
           )}
           <div className="flex flex-wrap items-center gap-2">
-            {freshBlob && <label className="flex items-center gap-2 text-sm">Preview format
-              <select value={previewKind} onChange={e=>setPreviewKind(e.target.value as "fresh"|"original"|"approved")} className="rounded border bg-background px-2 py-1.5" aria-label="Choose Excel preview format">
-                <option value="fresh">Fresh</option>
-                {merged && source?.existing && <option value="original">Original workbook</option>}
-                {window.showpilotLocal && <option value="approved">Approved template</option>}
+            {freshBlob && <label className="flex items-center gap-2 text-sm">Original template
+              <select value={selectedTemplate} onChange={e=>setPreviewKind(e.target.value as "original"|"approved")}
+                className="rounded border bg-background px-2 py-1.5" aria-label="Choose the exact engineering template">
+                {source?.existing && <option value="original">Uploaded Excel workbook</option>}
+                {window.showpilotLocal && <option value="approved">Saved master workbook (Settings &amp; AI)</option>}
               </select>
             </label>}
-            {freshBlob && <Button size="sm" variant="outline" disabled={!aiScope||previewBusy} onClick={()=>void openExcelPreview()}><Eye className="size-4"/> {previewBusy?"Building preview…":"Preview Excel"}</Button>}
-            {freshBlob && <Button size="sm" disabled={!aiScope||exportBusy} onClick={() => void exportSelected("fresh")}><Download className="size-4" /> {exportBusy?"Exporting…":"Download "+currentExportLabel+" (fresh)"}</Button>}
-            {freshBlob && window.showpilotLocal && <Button variant="outline" size="sm" disabled={templateBusy} onClick={()=>void exportApprovedTemplate()}><Download className="size-4"/> {templateBusy?"Checking template…":"Export using master template (preview)"}</Button>}
-            {exportStatus&&<p role="status" className="text-xs text-muted-foreground">{exportStatus}</p>}
-            {templateMessage&&<p role="status" className="text-xs text-amber-700 dark:text-amber-300">{templateMessage}</p>}
-            {blob && merged && <Button variant="outline" size="sm" disabled={!aiScope||exportBusy} onClick={() => void exportSelected("original")}><Download className="size-4" /> Update original template ({currentExportLabel})</Button>}
+            {freshBlob && <Button size="sm" variant="outline" disabled={!aiScope||previewBusy}
+              onClick={()=>void openExcelPreview()}><Eye className="size-4"/> {previewBusy?"Building preview…":"Preview original Excel"}</Button>}
+            {freshBlob && <Button size="sm" disabled={!aiScope||exportBusy}
+              onClick={()=>void exportSelected(selectedTemplate)}><Download className="size-4"/>
+              {exportBusy?"Exporting…":"Download "+currentExportLabel+" (original layout)"}</Button>}
+            {exportStatus&&<p role="status" className="w-full text-xs text-muted-foreground">{exportStatus}</p>}
           </div>
           <ShowPilotExcelPreview open={previewOpen} onOpenChange={setPreviewOpen} book={previewWorkbook} title={previewTitle}/>
-          {merged && <p className="text-xs text-amber-700 dark:text-amber-300">Updating an existing workbook preserves its typed shifts, PTO and task cells. Removed or changed events may remain in nonempty legacy cells; use the fresh reviewed export for an exact record of accepted events.</p>}
+          <p className="text-xs text-muted-foreground">ShowPilot uses the original Excel template as its layout authority. It will not create a new room section or reformat staffing, dates, colors or borders. Upload your master XLSX alongside the event report, or select it under Settings &amp; AI. Other spaces must be reviewed before export.</p>
+          {merged && <p className="text-xs text-amber-700 dark:text-amber-300">Your uploaded workbook remains the layout authority; existing shifts, PTO, notes and other untouched cells are retained. Review historical event cells before publishing. No alternate layout is generated.</p>}
         </>
       )}
     </div>
