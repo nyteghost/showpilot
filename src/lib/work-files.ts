@@ -604,6 +604,19 @@ export async function validateApprovedTemplate(file: File, entries: EventEntry[]
  const missing=[...new Set(entries.map(e=>e.date))].filter(d=>!covered.has(d));
  if(missing.length)throw new Error("The master workbook does not contain "+missing.length+" schedule dates (first: "+missing[0]+"). Use Fresh Export, or choose a matching approved workbook. Automatic template re-dating is not ready yet.");
 }
+/** The uploaded engineering workbook—not the fresh exporter—is authoritative.
+ * Refuse a layout mismatch rather than silently rebuilding the design.
+ */
+export function isExactCgcEngineeringTemplate(ws:XSheet):boolean {
+ const row=(n:number)=>String(ws.getRow(n).getCell(1).value??"").trim().toUpperCase();
+ return [
+  [54,"HALLS"],[55,"HALL A"],[56,"HALL B"],[57,"HALL C"],[58,"HALL D"],
+  [59,"TASKS"],[60,"BALLROOM"],[61,"BALLROOM A"],[62,"BALLROOM B"],
+  [63,"BALLROOM E"],[64,"BALLROOM G"],[65,"BALLROOM C"],[66,"BALLROOM D"],
+  [67,"BALLROOM F"],[68,"TASKS"],[69,"LOCATION"]
+ ].every(([n,name])=>row(Number(n))===name);
+}
+
 /** Builds the weekly engineering workbook (Week #1, #2 …) or, given an existing schedule, fills its event rows. */
 export async function eventsWorkbook(entries: EventEntry[], existing?: File, tasks: TaskNote[] = [], options: {singleWeek?:string} = {}): Promise<Blob> {
   const module = await import("exceljs");
