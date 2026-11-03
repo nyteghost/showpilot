@@ -76,7 +76,7 @@ To start a new release series, update the major/minor parts of the source `packa
 - Optionally import an existing monthly Excel schedule as a template to preserve its formatting and already entered work.
 - Classify and summarize move-ins, exhibitor move-ins, shows and move-outs, and suggest engineering preparation tasks.
 - Review original report functions, edit proposed entries, compare changes, approve additions and export a new/reviewed **Excel workbook**.
-- Switch the review between **Month**, **Week (Monday–Sunday)**, **Day**, or **All dates**, with previous/next-week navigation. The choice filters visible functions, entries and tasks only; **saved review projects and Excel exports still contain the entire reviewed report**.
+- Switch the review between **Month**, **Week (Monday–Sunday)**, **Day**, and **All dates**. The selected period now controls Excel downloads: Week produces one weekly worksheet only (no other weeks or staffing-summary tabs); Month produces only weeks containing selected-month events; All dates exports the full reviewed report. **Saved review projects continue to contain the entire source and all edits**. For the closest match to your original formatting, upload a matching monthly engineering workbook and choose Update original template; the fresh exporter uses a compact CGC layout but cannot perfectly replicate a workbook that was not uploaded.
 - Save or resume a schedule review as a `.json` project file. If the resumed review needs the original monthly template, attach that template again.
 - Show staffing requirements and work coverage as reviewable suggestions. Always verify the actual operating requirements, assigned personnel and special-event constraints.
 
