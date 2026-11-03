@@ -647,10 +647,29 @@ export async function eventsWorkbook(entries: EventEntry[], existing?: File, tas
         return first===options.singleWeek;
       });
       if(matches.length!==1)throw new Error("The uploaded Excel template must contain exactly one worksheet for the selected week ("+options.singleWeek+"). Choose a matching template or export fresh.");
-      for(const sheet of [...wb.worksheets])if(sheet!==matches[0])wb.removeWorksheet(sheet.id);
-      // Print-area defined names from removed sheets can leave invalid
-      // localSheetId pointers in standalone one-week XLSX files.
+      const selected=matches[0]!;
+      const originalPrintArea=selected.pageSetup.printArea;
+      // Template dates B5:H5 reference the Extra sheet. Convert only these
+      // seven cached dates to literal dates before deleting unused sheets.
+      // This preserves displayed dates and styles without orphaned references.
+      let header=0;
+      selected.eachRow((row,n)=>{
+        if(!header&&String(row.getCell(2).value??"").trim().toUpperCase()==="MON")header=n;
+      });
+      if(!header)throw new Error("Template date header is missing.");
+      for(let col=2;col<=8;col++){
+        const cell=selected.getRow(header+1).getCell(col);
+        const iso=cellDate(cell.value);
+        if(!iso)throw new Error("The template date "+cell.address+" has no cached value. Re-save the original workbook in Excel and retry.");
+        const style={...cell.style};
+        cell.value=toDate(iso);
+        cell.style=style;
+      }
+      for(const sheet of [...wb.worksheets])if(sheet!==selected)wb.removeWorksheet(sheet.id);
+      // Remove print areas pointing at deleted sheets. Restore the surviving
+      // week print range, if the user's original worksheet defined one.
       wb.definedNames.model=[];
+      if(originalPrintArea)selected.pageSetup.printArea=originalPrintArea;
     }
   }
   const sheets = wb.worksheets.filter((ws) => /^Week\s*#\d+$/i.test(ws.name));
