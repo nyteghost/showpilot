@@ -594,8 +594,9 @@ function mergeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans
       if (text && !String(cell.value ?? "").trim()) { cell.value = text; cell.alignment = { wrapText: true, vertical: "middle", horizontal: "center" }; }
     }
   }
-  // Engineer shifts: only empty cells are filled; anything you typed (shift, PTO, OFF) stays.
-  for (const p of ENGINEER_ROSTER) {
+  // Engineer shifts in the uploaded workbook are authoritative.
+  // Even blank shift cells stay blank when exact-template mode is enabled.
+  if(!preserveTemplateLayout)for (const p of ENGINEER_ROSTER) {
     const nr = byLabel.get(p.name.toLowerCase());
     if (!nr) continue;
     for (const [date, c] of cols) {
