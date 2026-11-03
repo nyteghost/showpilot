@@ -41,12 +41,13 @@ export function previewSheet(sheet:Worksheet):PreviewSheet{
   const [from,to]=range.split(":");
   if(!from||!to)continue;
   const a=sheet.getCell(from),b=sheet.getCell(to);
-  const r=Math.max(1,Math.min(maxRows+1,b.row-a.row+1));
-  const c=Math.max(1,Math.min(maxCols+1,b.col-a.col+1));
-  if(a.row>maxRows||a.col>maxCols)continue;
-  spans.set(a.row+":"+a.col,{r,c});
-  for(let y=a.row;y<a.row+r;y++)for(let x=a.col;x<a.col+c;x++){
-   if(y!==a.row||x!==a.col)skip.add(y+":"+x);
+  const top=Number(a.row),left=Number(a.col),bottom=Number(b.row),right=Number(b.col);
+  const r=Math.max(1,Math.min(maxRows-top+1,bottom-top+1));
+  const c=Math.max(1,Math.min(maxCols-left+1,right-left+1));
+  if(top>maxRows||left>maxCols)continue;
+  spans.set(top+":"+left,{r,c});
+  for(let y=top;y<top+r;y++)for(let x=left;x<left+c;x++){
+   if(y!==top||x!==left)skip.add(y+":"+x);
   }
  }
  const rows:PreviewRow[]=[];
