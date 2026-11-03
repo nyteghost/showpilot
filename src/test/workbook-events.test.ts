@@ -245,3 +245,51 @@ describe("authoritative November engineering template hall mapping",()=>{
       .rejects.toThrow(/unmapped|review/i);
  });
 });
+
+
+describe("exact November 2026 engineering workbook fidelity",()=>{
+ it("uses existing merged Hall A/B and retains original staffing and formatting",async()=>{
+   const front=event("Hall AB","S","Front Row Card Show","2026-11-07");
+   const source=await build([front]);
+   const ws=source.ws;
+   ws.getCell("A1").value="SOURCE WORKBOOK BRANDING — KEEP EXACT";
+   ws.getCell("B18").value="PTO";
+   ws.getCell("B18").font={name:"Arial",size:12,bold:true};
+   ws.getCell("H55").fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF224466"}};
+   ws.getColumn(1).width=24.5;
+   ws.getRow(55).height=72;
+   const mergeBefore=[...(ws.model.merges??[])];
+   const template=new File([new Uint8Array(await source.wb.xlsx.writeBuffer())],"original-master.xlsx");
+   const result=await eventsWorkbook([front],template,[],{singleWeek:"2026-11-02",preserveTemplateLayout:true});
+   const roundtrip=new ExcelJS.Workbook();await roundtrip.xlsx.load(await result.arrayBuffer());
+   expect(roundtrip.worksheets).toHaveLength(1);
+   const exported=roundtrip.worksheets[0]!;
+   expect(exported.getCell("A1").value).toBe("SOURCE WORKBOOK BRANDING — KEEP EXACT");
+   expect(exported.getCell("B18").value).toBe("PTO");
+   expect(exported.getCell("B18").font).toMatchObject({name:"Arial",size:12,bold:true});
+   expect(exported.getColumn(1).width).toBe(24.5);
+   expect(exported.getRow(55).height).toBe(72);
+   expect(exported.model.merges).toEqual(mergeBefore);
+   expect(exported.getCell("G55").value).toContain("Front Row Card Show");
+   expect(exported.getCell("G56").master.address).toBe(exported.getCell("G55").address);
+   expect(exported.getCell("H55").fill).toMatchObject({fgColor:{argb:"FF224466"}});
+ });
+ it("detects conflicting events when source template merges two rooms",async()=>{
+   const original=await build([event("Hall AB","S","Old show","2026-11-07")]);
+   const source=new File([new Uint8Array(await original.wb.xlsx.writeBuffer())],"master.xlsx");
+   const conflicting=[
+     event("Hall A","S","Front Row Card Show","2026-11-07"),
+     event("Hall B","S","A different event","2026-11-07"),
+   ];
+   await expect(eventsWorkbook(conflicting,source,[],{singleWeek:"2026-11-02",preserveTemplateLayout:true}))
+      .rejects.toThrow(/merged-room conflict/);
+ });
+ it("retains the original source week without attaching new Staffing tabs",async()=>{
+   const week=event("BallRoom A","S","Leadership Cobb","2026-11-02");
+   const original=await build([week]);
+   const template=new File([new Uint8Array(await original.wb.xlsx.writeBuffer())],"original.xlsx");
+   const output=await eventsWorkbook([week],template,[],{preserveTemplateLayout:true});
+   const wb=new ExcelJS.Workbook();await wb.xlsx.load(await output.arrayBuffer());
+   expect(wb.worksheets.map(s=>s.name)).toEqual(original.wb.worksheets.map(s=>s.name));
+ });
+});
