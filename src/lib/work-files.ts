@@ -437,9 +437,13 @@ function writeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans
     const row=ws.getRow(idx);
     row.height=label.startsWith("ballroom")?54:44;
     row.getCell(1).font={name:"Calibri",size:9,bold:true};
+    const activity=Object.entries(w.rows).find(([room])=>room.toLowerCase()===label)?.[1];
     for(let c=2;c<=8;c++){
       const cell=row.getCell(c);
-      cell.font={...cell.font,name:"Calibri",size:9};
+      const codes=activity?.[c-2]?.codes??[];
+      const fill=legendFill(codes);
+      cell.font={...cell.font,name:"Calibri",size:9,bold:codes.includes("S"),
+        ...(fill===LEGEND_FILL.nonShow?{color:{argb:"FFFFFFFF"}}:{})};
       cell.alignment={vertical:"middle",horizontal:"center",wrapText:true};
     }
   }
