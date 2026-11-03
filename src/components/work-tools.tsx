@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { Briefcase, CalendarClock, CalendarDays, CalendarPlus, CalendarSync, Download, ExternalLink, FileUp, GitBranch, Layers, Map as MapIcon, Store } from "lucide-react";
+import { Briefcase, CalendarClock, CalendarDays, CalendarPlus, CalendarSync, Download, ExternalLink, FileUp, GitBranch, Layers, Eye, Map as MapIcon, Store } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -10,6 +10,8 @@ import { StandaloneVendors } from "@/components/showpilot-vendors";
 import { FloorMapPanel } from "@/components/floor-map-panel";
 import { scopeShowPilotRows } from "@/lib/showpilot-venue";
 import { ScheduleReview } from "@/components/showpilot-review-panel";
+import { ShowPilotExcelPreview } from "@/components/showpilot-excel-preview";
+import type {PreviewWorkbook} from "@/lib/showpilot-excel-preview";
 import type {ReviewDateScope} from "@/lib/showpilot-review-months";
 import {scopedScheduleData} from "@/lib/showpilot-export-scope";
 import { AiTaskAssistant } from "@/components/showpilot-ai-task-assistant";
@@ -107,6 +109,12 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
   const [templateBusy,setTemplateBusy] = useState(false);
   const [exportBusy,setExportBusy] = useState(false);
   const [exportStatus,setExportStatus] = useState("");
+  const [previewOpen,setPreviewOpen]=useState(false);
+  const [previewBusy,setPreviewBusy]=useState(false);
+  const [previewKind,setPreviewKind]=useState<"fresh"|"original"|"approved">("fresh");
+  const [previewWorkbook,setPreviewWorkbook]=useState<PreviewWorkbook|null>(null);
+  const [previewTitle,setPreviewTitle]=useState("");
+
   const [templateMessage,setTemplateMessage] = useState("");
   const [suggestedEntries, setSuggestedEntries] = useState<EventEntry[]>([]);
   const [suggestedTasks, setSuggestedTasks] = useState<TaskNote[]>([]);
@@ -217,38 +225,61 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
   const currentExportLabel=aiScope?.view==="week"?"selected week":
     aiScope?.view==="month"?"selected month":aiScope?.view==="day"?"selected day":"full report";
   const fileSuffix=(scope:string)=>scope.replace(/[^a-zA-Z0-9_-]/g,"-");
-  async function exportSelected(kind:"fresh"|"original") {
-    if(exportBusy||!aiScope)return;
+  type ExportFormat="fresh"|"original"|"approved";
+  // Preview and Download share exactly the same generator.
+  async function makeSelectedWorkbook(kind:ExportFormat):Promise<{blob:Blob;period:string;week:boolean}>{
+    if(!aiScope)throw new Error("Choose a Month, Week or Day in Edit Schedule first.");
+    const chosen=scopedScheduleData(entries,tasks,aiScope);
+    const lib=await import("@/lib/work-files");
+    let original:File|undefined;
+    if(kind==="original"){
+      original=source?.existing;
+      if(!original)throw new Error("Upload your original engineering schedule XLSX alongside the event report to use its formatting.");
+    }else if(kind==="approved"){
+      const bytes=await window.showpilotLocal?.readTemplate();
+      if(!bytes)throw new Error("Choose an approved master Excel template in Settings & AI first.");
+      original=new File([new Uint8Array(bytes)],"approved-schedule-template.xlsx");
+      await lib.validateApprovedTemplate(original,chosen.entries);
+    }
+    const blob=await lib.eventsWorkbook(chosen.entries,original,chosen.tasks,
+      chosen.singleWeek?{singleWeek:chosen.singleWeek}:{});
+    return {blob,period:chosen.period,week:!!chosen.singleWeek};
+  }
+  async function exportSelected(kind:"fresh"|"original"){
+    if(exportBusy)return;
     setExportBusy(true);setExportStatus("");
-    try {
-      const chosen=scopedScheduleData(entries,tasks,aiScope);
-      const original=kind==="original"?source?.existing:undefined;
-      if(kind==="original"&&!original)throw new Error("No original engineering template was uploaded.");
+    try{
+      const out=await makeSelectedWorkbook(kind);
       const lib=await import("@/lib/work-files");
-      const output=await lib.eventsWorkbook(chosen.entries,original,chosen.tasks,
-        chosen.singleWeek?{singleWeek:chosen.singleWeek}:{});
-      lib.downloadBlob(output,"ShowPilot-"+fileSuffix(chosen.period)+(kind==="original"?"-original-layout":"")+".xlsx");
-      setExportStatus("Exported "+currentExportLabel+(chosen.singleWeek?" as ONE worksheet.":"")+
-        (original?" Original template formatting was retained where possible.":""));
+      lib.downloadBlob(out.blob,"ShowPilot-"+fileSuffix(out.period)+(kind==="original"?"-original-layout":"")+".xlsx");
+      setExportStatus("Exported "+currentExportLabel+(out.week?" as ONE worksheet.":"")+
+        (kind==="original"?" Original template formatting kept where possible.":""));
     }catch(e){setExportStatus("Export not generated: "+(e as Error).message);}
     finally{setExportBusy(false)}
   }
   async function exportApprovedTemplate(){
-    if(!window.showpilotLocal||templateBusy||!aiScope)return;
+    if(templateBusy)return;
     setTemplateBusy(true);setTemplateMessage("");
     try{
-      const chosen=scopedScheduleData(entries,tasks,aiScope);
-      const bytes=await window.showpilotLocal.readTemplate();
-      if(!bytes)throw new Error("Choose an approved master workbook in Settings & AI first.");
-      const file=new File([new Uint8Array(bytes)],"approved-schedule-template.xlsx");
+      const out=await makeSelectedWorkbook("approved");
       const lib=await import("@/lib/work-files");
-      await lib.validateApprovedTemplate(file,chosen.entries);
-      const output=await lib.eventsWorkbook(chosen.entries,file,chosen.tasks,
-        chosen.singleWeek?{singleWeek:chosen.singleWeek}:{});
-      lib.downloadBlob(output,"ShowPilot-"+fileSuffix(chosen.period)+"-approved-template.xlsx");
+      lib.downloadBlob(out.blob,"ShowPilot-"+fileSuffix(out.period)+"-approved-template.xlsx");
       setTemplateMessage("Exported "+currentExportLabel+" using the approved template. Check existing event cells before publishing.");
     }catch(e){setTemplateMessage("No template export created: "+(e as Error).message);}
-    finally{setTemplateBusy(false);}
+    finally{setTemplateBusy(false)}
+  }
+  async function openExcelPreview(){
+    if(previewBusy)return;
+    setPreviewBusy(true);setExportStatus("");
+    try{
+      const out=await makeSelectedWorkbook(previewKind);
+      const lib=await import("@/lib/showpilot-excel-preview");
+      const book=await lib.readWorkbookPreview(out.blob);
+      setPreviewWorkbook(book);
+      setPreviewTitle(currentExportLabel+" · "+previewKind+" format");
+      setPreviewOpen(true);
+    }catch(e){setExportStatus("Could not preview Excel: "+(e as Error).message);}
+    finally{setPreviewBusy(false)}
   }
   function reviewChanged(next: ReviewDraft) {
     saveDraftForCurrent(next);
@@ -379,13 +410,22 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
               <ul className="mt-1 space-y-0.5">{tasks.map((t, i) => <li key={i}><span className="text-muted-foreground">{dayLabel(t.date)}:</span> {t.text}</li>)}</ul>
             </details>
           )}
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {freshBlob && <label className="flex items-center gap-2 text-sm">Preview format
+              <select value={previewKind} onChange={e=>setPreviewKind(e.target.value as "fresh"|"original"|"approved")} className="rounded border bg-background px-2 py-1.5" aria-label="Choose Excel preview format">
+                <option value="fresh">Fresh</option>
+                {merged && source?.existing && <option value="original">Original workbook</option>}
+                {window.showpilotLocal && <option value="approved">Approved template</option>}
+              </select>
+            </label>}
+            {freshBlob && <Button size="sm" variant="outline" disabled={!aiScope||previewBusy} onClick={()=>void openExcelPreview()}><Eye className="size-4"/> {previewBusy?"Building preview…":"Preview Excel"}</Button>}
             {freshBlob && <Button size="sm" disabled={!aiScope||exportBusy} onClick={() => void exportSelected("fresh")}><Download className="size-4" /> {exportBusy?"Exporting…":"Download "+currentExportLabel+" (fresh)"}</Button>}
             {freshBlob && window.showpilotLocal && <Button variant="outline" size="sm" disabled={templateBusy} onClick={()=>void exportApprovedTemplate()}><Download className="size-4"/> {templateBusy?"Checking template…":"Export using master template (preview)"}</Button>}
             {exportStatus&&<p role="status" className="text-xs text-muted-foreground">{exportStatus}</p>}
             {templateMessage&&<p role="status" className="text-xs text-amber-700 dark:text-amber-300">{templateMessage}</p>}
             {blob && merged && <Button variant="outline" size="sm" disabled={!aiScope||exportBusy} onClick={() => void exportSelected("original")}><Download className="size-4" /> Update original template ({currentExportLabel})</Button>}
           </div>
+          <ShowPilotExcelPreview open={previewOpen} onOpenChange={setPreviewOpen} book={previewWorkbook} title={previewTitle}/>
           {merged && <p className="text-xs text-amber-700 dark:text-amber-300">Updating an existing workbook preserves its typed shifts, PTO and task cells. Removed or changed events may remain in nonempty legacy cells; use the fresh reviewed export for an exact record of accepted events.</p>}
         </>
       )}
