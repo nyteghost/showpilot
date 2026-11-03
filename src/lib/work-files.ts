@@ -532,7 +532,7 @@ function engineerCell(plans: Map<string, DayPlan>, name: string, date: string): 
   return managed ? { top: "", mid: "OFF" } : null;
 }
 
-function mergeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans: Map<string, DayPlan> = new Map()): boolean {
+function mergeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans: Map<string, DayPlan> = new Map(), preserveTemplateLayout = false): boolean {
   let dayRow = 0;
   ws.eachRow((row, n) => { if (!dayRow && String(row.getCell(2).value ?? "").trim().toUpperCase() === "MON") dayRow = n; });
   if (!dayRow) return false;
@@ -541,7 +541,27 @@ function mergeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans
   if (!w.dates.some((d) => cols.has(d))) return false;
   const byLabel = new Map<string, number>();
   ws.eachRow((row, n) => { const l = String(row.getCell(1).value ?? "").trim().toLowerCase(); if (l && !byLabel.has(l)) byLabel.set(l, n); });
-  unmergeEventSpaces(ws, w, byLabel, cols);
+  if(preserveTemplateLayout){
+    // Read-only merge geometry: two distinct shows may not share one master cell.
+    // The caller must update the source workbook or resolve the room conflict.
+    const owned=new Map<string,string>();
+    for(const [label,dayCells] of Object.entries(w.rows)){
+      const roomRow=byLabel.get(label.toLowerCase());
+      if(!roomRow)continue;
+      for(let i=0;i<w.dates.length;i++){
+        const day=w.dates[i]!;
+        const col=cols.get(day);
+        const event=dayCells[i];
+        if(!col||!event?.text)continue;
+        const address=ws.getCell(roomRow,col).master.address;
+        const previous=owned.get(address);
+        if(previous&&previous!==event.signature)
+          throw new Error("Source workbook merged-room conflict on "+day+" at "+address+
+            ". Different shows occupy the same merged cell; edit the original Excel room merge before exporting.");
+        owned.set(address,event.signature);
+      }
+    }
+  }else unmergeEventSpaces(ws, w, byLabel, cols);
   const write = (label: string, i: number, text: string, codes?: string[]) => {
     const date = w.dates[i];
     const r = byLabel.get(label.toLowerCase()); const c = date ? cols.get(date) : undefined;
@@ -581,8 +601,8 @@ function mergeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans
   // The uploaded workbook is the formatting authority. Do NOT clear empty
   // cells, change original border styles, or resize its rows when merging.
   // Only the approved event cells and any necessary room merges may change.
-  mergeEventSpaces(ws, w, byLabel, cols);
-  // Keep the original workbook borders. Its owner-defined style is canonical.
+  if(!preserveTemplateLayout)mergeEventSpaces(ws, w, byLabel, cols);
+  // Keep original merged cells, borders, fills and row heights when in exact-template mode.
   return true;
 }
 
@@ -619,7 +639,7 @@ export function isExactCgcEngineeringTemplate(ws:XSheet):boolean {
 }
 
 /** Builds the weekly engineering workbook (Week #1, #2 …) or, given an existing schedule, fills its event rows. */
-export async function eventsWorkbook(entries: EventEntry[], existing?: File, tasks: TaskNote[] = [], options: {singleWeek?:string} = {}): Promise<Blob> {
+export async function eventsWorkbook(entries: EventEntry[], existing?: File, tasks: TaskNote[] = [], options: {singleWeek?:string;preserveTemplateLayout?:boolean} = {}): Promise<Blob> {
   const module = await import("exceljs");
   const ExcelJS = module.default ?? module;
   const wb: XWorkbook = new ExcelJS.Workbook();
@@ -698,7 +718,7 @@ export async function eventsWorkbook(entries: EventEntry[], existing?: File, tas
   const plans = new Map(planWeeks(dates, sheetEntries, avail, undefined, airwallHolds(tasks, sheetEntries)).map((p) => [p.date, p] as const));
   let n = sheets.length;
   for (const w of weeks) {
-    if (sheets.some((s) => mergeWeekSheet(s, w, tasks, plans))) continue;
+    if (sheets.some((s) => mergeWeekSheet(s, w, tasks, plans,!!options.preserveTemplateLayout))) continue;
     if(existing)throw new Error("The exact engineering template has no worksheet for week "+w.monday+". A differently formatted worksheet will not be generated.");
     writeWeekSheet(wb.addWorksheet(`Week #${++n}`), w, tasks, plans);
   }
