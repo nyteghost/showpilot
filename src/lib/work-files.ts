@@ -273,7 +273,10 @@ const toDate = (iso: string) => new Date(`${iso}T00:00:00Z`);
 function paint(cell: import("exceljs").Cell, codes: string[]) {
   const color = legendFill(codes);
   cell.fill = color ? { type: "pattern", pattern: "solid", fgColor: { argb: color } } : { type: "pattern", pattern: "none" };
-  cell.font = { name: "Aptos Narrow", size: 20, bold: codes.includes("S"), ...(color === LEGEND_FILL.nonShow ? { color: { argb: "FFFFFFFF" } } : {}) };
+  // Preserve the source workbook's font size, weight and layout when using an
+  // approved template; a painted event must not suddenly become 20-point text.
+  cell.font = { ...cell.font, name: cell.font?.name || "Calibri", size: cell.font?.size || 9,
+    bold: codes.includes("S"), ...(color === LEGEND_FILL.nonShow ? { color: { argb: "FFFFFFFF" } } : {}) };
 }
 
 const THICK = { style: "thick" as const, color: { argb: "FF000000" } };
@@ -572,7 +575,7 @@ function mergeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans
   }
   mergeEventSpaces(ws, w, byLabel, cols);
   fitRows(ws);
-  outline(ws, dayRow, Math.max(byLabel.get("other") ?? 0, ws.rowCount), 1, 8);
+  // Keep the original workbook borders. Its owner-defined style is canonical.
   return true;
 }
 
