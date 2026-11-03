@@ -393,7 +393,8 @@ function writeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans
   };
   section("HALLS", HALL_ROWS);
   section("BALLROOM", BALLROOM_ROWS);
-  // No additional room sections are ever generated; use original CGC rows only.
+  // Keep the owner's existing LOCATION heading at row 69. No invented room area.
+  put(r++, ["LOCATION", ...DAYS]);
   // Compact reference-sheet styling: three short rows per employee, dark
   // section bands, highlighted dates and distinct hall/ballroom band colors.
   const edge = {style:"thin" as const,color:{argb:"FF1C1C1C"}};
@@ -701,7 +702,7 @@ export async function eventsWorkbook(entries: EventEntry[], existing?: File, tas
     if(existing)throw new Error("The exact engineering template has no worksheet for week "+w.monday+". A differently formatted worksheet will not be generated.");
     writeWeekSheet(wb.addWorksheet(`Week #${++n}`), w, tasks, plans);
   }
-  if(!options.singleWeek)addStaffingSheets(wb, [...plans.values()]);
+  if(!options.singleWeek && !existing)addStaffingSheets(wb, [...plans.values()]);
   const out = await wb.xlsx.writeBuffer();
   return new Blob([out], { type: XLSX_MIME });
 }
