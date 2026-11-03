@@ -8,6 +8,8 @@ import type { EventRow } from "./work-tools";
  */
 const CONVENTION_SPACES = [
   /\bexhibit\s*halls?\s*[a-d]{1,4}\b/i,
+  /\bhalls?\s*[a-d]{1,4}\b/i,
+  /^\s*(?:EH|H)?[a-d]{2,4}\s*$/i,
   /\bhalls?\s+[a-d]{1,4}\b/i,
   /\bball\s*rooms?\s*[a-g]{1,7}\b/i,
   /\bconcourse\s*[a-d]{1,4}\b/i,
