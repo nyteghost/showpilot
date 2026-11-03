@@ -572,8 +572,14 @@ function mergeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans
     if (codes) paint(cell, codes);
   };
   w.dates.forEach((_, i) => {
-    if (w.cgc[i] !== "DARK") { write("CGC", i, w.cgc[i]!); write("CCC", i, w.cgc[i]!); } write("Escalator", i, w.escalator[i]!); write("Service Desk", i, w.serviceDesk[i]!, ["MI"]);
-    for (const [label, cells] of Object.entries(w.rows)) write(label, i, cells[i]!.text, cells[i]!.codes);
+    // In exact-template mode, the existing CGC, escalator and desk rows
+    // remain precisely as supplied in the uploaded workbook.
+    if(!preserveTemplateLayout){
+      if(w.cgc[i]!=="DARK"){write("CGC",i,w.cgc[i]!);write("CCC",i,w.cgc[i]!);}
+      write("Escalator",i,w.escalator[i]!);
+      write("Service Desk",i,w.serviceDesk[i]!,["MI"]);
+    }
+    for(const [label,cells] of Object.entries(w.rows))write(label,i,cells[i]!.text,cells[i]!.codes);
   });
   // Task suggestions go in the empty cells of the Tasks row under HALLS and BALLROOM; anything already typed there is kept.
   for (const [section, lastRow] of [["HALLS", "hall d"], ["BALLROOM", "ballroom f"]] as const) {
