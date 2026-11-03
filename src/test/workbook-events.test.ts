@@ -185,3 +185,36 @@ describe("Week-view Excel export and compact CGC layout",()=>{
    await expect(eventsWorkbook([selected],file,[],{singleWeek:"2026-11-09"})).rejects.toThrow(/selected week/);
  });
 });
+
+
+describe("template blank-room coloring and workbook readback",()=>{
+ it("clears stale activity paint in blank rooms, retaining live event colors and original borders",async()=>{
+   const source=await build([event("Hall A","MI","Older setup")]);
+   const blank=source.room("Hall B");
+   blank.value=null;
+   blank.fill={type:"pattern",pattern:"solid",fgColor:{argb:LEGEND_FILL.moveIn}};
+   blank.border={top:{style:"dashed",color:{argb:"FFAA4455"}}};
+   const template=new File([new Uint8Array(await source.wb.xlsx.writeBuffer())],"staffing.xlsx");
+   const output=await eventsWorkbook([event("Hall A","S","Live show")],template);
+   const check=new ExcelJS.Workbook();
+   await check.xlsx.load(await output.arrayBuffer());
+   const ws=check.worksheets[0]!;
+   let rowIndex=0;
+   ws.eachRow((row,i)=>{if(row.getCell(1).value==="Hall B")rowIndex=i;});
+   expect(rowIndex).toBeGreaterThan(0);
+   const cell=ws.getCell(rowIndex,2);
+   expect(cell.value).toBeNull();
+   expect(cell.fill).toMatchObject({type:"pattern",pattern:"none"});
+   expect(cell.border.top?.style).toBe("dashed");
+ });
+ it("writes a valid worksheet with stable first-week dates after trimming existing tabs",async()=>{
+   const template=await build([event("Hall A","S","week one","2026-11-02"),
+     event("Hall A","S","week two","2026-11-09")]);
+   const src=new File([new Uint8Array(await template.wb.xlsx.writeBuffer())],"staffing.xlsx");
+   const output=await eventsWorkbook([event("Hall A","S","week two","2026-11-09")],src,[],
+     {singleWeek:"2026-11-09"});
+   const verify=new ExcelJS.Workbook();await verify.xlsx.load(await output.arrayBuffer());
+   expect(verify.worksheets).toHaveLength(1);
+   expect(verify.worksheets[0]!.name).toBe("Week #2");
+ });
+});
