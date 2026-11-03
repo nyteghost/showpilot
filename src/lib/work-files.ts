@@ -566,7 +566,9 @@ function mergeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans
     const date = w.dates[i];
     const r = byLabel.get(label.toLowerCase()); const c = date ? cols.get(date) : undefined;
     if (!r || !c || !text) return;
-    const cell = ws.getRow(r).getCell(c); cell.value = text; cell.alignment = { wrapText: true, vertical: "middle", horizontal: "center" };
+    const cell = ws.getRow(r).getCell(c);
+    cell.value = text;
+    if(!preserveTemplateLayout)cell.alignment = { wrapText: true, vertical: "middle", horizontal: "center" };
     if (codes) paint(cell, codes);
   };
   w.dates.forEach((_, i) => {
