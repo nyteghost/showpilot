@@ -188,7 +188,7 @@ describe("Week-view Excel export and compact CGC layout",()=>{
 
 
 describe("template blank-room coloring and workbook readback",()=>{
- it("clears stale activity paint in blank rooms, retaining live event colors and original borders",async()=>{
+ it("preserves source template fill and border in an untouched blank room",async()=>{
    const source=await build([event("Hall A","MI","Older setup")]);
    const blank=source.room("Hall B");
    blank.value=null;
@@ -204,7 +204,7 @@ describe("template blank-room coloring and workbook readback",()=>{
    expect(rowIndex).toBeGreaterThan(0);
    const cell=ws.getCell(rowIndex,2);
    expect(cell.value).toBeNull();
-   expect(cell.fill).toMatchObject({type:"pattern",pattern:"none"});
+   expect(cell.fill).toMatchObject({type:"pattern",pattern:"solid",fgColor:{argb:LEGEND_FILL.moveIn}});
    expect(cell.border.top?.style).toBe("dashed");
  });
  it("writes a valid worksheet with stable first-week dates after trimming existing tabs",async()=>{
