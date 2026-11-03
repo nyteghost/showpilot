@@ -393,7 +393,7 @@ function writeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans
   };
   section("HALLS", HALL_ROWS);
   section("BALLROOM", BALLROOM_ROWS);
-  if (w.other.length) section("OTHER SPACES", w.other);
+  // No additional room sections are ever generated; use original CGC rows only.
   // Compact reference-sheet styling: three short rows per employee, dark
   // section bands, highlighted dates and distinct hall/ballroom band colors.
   const edge = {style:"thin" as const,color:{argb:"FF1C1C1C"}};
@@ -625,7 +625,14 @@ export async function eventsWorkbook(entries: EventEntry[], existing?: File, tas
   const module = await import("exceljs");
   const ExcelJS = module.default ?? module;
   const wb: XWorkbook = new ExcelJS.Workbook();
-  // Keep combined rooms as one review item, but place them in each physical room on the Excel sheets.
+  // Only the actual CGC Hall A-D and Ballroom A-G rows exist in the user's
+  // workbook. Never invent an "Other Spaces" block; fail visibly so the venue
+  // alias can be reviewed rather than dropping or misplacing an event.
+  const allowedRooms=new Set([...HALL_ROWS,...BALLROOM_ROWS]);
+  const unknown=[...new Set(entries.flatMap(e=>expandSpace(e.space).filter(room=>!allowedRooms.has(room))))];
+  if(unknown.length)throw new Error("Unmapped CGC space(s): "+unknown.join(", ")+
+    ". Review the source room labels; the uploaded engineering template has no Other Spaces section.");
+  // Expand a combined hall such as "Hall AB" to existing Hall A and Hall B.
   const sheetEntries = entries.flatMap(e => expandSpace(e.space).map(space => ({ ...e, space })));
   const weeks = weekLayouts(sheetEntries);
   if (existing) await wb.xlsx.load(await existing.arrayBuffer());
