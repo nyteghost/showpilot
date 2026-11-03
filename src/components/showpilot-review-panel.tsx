@@ -262,6 +262,6 @@ export function ScheduleReview({
       </div>
     </>}
     {error && <p role="alert" className="rounded border border-destructive p-2 text-xs text-destructive">{error}</p>}
-    <p className="text-xs text-muted-foreground">Viewing by month, week or day does not limit the saved project or Excel export: both include the entire reviewed report. All edits are local to this imported report. Saving a project preserves source lines and decisions in one file. A PDF may contain functions not yet handled by the keyword classifier; review unknown and guessed MO? entries before publishing.</p>
+    <p className="text-xs text-muted-foreground">The selected Month, Week or Day determines which events appear in the downloaded Excel schedule; Week exports contain only one Monday–Sunday worksheet. All dates exports the full report. Your saved review project always includes every event and edit, regardless of the view. All edits stay local to this imported report. Saving a project preserves source lines and decisions in one file. A PDF may contain functions not yet handled by the keyword classifier; review unknown and guessed MO? entries before publishing.</p>
   </section>;
 }
