@@ -612,7 +612,7 @@ export async function eventsWorkbook(entries: EventEntry[], existing?: File, tas
   const weeks = weekLayouts(sheetEntries);
   if (existing) await wb.xlsx.load(await existing.arrayBuffer());
   if(options.singleWeek){
-    if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(options.singleWeek))throw new Error("Invalid selected week.");
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(options.singleWeek))throw new Error("Invalid selected week.");
     // Week-only export must never include the other five weeks in a template.
     // Refuse incompatible templates rather than keeping unrelated old events.
     if(entries.some(e=>mondayIso(e.date)!==options.singleWeek))throw new Error("Entries outside the selected week cannot be exported.");
