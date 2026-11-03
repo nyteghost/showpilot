@@ -3,7 +3,7 @@ import { Blob as NodeBlob, File as NodeFile } from "node:buffer";
 import ExcelJS from "exceljs";
 import { eventsWorkbook, legendFill, LEGEND_FILL } from "@/lib/work-files";
 import { scopedScheduleData } from "@/lib/showpilot-export-scope";
-import { BALLROOM_ROWS, summarizeEvents, type EventCode, type EventEntry } from "@/lib/work-tools";
+import { BALLROOM_ROWS, HALL_ROWS, expandSpace, sheetRowFor, summarizeEvents, type EventCode, type EventEntry } from "@/lib/work-tools";
 
 Object.defineProperty(globalThis, "Blob", { value: NodeBlob, configurable: true });
 Object.defineProperty(globalThis, "File", { value: NodeFile, configurable: true });
@@ -216,5 +216,32 @@ describe("template blank-room coloring and workbook readback",()=>{
    const verify=new ExcelJS.Workbook();await verify.xlsx.load(await output.arrayBuffer());
    expect(verify.worksheets).toHaveLength(1);
    expect(verify.worksheets[0]!.name).toBe("Week #2");
+ });
+});
+
+describe("authoritative November engineering template hall mapping",()=>{
+ it.each(["Hall AB","Exhibit Hall AB","Halls A/B","EHAB","AB"])(
+   "places Front Row's %s in Hall A and B without an invented Other Spaces row",async(space)=>{
+     expect(expandSpace(space)).toEqual(["Hall A","Hall B"]);
+     expect(sheetRowFor(space)).toBe("Hall AB");
+     const front=event(space,"S","Front Row Card Show","2026-11-07");
+     const x=await eventsWorkbook([front]);
+     const book=new ExcelJS.Workbook();await book.xlsx.load(await x.arrayBuffer());
+     const sh=book.worksheets[0]!;
+     const labels:string[]=[];
+     sh.eachRow(row=>labels.push(String(row.getCell(1).value??"")));
+     expect(labels).not.toContain("OTHER SPACES");
+     expect(labels).toEqual(expect.arrayContaining(["Hall A","Hall B"]));
+     let hallA=0,hallB=0;
+     sh.eachRow((row,i)=>{if(row.getCell(1).value==="Hall A")hallA=i;if(row.getCell(1).value==="Hall B")hallB=i;});
+     expect(hallA).toBeGreaterThan(0);
+     expect(hallB).toBe(hallA+1);
+     expect(sh.getCell(hallA,7).value).toContain("Front Row Card Show");
+     expect(sh.getCell(hallB,7).master.address).toBe(sh.getCell(hallA,7).address);
+   }
+ );
+ it("never invents a new layout section for an unrecognized space",async()=>{
+    await expect(eventsWorkbook([event("Unmapped Function Center","S","Unknown","2026-11-02")]))
+      .rejects.toThrow(/unmapped|review/i);
  });
 });
