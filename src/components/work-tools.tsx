@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Briefcase, CalendarClock, CalendarDays, CalendarPlus, CalendarSync, Download, ExternalLink, FileUp, GitBranch, Layers, Eye, Map as MapIcon, Store, ClipboardCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,9 +12,11 @@ import { scopeShowPilotRows } from "@/lib/showpilot-venue";
 import { ScheduleReview } from "@/components/showpilot-review-panel";
 import { ShowPilotExcelPreview } from "@/components/showpilot-excel-preview";
 import type {PreviewWorkbook} from "@/lib/showpilot-excel-preview";
-import type {ReviewDateScope} from "@/lib/showpilot-review-months";
+import {reviewScopeDates,type ReviewDateScope} from "@/lib/showpilot-review-months";
 import {scopedScheduleData} from "@/lib/showpilot-export-scope";
 import { AiTaskAssistant } from "@/components/showpilot-ai-task-assistant";
+import { LocalPlanningAssistant } from "@/components/showpilot-planning-assistant";
+import { staffingPlanningContext } from "@/lib/showpilot-planning";
 import { PostConPanel } from "@/components/showpilot-postcon-panel";
 import { rememberPostConShows } from "@/lib/showpilot-postcon";
 import { applyReview, emptyReviewDraft, fingerprintRows, parseDraft, parseReviewProject, storageKey, type ReviewDraft, type ReviewProject } from "@/lib/showpilot-review";
@@ -122,6 +124,9 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
   const fingerprintRef = useRef("");
   const [merged, setMerged] = useState(false);
   const [tasks, setTasks] = useState<TaskNote[]>([]);
+  const selectedStaffingDates=aiScope?reviewScopeDates(entries,aiScope):[];
+  const selectedStaffingKey=selectedStaffingDates.join("|");
+  const staffingContext=useMemo(()=>staffingPlanningContext(entries,selectedStaffingDates),[entries,selectedStaffingKey]);
   const [shared, setShared] = useState<string[]>([]);
   const [conflictTarget,setConflictTarget] = useState<{date:string;space:string;title:string;nonce:number}|null>(null);
   const bookingConflicts = (() => {
@@ -372,6 +377,11 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
           </section>}
           <ScheduleReview conflictTarget={conflictTarget} onScopeChange={setAiScope} originalRows={source.rows} proposed={suggestedEntries} suggestedTasks={suggestedTasks} draft={draft} onChange={reviewChanged} onSaveProject={saveProject} />
           <AiTaskAssistant scope={aiScope} entries={entries} tasks={tasks} onApprove={task => reviewChanged({...draftRef.current,addedTasks:[...draftRef.current.addedTasks,{id:"ai-task:"+Date.now()+":"+Math.random().toString(36).slice(2),value:task}]})} />
+          {selectedStaffingDates.length>0&&<LocalPlanningAssistant kind="staffing"
+            memoryQuery={entries.filter(e=>selectedStaffingDates.includes(e.date)).slice(0,12).map(e=>e.title+" "+e.space).join(" ").slice(0,150)}
+            context={staffingContext}
+          />}
+          {selectedStaffingDates.length>7&&<p className="text-xs text-muted-foreground">Local staffing analysis covers the first seven selected dates. Choose Week view for another week. These are review-only; they never change the original Excel schedule.</p>}
           <details className="text-xs"><summary className="cursor-pointer font-medium">Preview final Excel entries ({entries.length})</summary>
           <div className="mt-2 max-h-72 overflow-y-auto rounded-md border border-border">
             <table className="w-full text-sm">
