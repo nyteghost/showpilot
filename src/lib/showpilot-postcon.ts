@@ -1,4 +1,4 @@
-import type {EventEntry} from "./work-tools";
+import {expandSpace,type EventEntry} from "./work-tools";
 
 /** Only CGC show/activity references are saved as a small, local dropdown catalog.
  * The full imported workbooks are NOT copied into this cache or GitHub. */
@@ -11,14 +11,16 @@ const validDate=(s:string)=>/^\d{4}-\d{2}-\d{2}$/.test(s)&&!Number.isNaN(Date.pa
 export function postConShows(entries:readonly EventEntry[]):PostConShow[]{
  const grouped=new Map<string,{eventId:string;name:string;date:string;rooms:Set<string>}>();
  for(const entry of entries){
-  if(!validDate(entry.date)||!phases.has(entry.code)||excluded.test(entry.space)||!allowed.test(entry.space)||!entry.title?.trim())continue;
+  if(!validDate(entry.date)||!phases.has(entry.code)||excluded.test(entry.space)||!entry.title?.trim())continue;
+  const cgcRooms=expandSpace(entry.space).filter(room=>allowed.test(room));
+  if(!cgcRooms.length)continue;
   const eventId=entry.eventId?.trim()||"";
   const name=entry.title.trim().slice(0,140);
   const key=eventId?"id:"+eventId:"name:"+name.toLowerCase();
   let g=grouped.get(key);
   if(!g){g={eventId,name,date:entry.date,rooms:new Set()};grouped.set(key,g);}
   if(entry.date>g.date)g.date=entry.date;
-  g.rooms.add(entry.space);
+  for(const room of cgcRooms)g.rooms.add(room);
  }
  return [...grouped].map(([key,g])=>({key,eventId:g.eventId,showName:g.name,showDate:g.date,rooms:[...g.rooms].sort().join(", ")}))
   .sort((a,b)=>b.showDate.localeCompare(a.showDate)).slice(0,400);
