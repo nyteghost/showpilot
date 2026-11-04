@@ -89,9 +89,10 @@ export function ShowPilotMemorySettings(){
    </div>
   </div>
   {!bridge?<p className="text-sm rounded-md border border-amber-500/50 p-3">Native memory file access requires the Windows or Linux desktop build. The browser build cannot write private files directly.</p>:<>
-   <div className="grid gap-3 sm:grid-cols-3">
+   <div className="grid gap-3 sm:grid-cols-4">
     <div className="rounded-lg border p-3"><p className="text-xl font-semibold tabular-nums">{status?.noteCount??"—"}</p><p className="text-xs text-muted-foreground">Saved memory notes</p></div>
     <div className="rounded-lg border p-3"><p className="text-xl font-semibold tabular-nums">{status?.historicalCount??"—"}</p><p className="text-xs text-muted-foreground">Historical entries</p></div>
+    <div className="rounded-lg border p-3"><p className="text-xl font-semibold tabular-nums">{status?.postConCount??"—"}</p><p className="text-xs text-muted-foreground">Post-Con reports</p></div>
     <div className="rounded-lg border p-3"><p className="text-xl font-semibold tabular-nums">{status?.migratedCount??"—"}</p><p className="text-xs text-muted-foreground">Old notebook notes migrated</p></div>
    </div>
    <div className="rounded-lg border bg-muted/20 p-3 space-y-2">
