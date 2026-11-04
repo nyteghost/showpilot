@@ -127,3 +127,22 @@ export async function runLocalPlanningAI(
  if(typeof result!=="string")throw Error("Local AI returned an invalid response.");
  return validatePlanningResponse(parseTaskJson(result),kind,context);
 }
+
+
+/** A tiny, synthetic on-device inference diagnostic. Never returns the model's
+ * actual response, prompt text, personal data, or worker exceptions to reports.
+ * Requires an ALREADY LOADED model; cannot trigger a model download.
+ */
+export async function probeLoadedLocalAi():Promise<{generated:boolean;durationMs:number}>{
+ if(runtime.status!=="ready"||!engine||!loadedModel)throw Error("Local AI model is not loaded.");
+ const start=performance.now();
+ const completion=await engine.chat.completions.create({
+  messages:[
+   {role:"system",content:"You are a hardware diagnostic. Reply only with READY."},
+   {role:"user",content:"Synthetic test: are you ready?"}
+  ],
+  temperature:0,max_tokens:24
+ });
+ const content=completion.choices[0]?.message?.content;
+ return {generated:typeof content==="string"&&content.trim().length>0,durationMs:Math.round(performance.now()-start)};
+}
