@@ -135,39 +135,30 @@ Event Schedule includes an optional **AI Task Assistant** for stage/room-turn an
 
 AI may misinterpret inputs or suggest inappropriate work; treat its output as a review aid rather than an instruction.
 
-## ShowPilot Memory — Obsidian-compatible Markdown notebook
+## ShowPilot Native Memory — local SQLite database
 
-The **portable Windows and Linux** desktop applications can keep a private-by-default, offline notebook of your approved engineering experience. This uses regular `.md` files: **Obsidian does not need to be installed or running**. If you use Obsidian, point it to the same parent folder as a vault. There is no remote Obsidian API, login or synchronization requirement.
+The Windows and Linux desktop apps include a private, offline SQLite memory database (`showpilot-memory.sqlite` under ShowPilot's OS user-data folder). SQLite runs inside the app using bundled WebAssembly; **Obsidian, a database server, an AI server, and administrator privileges are not required**.
 
-1. Open **Settings & AI → AI Memory — Obsidian notebook**.
-2. Choose **Create local notebook** to make a notebook in ShowPilot's OS user-data directory, **or** choose **Choose Obsidian vault / folder** to attach an existing vault. The only files ShowPilot creates or changes are inside a **`ShowPilot/`** subfolder of that location.
-3. Use the notebook manager to **search, read, add, edit or move notes to Trash**. The note folders are `Stage Setups`, `Ballroom Configurations`, `Recurring Events`, `Engineering Procedures`, `Approved Tasks`, and `Lessons Learned`.
-4. Two independent switches control remembering: **approved AI tasks** and **explicitly saved stage configurations**. Both default ON **after you choose a notebook** and can be turned off independently. Merely importing an event report does not create memory notes.
-5. For AI Task Assistant in **Local GPU mode**, ShowPilot searches up to three matching historical notebook notes, shows the selected titles, and supplies brief excerpts as **untrusted historical examples**, not instructions or proof of safe operating conditions.
-6. **Online/cloud AI does not receive notebook content**, even when an online provider is configured.
-
-### What is saved and what is not
-
-- Clicking **Approve and add to schedule** on an AI-generated task still adds the task to the reviewed schedule, and can additionally save its task, reason and evidence to `ShowPilot/Approved Tasks/`.
-- Clicking **Save** under **Stage & Deck Planner → Saved plans** still creates its existing local ShowPilot saved plan, and can additionally save a **readable reference summary** with stage dimensions, quantity of decks, bridge decks and 1/2/3-deck holders, show date and build-by date to `ShowPilot/Stage Setups/`.
-- **Manual stage piece positions are not preserved by this notebook**; opening and editing a saved ShowPilot stage plan still uses the stage planner's separate saved-plan data. Memory notes are reference material, not `.json` stage-import files.
-- Imported schedules, unapproved suggestions, personal shifts, API keys, Google Calendar credentials and arbitrary computer files **are not automatically copied into memory**.
-- The notebook is a local directory of **plain-text files**, not an encrypted vault. Use an authorized work-data folder and follow company policies. An existing Obsidian vault may sync via external third-party software **only if you independently enable that sync**.
-- The **Dashboard → Export work data** `.json` backup intentionally **does not include the Obsidian notebook**. To back up or migrate memory, copy the notebook folder itself. In the notebook UI, select **Open notebook folder** to find it.
-- Deleted notes are **moved to `ShowPilot/Trash/`**, rather than permanently removed. Restore them with your file manager if necessary.
-
-**Safety:** Similar past setups are suggestions for review only. Confirm current event functions, engineering requirements, equipment manufacturer bridge and loading limits, and applicable approval steps before reusing historical notes.
+- In **Settings & AI → ShowPilot Native Memory**, see memory and historical-record counts, search/edit/archive notes, or use **Import JSON memory** and **Export JSON backup**. No memory is uploaded to GitHub or a cloud service.
+- Native memory automatically migrates valid notes from the previous `ShowPilot/` Markdown notebook (if one was configured) into SQLite **once**, preserving the original Markdown files and old task/stage remembering preferences.
+- Approved AI tasks and explicitly saved stage plans can be remembered (the switches are on by default); simply importing an event report does not add memories.
+- **Remember reviewed schedule exports** is optional and **off by default**. When enabled, ShowPilot stores CGC-only event/task history after an actual Excel export. These are marked reviewed, not confirmed staff assignments.
+- **Historical memory import:** extract a private ShowPilot memory ZIP from a local drive, click **Import JSON memory**, and select `ShowPilot-Memory-Import-2025-2026.json`. Re-imports skip identical IDs. Records include provenance and uncertainty; old schedules and shift examples are historical references, not standing instructions.
+- The Local GPU AI Task Assistant retrieves up to three matching short historical references, which are untrusted data. The scheduling/stage solvers continue to enforce the existing explicit rules; native memory does **not** yet change engineer assignments automatically.
+- Cloud AI does not receive the native historical memory.
+- The **Dashboard → Export work data** backup does not include native AI memory. Use **Export JSON backup** in native memory to transfer it to another computer; keep that JSON private and follow company IT policy.
+- Archiving a note hides it from search and future AI references. Export only the active notes. Existing legacy Markdown notes are left untouched after migration.
 
 ## Settings, local data and backups
 
 - **App Updates:** select Main/Beta, check for builds and open the corresponding GitHub download.
 - **Local GPU AI:** select a model and see model-loading state.
-- **AI Memory — Obsidian notebook:** select a local Markdown folder, search/edit notes, and manage remembering switches.
+- **ShowPilot Native Memory:** search/edit SQLite notes, import historical JSON, export backups, and control what approved work is remembered.
 - **Online AI Providers:** securely save or remove optional cloud API keys in the Windows/Linux desktop application.
 - **Google Calendar:** securely connect/disconnect the authorized Google account.
 - **Dashboard → Export work data / Restore from backup:** export supported saved plans, vendor data, floor-map data and preferences to `.json`, or restore that data on another installation.
 
-The work-data backup deliberately **does not contain** API keys, Google tokens, downloaded GPU models, Obsidian Markdown notes or arbitrary files from the computer. Some supported legacy local-storage key names still begin with `pixelpals:`; that is a compatibility detail, **not** a connection to Pixel Pals. Saved local plans, workbooks and settings are not automatically synced between computers.
+The work-data backup deliberately **does not contain** API keys, Google tokens, downloaded GPU models, native SQLite memories or arbitrary files from the computer. Some supported legacy local-storage key names still begin with `pixelpals:`; that is a compatibility detail, **not** a connection to Pixel Pals. Saved local plans, workbooks and settings are not automatically synced between computers.
 
 Do not commit API keys, OAuth credentials, exported private work schedules, show reports or backups to this public repository.
 
