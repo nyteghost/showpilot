@@ -150,6 +150,22 @@ The Windows and Linux desktop apps include a private, offline SQLite memory data
 - The **Dashboard → Export work data** backup does not include native AI memory. Use **Export JSON backup** in native memory to transfer it to another computer; keep that JSON private and follow company IT policy.
 - Archiving a note hides it from search and future AI references. Export only the active notes. Existing legacy Markdown notes are left untouched after migration.
 
+### Local GPU planning assistants — Stage, Floor Map, Event Schedule
+
+ShowPilot uses one optional **WebLLM/WebGPU local language model** across the AI Task Assistant and the three planning modules. In **Settings & AI → Local GPU AI**, choose/download a compatible model and check that **Active AI** says Ready. Cached models can run offline; the separate future CUDA/llama.cpp foundation is not used by these assistants.
+
+- **Stage Planner:** each stage has **Suggest stage configurations**. The local model sees current dimensions, inventory, existing deck/bridge solver counts, and matching historical Native Memory. Proposed stage width/length/height are individually validated with the deterministic deck solver **before** they can be applied. Click **Apply validated dimensions** to update the stage inputs; verify the resulting holder and bridge layout and load safety before construction.
+- **Floor Maps:** after selecting a CGC event/work-order and plan, **Analyze unanswered booths** asks the model to prioritize existing unresolved work-order questions. AI may select an existing question for review, but **cannot invent coordinates or color booths**; use the manual plan tools to verify the precise location. Never treat a note-based booth number as confirmed.
+- **Event Schedule:** alongside AI Task Assistant, **Analyze staffing with historical memory** reviews the current rule-based draft assignments using matching historical schedules and Post-Con notes. Suggested staff/date combinations must already exist in the deterministic staffing output; the AI cannot assign otherwise-excluded personnel or alter the approved template. Staff availability and shifts in the original workbook still require manager review.
+- **Save reviewed idea to memory** is an explicit opt-in action in each assistant, saving a labeled **AI planning idea** (not a confirmed historical event) into private Native Memory. This is distinct from actually saving the stage plan or exporting the workbook.
+- **Local only:** Post-Con reports and historical memory excerpts go only to the local GPU model, not to an online AI service. An AI suggestion is not approval and does not automatically become a requirement.
+
+### Post-Con — completed show review
+
+Open the **Post-Con Reports** tab. After you import Event Schedule entries, past CGC shows appear as a local selection list, or you can enter a CGC show manually. Record **what went well, issues, engineer staffing, stage setup, floor-map/utility lessons, follow-ups, and an optional 1–5 rating**. Save the review explicitly; it becomes a searchable local historical reference for future GPU recommendations. Archived reports remain in automatic JSON backups.
+
+Native Memory's weekly backups and manual JSON export include Post-Con reports. When restoring, use **Settings & AI → ShowPilot Native Memory → Import JSON memory**. No company schedule documents or Post-Con contents are uploaded to GitHub.
+
 ## Settings, local data and backups
 
 - **App Updates:** select Main/Beta, check for builds and open the corresponding GitHub download.
