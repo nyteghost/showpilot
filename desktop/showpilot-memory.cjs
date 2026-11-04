@@ -47,6 +47,11 @@ function transaction(fn){
 }
 function insertNote(note,ignoreDuplicate=true){
  const id=safe(note.id,160)||digest(note.category+"\n"+note.title+"\n"+note.content);
+ if(ignoreDuplicate){
+  const existing=queryRows("SELECT id FROM notes WHERE category=? AND title=? AND content=? LIMIT 1",
+   [note.category,note.title,note.content])[0];
+  if(existing)return existing.id;
+ }
  const stamp=now();
  sqlRun("INSERT "+(ignoreDuplicate?"OR IGNORE ":"")+"INTO notes(id,category,title,content,created,modified,origin,archived) VALUES(?,?,?,?,?,?,?,0)",
   [id,note.category,note.title,note.content,safe(note.created,50)||stamp,safe(note.modified,50)||stamp,safe(note.origin,120)||"local"]);
