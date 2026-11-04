@@ -9,10 +9,16 @@ const initSqlJs=require("sql.js/dist/sql-wasm-inline.js");
 
 const CATEGORIES=["Stage Setups","Ballroom Configurations","Recurring Events","Engineering Procedures","Approved Tasks","Lessons Learned"];
 const MAX_NOTE=24000, MAX_FILE=32*1024*1024, MAX_ENTRIES=25000, MAX_NOTES=10000;
+const WEEK_MS=7*24*60*60*1000, BACKUP_CHECK_MS=6*60*60*1000, BACKUP_KEEP=12;
+const BACKUP_NAME=/^ShowPilot-Memory-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}\.json$/;
+let backupTimer=null,backupError="";
 let engine=null,SQL=null,initializePromise=null;
 const dataDir=()=>app.getPath("userData");
 const databaseFile=()=>path.join(dataDir(),"showpilot-memory.sqlite");
 const legacyConfig=()=>path.join(dataDir(),"showpilot-memory-config.json");
+const defaultBackupDir=()=>path.join(dataDir(),"ShowPilot Memory Backups");
+const backupEnabled=()=>meta("weeklyBackupEnabled","true")==="true";
+const backupPath=()=>meta("weeklyBackupFolder","")||defaultBackupDir();
 const now=()=>new Date().toISOString();
 const digest=s=>crypto.createHash("sha256").update(s).digest("hex");
 const safe=(v,max=500)=>typeof v==="string"?v.trim().slice(0,max):"";
@@ -53,8 +59,8 @@ function insertNote(note,ignoreDuplicate=true){
   if(existing)return existing.id;
  }
  const stamp=now();
- sqlRun("INSERT "+(ignoreDuplicate?"OR IGNORE ":"")+"INTO notes(id,category,title,content,created,modified,origin,archived) VALUES(?,?,?,?,?,?,?,0)",
-  [id,note.category,note.title,note.content,safe(note.created,50)||stamp,safe(note.modified,50)||stamp,safe(note.origin,120)||"local"]);
+ sqlRun("INSERT "+(ignoreDuplicate?"OR IGNORE ":"")+"INTO notes(id,category,title,content,created,modified,origin,archived) VALUES(?,?,?,?,?,?,?,?)",
+  [id,note.category,note.title,note.content,safe(note.created,50)||stamp,safe(note.modified,50)||stamp,safe(note.origin,120)||"local",note.archived===1?1:0]);
  return id;
 }
 function validateNote(note){
@@ -141,7 +147,10 @@ async function status(){
   rememberExports:meta("rememberExports","false")==="true",
   noteCount:count("SELECT COUNT(*) n FROM notes WHERE archived=0"),
   historicalCount:count("SELECT COUNT(*) n FROM historical_entries"),
-  migratedCount:Number(meta("legacy_migrated_count","0"))};
+  migratedCount:Number(meta("legacy_migrated_count","0")),
+  archivedCount:count("SELECT COUNT(*) n FROM notes WHERE archived=1"),
+  weeklyBackupEnabled:backupEnabled(),backupFolder:backupPath(),
+  lastBackupAt:meta("lastWeeklyBackup",""),backupError};
 }
 async function preferences(next){
  await ready();
@@ -198,17 +207,25 @@ async function archive(id){
 function validatePack(pack){
  if(!pack||pack.format!=="showpilot-memory"||pack.version!==1||!Array.isArray(pack.notes)||!Array.isArray(pack.historicalEntries))throw Error("Not a ShowPilot Memory JSON v1 file.");
  if(pack.notes.length>MAX_NOTES||pack.historicalEntries.length>MAX_ENTRIES)throw Error("Import exceeds the supported memory size");
- return {notes:pack.notes.map(validateNote),entries:pack.historicalEntries};
+ const archived=Array.isArray(pack.archivedNotes)?pack.archivedNotes:[];
+ if(archived.length+pack.notes.length>MAX_NOTES)throw Error("Import exceeds maximum note count");
+ return {notes:pack.notes.map(validateNote),archivedNotes:archived.map(n=>({...validateNote(n),archived:1})),entries:pack.historicalEntries};
 }
 async function importPack(pack){
  await ready();
  const validated=validatePack(pack),beforeNotes=count("SELECT COUNT(*) n FROM notes"),beforeEvents=count("SELECT COUNT(*) n FROM historical_entries");
  transaction(()=>{
   for(const note of validated.notes)insertNote({...note,origin:note.origin||"json-import"});
+  for(const note of validated.archivedNotes)insertNote({...note,origin:note.origin||"json-import"});
   for(const entry of validated.entries)insertEntry(entry);
  });
- return {notesAdded:count("SELECT COUNT(*) n FROM notes")-beforeNotes,
-  historyAdded:count("SELECT COUNT(*) n FROM historical_entries")-beforeEvents,notesSeen:validated.notes.length,historySeen:validated.entries.length};
+ const result={notesAdded:count("SELECT COUNT(*) n FROM notes")-beforeNotes,
+  historyAdded:count("SELECT COUNT(*) n FROM historical_entries")-beforeEvents,
+  notesSeen:validated.notes.length+validated.archivedNotes.length,historySeen:validated.entries.length};
+ if(backupEnabled()&&(result.notesAdded||result.historyAdded)){
+  try{await backupNow(true);}catch(e){backupError=(e instanceof Error?e.message:String(e)).slice(0,250);}
+ }
+ return result;
 }
 async function importJson(){
  await ready();
@@ -221,7 +238,9 @@ async function importJson(){
 async function exportPack(){
  await ready();
  return {format:"showpilot-memory",version:1,exportedAt:now(),
-  source:"ShowPilot Native Memory",notes:queryRows("SELECT id,category,title,content,created,modified,origin FROM notes WHERE archived=0 ORDER BY created"),
+  source:"ShowPilot Native Memory",
+  notes:queryRows("SELECT id,category,title,content,created,modified,origin FROM notes WHERE archived=0 ORDER BY created"),
+  archivedNotes:queryRows("SELECT id,category,title,content,created,modified,origin FROM notes WHERE archived=1 ORDER BY created"),
   historicalEntries:queryRows("SELECT id,kind,date,room,area,description AS text,source AS original_source,week,approval FROM historical_entries ORDER BY date")};
 }
 async function exportJson(){
@@ -233,6 +252,87 @@ async function exportJson(){
  catch(e){try{fs.unlinkSync(temporary)}catch{}throw e}
  return {saved:true,notes:out.notes.length,history:out.historicalEntries.length};
 }
+
+function safeBackupDirectory(){
+ const selected=backupPath();
+ if(typeof selected!=="string"||!path.isAbsolute(selected))throw Error("Backup folder must be an absolute local directory.");
+ const root=path.resolve(selected);
+ if(root===path.parse(root).root)throw Error("Choose a folder, not the drive root.");
+ fs.mkdirSync(root,{recursive:true,mode:0o700});
+ const stat=fs.lstatSync(root);
+ if(!stat.isDirectory()||stat.isSymbolicLink())throw Error("Backup folder must be a normal directory.");
+ return root;
+}
+function availableBackups(folder){
+ return fs.readdirSync(folder).filter(name=>BACKUP_NAME.test(name)).sort();
+}
+async function backupNow(force=false){
+ await ready();
+ if(!backupEnabled()&&!force)return {created:false,reason:"disabled"};
+ if(count("SELECT COUNT(*) n FROM notes")+count("SELECT COUNT(*) n FROM historical_entries")===0)return {created:false,reason:"empty"};
+ const since=Date.parse(meta("lastWeeklyBackup",""));
+ if(!force&&Number.isFinite(since)&&Date.now()-since<WEEK_MS)return {created:false,reason:"not-due"};
+ const folder=safeBackupDirectory();
+ const pack=await exportPack();
+ const serialized=JSON.stringify(pack,null,2);
+ if(Buffer.byteLength(serialized,"utf8")>MAX_FILE)throw Error("Memory JSON exceeds the supported backup size.");
+ const date=now(),filename="ShowPilot-Memory-"+date.replace(/[:.]/g,"-")+".json";
+ const target=path.join(folder,filename),temp=target+"."+crypto.randomBytes(6).toString("hex")+".tmp";
+ try{
+  fs.writeFileSync(temp,serialized,{flag:"wx",mode:0o600,encoding:"utf8"});
+  const bytes=fs.readFileSync(temp,"utf8");
+  if(digest(bytes)!==digest(serialized)||JSON.parse(bytes).format!=="showpilot-memory")
+   throw Error("Backup verification failed.");
+  fs.renameSync(temp,target);
+ }catch(e){try{fs.unlinkSync(temp)}catch{}throw e}
+ backupError="";
+ transaction(()=>metaSet("lastWeeklyBackup",date));
+ // Only remove matching automatic snapshot names, and only after a verified new backup.
+ const old=availableBackups(folder);
+ for(const name of old.slice(0,Math.max(0,old.length-BACKUP_KEEP))){
+  const file=path.join(folder,name);
+  try{if(fs.lstatSync(file).isFile()&&!fs.lstatSync(file).isSymbolicLink())fs.unlinkSync(file);}catch{}
+ }
+ return {created:true,path:target,lastBackupAt:date,notes:pack.notes.length,archived:pack.archivedNotes.length,history:pack.historicalEntries.length};
+}
+async function automaticBackupCheck(){
+ try{const result=await backupNow(false);if(result.created)backupError="";return result;}
+ catch(e){backupError=(e instanceof Error?e.message:String(e)).slice(0,250);return {created:false,reason:"error",error:backupError};}
+}
+async function setBackupEnabled(enabled){
+ await ready();if(typeof enabled!=="boolean")throw Error("Invalid weekly backup setting");
+ transaction(()=>metaSet("weeklyBackupEnabled",String(enabled)));
+ if(enabled)await automaticBackupCheck();
+ return status();
+}
+async function chooseBackupFolder(){
+ await ready();
+ const result=await dialog.showOpenDialog({title:"Choose an approved weekly memory backup folder (prefer a second drive)",properties:["openDirectory","createDirectory"]});
+ if(result.canceled||!result.filePaths?.length)return status();
+ const selected=result.filePaths[0];
+ if(typeof selected!=="string"||!path.isAbsolute(selected))throw Error("Invalid backup folder");
+ const root=path.resolve(selected);
+ if(root===path.parse(root).root||!fs.lstatSync(root).isDirectory()||fs.lstatSync(root).isSymbolicLink())throw Error("Choose a normal backup folder, not the drive root.");
+ transaction(()=>{metaSet("weeklyBackupFolder",root);metaSet("lastWeeklyBackup","");});
+ if(backupEnabled())await automaticBackupCheck();
+ return status();
+}
+async function openBackupFolder(){
+ await ready();
+ const folder=safeBackupDirectory();
+ const error=await shell.openPath(folder);
+ if(error)throw Error(error);
+ return {opened:true};
+}
+function startWeeklyBackups(){
+ if(backupTimer)return;
+ // Backup on launch, and every six hours while ShowPilot remains open.
+ // If it was closed on its due date, the next launch catches up.
+ void automaticBackupCheck();
+ backupTimer=setInterval(()=>{void automaticBackupCheck();},BACKUP_CHECK_MS);
+ backupTimer.unref?.();
+}
+
 async function rememberSchedule(payload){
  await ready();
  if(meta("rememberExports","false")!=="true")return {saved:false,reason:"disabled"};
@@ -264,6 +364,9 @@ function setupMemoryIpc(){
  wrap("status",status);wrap("create-default",status);wrap("preferences",preferences);
  wrap("list",list);wrap("search",search);wrap("read",read);wrap("save",save);wrap("edit",edit);wrap("archive",archive);
  wrap("import-json",importJson);wrap("export-json",exportJson);wrap("remember-schedule",rememberSchedule);
+ wrap("backup-now",()=>backupNow(true));wrap("backup-enable",setBackupEnabled);
+ wrap("backup-choose-folder",chooseBackupFolder);wrap("backup-open-folder",openBackupFolder);
  wrap("open-folder",openFolder);
+ startWeeklyBackups();
 }
-module.exports={setupMemoryIpc,status,preferences,list,search,read,save,edit,archive,importPack,exportPack,rememberSchedule,openFolder,ready};
+module.exports={setupMemoryIpc,status,preferences,list,search,read,save,edit,archive,importPack,exportPack,rememberSchedule,openFolder,ready,backupNow,automaticBackupCheck,setBackupEnabled,chooseBackupFolder};
