@@ -1,5 +1,5 @@
 // @ts-nocheck -- ported unchanged from the Deck Builder Pro repo, which type-checks under looser settings than this app.
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Move, RotateCcw, RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -16,9 +16,10 @@ export type LayoutStage = {
   decks: { x: number; y: number; w: number; h: number; isBridge?: boolean }[];
   holders: { x: number; y: number; w: number; h: number; capacity: 1 | 2 | 3 }[];
 };
-type Position = { x: number; y: number };
+export type Position = { x: number; y: number };
+export type PositionedLayoutStage = LayoutStage & { position: Position };
 
-export function StageLayout({ stages: sourceStages }: { stages: LayoutStage[] }) {
+export function StageLayout({ stages: sourceStages, onSnapshotChange }: { stages: LayoutStage[]; onSnapshotChange?: (stages: PositionedLayoutStage[]) => void }) {
   const [rotations, setRotations] = useState<Record<string, boolean>>({});
   const stages = useMemo(() => sourceStages.map(stage => {
     const singleDeck = stage.decks.length === 1 && stage.width * stage.length === 32;
@@ -43,6 +44,17 @@ export function StageLayout({ stages: sourceStages }: { stages: LayoutStage[] })
     }));
   }, [stages]);
   const positionOf = (id: string): Position => positions[id] ?? defaults[id] ?? { x: 4, y: 4 };
+  // Send the actual moved/rotated arrangement to the crew-sheet printer.
+  // Compare serialized content so an unrelated parent render cannot start an effect loop.
+  const printSnapshot: PositionedLayoutStage[] = stages.map(stage => ({
+    ...stage, position: positionOf(stage.id),
+  }));
+  const printSnapshotKey = JSON.stringify(printSnapshot);
+  useEffect(() => {
+    onSnapshotChange?.(printSnapshot);
+    // The key covers both stage data and current stage positions.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [printSnapshotKey, onSnapshotChange]);
   const selected = stages.find(stage => stage.id === selectedId) ?? stages[0];
   const worldWidth = Math.max(100, ...stages.map(stage => positionOf(stage.id).x + stage.width + 12));
   const worldHeight = Math.max(64, ...stages.map(stage => positionOf(stage.id).y + stage.length + 12));
