@@ -75,6 +75,29 @@ describe("ShowPilot short crew printouts",()=>{
     expect(html).toContain(">BRIDGE</text>");
     expect(crewPrintData(a).decks).toBe(4);
   });
+
+  it("adds the current arranged Layout View after crew sheets only when selected",()=>{
+    const physical=stage("Main");
+    const layout=[
+      {...physical,id:"s1",position:{x:13,y:7}},
+      {...stage("Side"),id:"s2",position:{x:34,y:9},width:8,length:16},
+      {id:"bridge-1",name:"Loose & <bridge>",width:4,length:8,heightIn:32,valid:true,
+       decks:[{x:0,y:0,w:4,h:8,isBridge:true}],holders:[],position:{x:55,y:10}},
+    ];
+    const without=crewPrintDocument("Event",[physical]);
+    expect(without).not.toContain('class="layout-sheet"');
+    const html=crewPrintDocument("Event",[physical],{showDate:"2026-11-04"},layout);
+    expect((html.match(/<article class="sheet"/g)||[])).toHaveLength(1);
+    expect((html.match(/class="layout-sheet"/g)||[])).toHaveLength(1);
+    expect(html.indexOf('class="layout-sheet"')).toBeGreaterThan(html.indexOf('class="sheet"'));
+    expect(html).toContain('page:layout');
+    expect(html).toContain('transform="translate(13 7)"');
+    expect(html).toContain('transform="translate(34 9)"');
+    expect(html).toContain('transform="translate(55 10)"');
+    expect(html).toContain('8 × 16 ft');
+    expect(html).toContain('Loose &amp; &lt;bridge&gt;');
+    expect(html).toContain('Includes rotated stages, stage copies, and loose bridge tiles');
+  });
   it("flags invalid stages rather than silently claiming they can be built",()=>{
     const html=crewPrintDocument("Event",[{...stage("Incomplete"),valid:false}]);
     expect(html).toContain("CHECK PLAN");
