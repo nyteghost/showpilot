@@ -1610,7 +1610,7 @@ export function DeckPlanner() {
                       decks:st.decks,holders:st.holders,
                     })));
                   await memory.save(summary);
-                  setMemoryStatus("Saved stage reference to your Obsidian notebook as well.");
+                  setMemoryStatus("Saved stage reference in ShowPilot Native Memory.");
                 } catch (e) {
                   setMemoryStatus("Stage plan saved in ShowPilot. Notebook copy failed: "+(e as Error).message);
                 }
