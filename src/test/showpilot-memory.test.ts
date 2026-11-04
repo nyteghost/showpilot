@@ -106,6 +106,50 @@ describe("native SQLite ShowPilot memory",()=>{
   expect((await api.status()).noteCount).toBe(0);
   await expect(api.save({category:"Bad Folder",title:"Invalid",content:"test"})).rejects.toThrow(/Invalid memory/);
  });
+ it("makes verified local JSON snapshots after import and does not rebackup until due",async()=>{
+  const {api,dir}=memory();
+  const source={
+   format:"showpilot-memory",version:1,
+   notes:[{id:"schedule-jtf",category:"Recurring Events",title:"JTF 2025",content:"Hall A example"}],
+   historicalEntries:[{kind:"CGC-room-or-task",date:"2025-01-01",room:"Hall A",text:"JTF move-in"}],
+  };
+  const first=await api.importPack(source);
+  expect(first.notesAdded).toBe(1);
+  const folder=path.join(dir,"ShowPilot Memory Backups");
+  expect(existsSync(folder)).toBe(true);
+  const files=(await import("node:fs")).readdirSync(folder);
+  expect(files).toHaveLength(1);
+  const backup=JSON.parse(readFileSync(path.join(folder,files[0]!),"utf8"));
+  expect(backup.format).toBe("showpilot-memory");
+  expect(backup.notes[0].title).toBe("JTF 2025");
+  expect(backup.historicalEntries).toHaveLength(1);
+  expect((await api.status()).lastBackupAt.length).toBeGreaterThan(5);
+  expect((await api.automaticBackupCheck()).reason).toBe("not-due");
+  expect((await import("node:fs")).readdirSync(folder)).toHaveLength(1);
+  const manual=await api.backupNow(true);
+  expect(manual.created).toBe(true);
+  expect((await import("node:fs")).readdirSync(folder)).toHaveLength(2);
+ });
+ it("backs up archived memories and honors the weekly-backup switch",async()=>{
+  const {api,dir}=memory();
+  const note=await api.save({category:"Lessons Learned",title:"Archived historical rule",content:"Check before reuse"});
+  await api.archive(note.id);
+  await api.setBackupEnabled(false);
+  const result=await api.importPack({format:"showpilot-memory",version:1,notes:[],
+    historicalEntries:[{kind:"CGC-room-or-task",date:"2025-06-01",room:"Hall A",text:"Historical build"}]});
+  expect(result.historyAdded).toBe(1);
+  expect(existsSync(path.join(dir,"ShowPilot Memory Backups"))).toBe(false);
+  await api.setBackupEnabled(true);
+  const folder=path.join(dir,"ShowPilot Memory Backups");
+  const files=(await import("node:fs")).readdirSync(folder);
+  expect(files).toHaveLength(1);
+  const payload=JSON.parse(readFileSync(path.join(folder,files[0]!),"utf8"));
+  expect(payload.archivedNotes.map((n:{id:string})=>n.id)).toContain(note.id);
+  const again=memory();
+  await again.api.importPack(payload);
+  expect((await again.api.status()).archivedCount).toBe(1);
+  expect((await again.api.status()).historicalCount).toBe(1);
+ });
  it("only captures reviewed exports if user opted in and excludes CEPAC room assignments",async()=>{
   const {api}=memory();
   const schedule={entries:[
