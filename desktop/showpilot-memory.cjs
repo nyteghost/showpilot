@@ -10,7 +10,7 @@ const initSqlJs=require("sql.js/dist/sql-wasm-inline.js");
 const CATEGORIES=["Stage Setups","Ballroom Configurations","Recurring Events","Engineering Procedures","Approved Tasks","Lessons Learned"];
 const MAX_NOTE=24000, MAX_FILE=32*1024*1024, MAX_ENTRIES=25000, MAX_NOTES=10000;
 const WEEK_MS=7*24*60*60*1000, BACKUP_CHECK_MS=6*60*60*1000, BACKUP_KEEP=12;
-const BACKUP_NAME=/^ShowPilot-Memory-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}\.json$/;
+const BACKUP_NAME=/^ShowPilot-Memory-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}-[a-f0-9]{8}\.json$/;
 let backupTimer=null,backupError="";
 let engine=null,SQL=null,initializePromise=null;
 const dataDir=()=>app.getPath("userData");
@@ -76,6 +76,8 @@ function insertEntry(entry){
  throw Error("Unknown historical memory entry kind.");
  const date=safe(entry.date,20),room=safe(entry.room,120),message=safe(entry.text,700);
  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!message)throw Error("Historical entry is missing a valid date or description.");
+ if(entry.kind!=="historical-shift"&&/\b(?:cepac|cobb energy|performing arts)\b/i.test(room+" "+message))
+  throw Error("Only CGC room and event history may be imported.");
  const source=safe(entry.original_source||entry.source,350);
  const id=safe(entry.id,160)||digest([entry.kind,date,room,message,source].join("|"));
  sqlRun("INSERT OR IGNORE INTO historical_entries(id,kind,date,room,area,description,source,week,approval) VALUES(?,?,?,?,?,?,?,?,?)",
@@ -276,7 +278,7 @@ async function backupNow(force=false){
  const pack=await exportPack();
  const serialized=JSON.stringify(pack,null,2);
  if(Buffer.byteLength(serialized,"utf8")>MAX_FILE)throw Error("Memory JSON exceeds the supported backup size.");
- const date=now(),filename="ShowPilot-Memory-"+date.replace(/[:.]/g,"-")+".json";
+ const date=now(),filename="ShowPilot-Memory-"+date.replace(/[:.]/g,"-")+"-"+crypto.randomBytes(4).toString("hex")+".json";
  const target=path.join(folder,filename),temp=target+"."+crypto.randomBytes(6).toString("hex")+".tmp";
  try{
   fs.writeFileSync(temp,serialized,{flag:"wx",mode:0o600,encoding:"utf8"});
