@@ -2,7 +2,7 @@
 import { z } from "zod";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { StageLayout, type LayoutStage } from "@/components/deck-planner/stage-layout";
+import { StageLayout, type LayoutStage, type PositionedLayoutStage } from "@/components/deck-planner/stage-layout";
 import { crewPrintDocument, printCrewPages, type CrewPrintStage } from "@/lib/stage-crew-print";
 import { stageMemoryDraft } from "@/lib/showpilot-memory-notes";
 import { allocateSingleDeckStages } from "@/lib/single-deck-allocation";
@@ -1267,6 +1267,10 @@ export function DeckPlanner() {
   const [showClearModal, setShowClearModal] = useState(false);
   const [clearKey, setClearKey] = useState(0);
   const [showLayout, setShowLayout] = useState(false);
+  const [arrangedLayout, setArrangedLayout] = useState<PositionedLayoutStage[]>([]);
+  const handleLayoutSnapshot = useCallback((snapshot: PositionedLayoutStage[]) => {
+    setArrangedLayout(snapshot);
+  }, []);
   const [layoutStages, setLayoutStages] = useState<Record<string, LayoutStage>>({});
   const handleLayoutChange = useCallback((stage: LayoutStage) => {
     setLayoutStages(previous => ({ ...previous, [stage.id]: stage }));
@@ -1300,7 +1304,7 @@ export function DeckPlanner() {
     .map(stage => ({ ...stage, extraDecks: stage.id.includes("-copy-") ? 0 : (stage.looseBridges ?? 0) }));
   const [crewPrintError, setCrewPrintError] = useState("");
   const printCrew = (name: string, dates = {showDate, buildByDate}) => {
-    try { printCrewPages(name, crewPrintStages, dates); setCrewPrintError(""); }
+    try { printCrewPages(name, crewPrintStages, dates, showLayout ? arrangedLayout : []); setCrewPrintError(""); }
     catch(e) { setCrewPrintError((e as Error).message); }
   };
 
@@ -1413,7 +1417,7 @@ export function DeckPlanner() {
       const title = eventName.trim() || "Stage plan";
       // The printed crew sheet, as a self-contained page: the planner as it prints (light, black and white), openable and printable anywhere.
       // Attach the same concise, one-stage-per-page crew document used by Print.
-      const printHtml = crewPrintDocument(eventName, crewPrintStages, {showDate, buildByDate});
+      const printHtml = crewPrintDocument(eventName, crewPrintStages, {showDate, buildByDate}, showLayout ? arrangedLayout : []);
       const htmlBytes = new TextEncoder().encode(printHtml);
       let hbin = ""; for (let i = 0; i < htmlBytes.length; i += 0x8000) hbin += String.fromCharCode(...htmlBytes.subarray(i, i + 0x8000));
       const stagesOut = enabledIds.flatMap((id) => { const st = layoutStages[id]; return st ? [`- ${st.name}: ${st.width}' x ${st.length}' x ${st.heightIn}" high${(st.quantity ?? 1) > 1 ? ` (x${st.quantity})` : ""}${st.valid ? "" : " - CANNOT BUILD FROM STOCK"}`] : []; });
@@ -1777,7 +1781,7 @@ export function DeckPlanner() {
         </button>
 
         <div className={`layout-view-swap${showLayout ? "" : " hidden"}`}>
-          <StageLayout stages={activeLayoutStages} />
+          <StageLayout stages={activeLayoutStages} onSnapshotChange={handleLayoutSnapshot} />
         </div>
 
         <div className="print-grid">
@@ -1922,6 +1926,7 @@ export function DeckPlanner() {
                     setShowDateDraft("");
                     setBuildByDateDraft("");
                     setLayoutStages({});
+                    setArrangedLayout([]);
                     setRebuildKey((k) => k + 1);
                     setClearKey((k) => k + 1);
                   }}
