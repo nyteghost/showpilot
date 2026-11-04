@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { buildEntries, cellAround, locate, mergeTexts, parseBooth, parseWorkOrderLines, parseShowPilotItemLines, type ShowPilotItem, placedCsv, planKey, questionsCsv, resolve, type Answers, type Box, type Entry, type Question } from "@/lib/floor-map";
 import type { PlanDoc } from "@/lib/floor-map-pdf";
+import { LocalPlanningAssistant } from "@/components/showpilot-planning-assistant";
 
 type Saved = { answers: Answers; ok: Record<string, true> };
 const storeKey = (k: string) => `pixelpals:floormap:${k}`;
@@ -232,6 +233,23 @@ export function FloorMapPanel() {
         <>
           <p className="text-xs text-muted-foreground">{name} · {rows} order lines read · {entries.length} exhibitors</p>
           <p className="text-sm font-medium">{resolved.placed.length} colored · {blocking.length} need your answer{checks.length ? ` · ${checks.length} to double-check` : ""}</p>
+          {open.length>0&&<LocalPlanningAssistant kind="floor"
+            memoryQuery={[name,eventId,...open.slice(0,3).map(q=>q.booth+" "+q.exhibitor)].join(" ").slice(0,160)}
+            context={{
+              planName:name,eventId,placedCount:resolved.placed.length,
+              unresolved:open.slice(0,20).map(q=>({
+                id:q.id,kind:q.kind,booth:q.booth,exhibitor:q.exhibitor,
+                text:q.text.slice(0,180),hints:(q.hints??[]).slice(0,4).map(h=>h.text.slice(0,100))
+              }))
+            }}
+            onApply={suggestion=>{
+              const match=open.find(q=>q.id===suggestion.targetId);
+              if(!match)return;
+              setSel(match.id);setPicks([]);setTyped("");
+              setStatus("AI selected an unresolved booth question for review. Verify its location on the plan before coloring.");
+            }}
+            applyLabel="Review this booth on map"
+          />}
           <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" onClick={() => void out("png")}><Download className="size-4" /> Picture (PNG)</Button>
             <Button size="sm" variant="outline" onClick={() => void out("pdf")}><Download className="size-4" /> PDF</Button>
