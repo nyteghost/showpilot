@@ -6,6 +6,8 @@ directories:
 files:
   - dist/**
   - desktop/**
+  - node_modules/sql.js/package.json
+  - node_modules/sql.js/dist/sql-wasm-inline.js
   - package.json
   - "!**/*.map"
   - "!**/*.ts"
