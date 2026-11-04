@@ -65,7 +65,7 @@ export function AiTaskAssistant({ entries, tasks, onApprove, scope }:{
      if(!window.confirm("Analyze "+count+" selected week"+(count===1?"":"s")+
        " and use the week before and after each as context? This sends event names, rooms, phases and times in "+
        count+" request"+(count===1?"":"s")+" to "+provider+
-       ". No PDFs, employee shifts, notebook memories or API keys will be sent."))return;
+       ". No PDFs, employee shifts, local memories or API keys will be sent."))return;
    }
    let refs:MemoryReference[]=[];
    if(mode==="local"&&window.showpilotMemory){
@@ -77,7 +77,7 @@ export function AiTaskAssistant({ entries, tasks, onApprove, scope }:{
          refs=await memory.search(keywords);
          setMemoryRefs(refs);
        }
-     }catch{/* Notebook is optional. */}
+     }catch{/* Native memory is optional. */}
    }
    const all:AiTaskSuggestion[]=[];
    const failed:string[]=[];
@@ -128,8 +128,8 @@ export function AiTaskAssistant({ entries, tasks, onApprove, scope }:{
       const prefs=await memory.status();
       if(!prefs.configured||!prefs.rememberTasks)return;
       await memory.save(approvedTaskMemoryDraft(approved,s.reason,s.evidence));
-      setStatus("Approved task added to your schedule and saved to your Obsidian notebook.");
-    }catch(e){setStatus("Task approved in schedule. Could not save notebook memory: "+(e as Error).message)}
+      setStatus("Approved task added to your schedule and saved to ShowPilot Native Memory.");
+    }catch(e){setStatus("Task approved in schedule. Could not save native memory: "+(e as Error).message)}
   })();
  };
  return <section className="space-y-3 rounded-xl border border-border p-3 sm:p-4" aria-label="AI Task Assistant">
@@ -152,10 +152,10 @@ export function AiTaskAssistant({ entries, tasks, onApprove, scope }:{
        <Sparkles size={16}/>{busy?"Analyzing...":"Suggest engineering tasks"}
      </Button>
    </div>
-   <p className="text-xs text-muted-foreground flex items-center gap-2"><ShieldCheck size={14}/> The selected dates are the only dates eligible for tasks. Adjacent weeks provide context. Local mode can use notebook notes; cloud mode does not transmit notebook memories. First-time model loading requires a download; cached models can run without internet.</p>
+   <p className="text-xs text-muted-foreground flex items-center gap-2"><ShieldCheck size={14}/> The selected dates are the only dates eligible for tasks. Adjacent weeks provide context. Local mode can consult native memory; cloud mode does not transmit local memories. First-time model loading requires a download; cached models can run without internet.</p>
    {status&&<p role="status" className="text-xs rounded bg-muted p-2">{status}</p>}
    {memoryRefs.length>0&&<div className="rounded-lg border border-border bg-muted/30 p-3 text-xs space-y-1">
-    <strong>Related notes from your local ShowPilot notebook</strong>
+    <strong>Related references from ShowPilot Native Memory</strong>
     {memoryRefs.map(n=><p key={n.id}><span className="font-semibold">{n.title}</span> · {n.category}</p>)}
     <p className="text-muted-foreground">Used as historical hints for this local GPU request only. Confirm current room, stage and safety details before approving.</p>
    </div>}
