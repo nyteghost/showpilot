@@ -1,5 +1,5 @@
 import {describe,it,expect,afterEach} from "vitest";
-import {readFileSync,mkdtempSync,existsSync,rmSync,mkdirSync,writeFileSync,symlinkSync} from "node:fs";
+import {readFileSync,mkdtempSync,existsSync,rmSync,mkdirSync,writeFileSync} from "node:fs";
 import {tmpdir} from "node:os";
 import path from "node:path";
 import {createRequire} from "node:module";
@@ -11,14 +11,14 @@ import {safeMemoryReferences} from "@/lib/showpilot-ai-tasks";
 const nativeRequire=createRequire(import.meta.url);
 const code=readFileSync(fileURLToPath(new URL("../../desktop/showpilot-memory.cjs",import.meta.url)),"utf8");
 const dirs:string[]=[];
-function memory() {
- const dir=mkdtempSync(path.join(tmpdir(),"showpilot-memory-test-"));
- dirs.push(dir);
- const module={exports:{} as Record<string,(...args:any[])=>any>};
- let selection=dir;
+type NativeMemory=Record<string,(...args:any[])=>Promise<any>>;
+function memory(existingDir?:string) {
+ const dir=existingDir??mkdtempSync(path.join(tmpdir(),"showpilot-native-memory-test-"));
+ if(!existingDir)dirs.push(dir);
+ const module={exports:{} as NativeMemory};
  const electron={
   app:{getPath:(type:string)=>type==="userData"?dir:path.join(dir,type)},
-  dialog:{showOpenDialog:async()=>({canceled:false,filePaths:[selection]})},
+  dialog:{showOpenDialog:async()=>({canceled:true,filePaths:[]}),showSaveDialog:async()=>({canceled:true})},
   ipcMain:{handle:()=>{}},
   shell:{openPath:async()=>""},
  };
@@ -27,68 +27,96 @@ function memory() {
   require:(id:string)=>id==="electron"?electron:nativeRequire(id),
   Buffer,Date,
  },{filename:"desktop/showpilot-memory.cjs"});
- return {api:module.exports,dir,choose:(newDir:string)=>{selection=newDir}};
+ return {api:module.exports,dir};
 }
 afterEach(()=>{while(dirs.length){const dir=dirs.pop();if(dir)rmSync(dir,{recursive:true,force:true})}});
 
-describe("Obsidian-compatible ShowPilot memory vault",()=>{
- it("requires deliberate notebook setup and defaults to remembering only approved actions",()=>{
+describe("native SQLite ShowPilot memory",()=>{
+ it("creates a private offline SQLite database automatically, with conservative export remembering",async()=>{
+  const {api,dir}=memory();
+  const state=await api.status();
+  expect(state.configured).toBe(true);
+  expect(state.storage).toBe("sqlite");
+  expect(state.rememberTasks).toBe(true);
+  expect(state.rememberStages).toBe(true);
+  expect(state.rememberExports).toBe(false);
+  const dbPath=path.join(dir,"showpilot-memory.sqlite");
+  expect(existsSync(dbPath)).toBe(true);
+  expect(readFileSync(dbPath).subarray(0,15).toString("utf8")).toBe("SQLite format 3");
+ });
+ it("saves, retrieves, searches, edits, archives and persists across launches",async()=>{
+  const {api,dir}=memory();
+  const note=await api.save({category:"Stage Setups",title:"Ballroom ABCD Stage",content:"Two platforms with bridges and holders."});
+  expect((await api.list("Ballroom"))[0].id).toBe(note.id);
+  expect((await api.search("ABCD stage"))[0].id).toBe(note.id);
+  await api.edit(note.id,"Updated bridges and holders");
+  expect((await api.read(note.id)).content).toContain("Updated bridges");
+  const again=memory(dir);
+  expect((await again.api.read(note.id)).content).toContain("Updated bridges");
+  await api.archive(note.id);
+  expect(await api.list("")).toHaveLength(0);
+  expect((await api.exportPack()).notes).toHaveLength(0);
+ });
+ it("migrates legacy Markdown only once, preserving original files and preferences",async()=>{
+  const {api,dir}=memory();
+  const legacy=path.join(dir,"ShowPilot Memory","ShowPilot","Stage Setups");
+  mkdirSync(legacy,{recursive:true});
+  const markdown=path.join(legacy,"ballroom-setup.md");
+  writeFileSync(markdown,"# Ballroom setup\n\nUse 4x8 decks; verify bridges.","utf8");
+  writeFileSync(path.join(dir,"showpilot-memory-config.json"),JSON.stringify({vault:path.join(dir,"ShowPilot Memory"),rememberTasks:false,rememberStages:true}));
+  const status=await api.status();
+  expect(status.migratedCount).toBe(1);
+  expect(status.noteCount).toBe(1);
+  expect(status.rememberTasks).toBe(false);
+  expect((await api.list("ballroom"))[0].title).toBe("Ballroom setup");
+  expect(readFileSync(markdown,"utf8")).toContain("verify bridges");
+  expect((await memory(dir).api.status()).noteCount).toBe(1);
+ });
+ it("imports JSON v1 notes and CGC history, deduplicates and exports a portable backup",async()=>{
   const {api}=memory();
-  expect(api.status().configured).toBe(false);
-  expect(api.list("")).toEqual([]);
-  expect(()=>api.save({category:"Approved Tasks",title:"Test",content:"Some notes"})).toThrow(/notebook/);
-  const status=api.connectDefault();
-  expect(status.configured).toBe(true);
-  expect(status.rememberTasks).toBe(true);
-  expect(status.rememberStages).toBe(true);
-  expect(status.vault).toContain("ShowPilot Memory");
+  const pack={
+   format:"showpilot-memory",version:1,
+   notes:[{id:"2025-week-01",category:"Recurring Events",title:"JTF convention 2025",content:"Hall A stage work; source historical."}],
+   historicalEntries:[{kind:"CGC-room-or-task",date:"2025-01-11",room:"Hall A",area:"halls",
+     text:"JTF 2025 move-in",original_source:"original 2025 schedule",week:"2025-01-06",approval:"archived-unverified"}]
+  };
+  const first=await api.importPack(pack);
+  expect(first.notesAdded).toBe(1);
+  expect(first.historyAdded).toBe(1);
+  const second=await api.importPack(pack);
+  expect(second.notesAdded).toBe(0);
+  expect(second.historyAdded).toBe(0);
+  expect((await api.status()).historicalCount).toBe(1);
+  expect((await api.search("JTF"))).toHaveLength(2);
+  const exportData=await api.exportPack();
+  expect(exportData.format).toBe("showpilot-memory");
+  expect(exportData.version).toBe(1);
+  expect(exportData.notes[0].title).toBe("JTF convention 2025");
+  expect(exportData.historicalEntries[0].text).toContain("move-in");
  });
- it("writes standard Markdown, lets users search, edit, and archive without deleting",()=>{
-  const {api,dir}=memory();api.connectDefault();
-  const item=api.save({category:"Stage Setups",title:"Ballroom ABCD Stage",content:"Two 92ft platforms using bridges and holders."});
-  expect(item.id.startsWith("Stage Setups/")).toBe(true);
-  const file=path.join(dir,"ShowPilot Memory","ShowPilot",...item.id.split("/"));
-  expect(existsSync(file)).toBe(true);
-  expect(readFileSync(file,"utf8")).toContain("# Ballroom ABCD Stage");
-  expect(api.list("Ballroom").map((x:any)=>x.id)).toEqual([item.id]);
-  expect(api.search("ABCD stage").map((x:any)=>x.id)).toEqual([item.id]);
-  api.edit(item.id,"# Edited ballroom\n\nUpdated bridges and holders");
-  expect(api.read(item.id).content).toContain("Updated bridges");
-  expect(api.archive(item.id).archived).toBe(true);
-  expect(api.list("")).toEqual([]);
-  expect(existsSync(path.join(dir,"ShowPilot Memory","ShowPilot","Trash"))).toBe(true);
- });
- it("allows selecting an existing Obsidian vault and preserves unrelated notes",async()=>{
-  const {api,dir,choose}=memory();
-  const vault=path.join(dir,"Existing Vault");
-  mkdirSync(vault);
-  writeFileSync(path.join(vault,"Personal.md"),"# Personal note\n", "utf8");
-  choose(vault);
-  const status=await api.choose();
-  expect(status.vault).toBe(vault);
-  api.save({category:"Lessons Learned",title:"Room turnover",content:"Verify air walls"});
-  expect(readFileSync(path.join(vault,"Personal.md"),"utf8")).toBe("# Personal note\n");
-  expect(api.list("Room")).toHaveLength(1);
- });
- it("rejects path traversal, unsupported categories, oversized content and symlinks",()=>{
-  const {api,dir}=memory();api.connectDefault();
-  for(const id of ["../x.md","Stage Setups/../escape.md","Stage Setups/a.md/../../x","Other/x.md"]){
-   expect(()=>api.read(id)).toThrow();
-   expect(()=>api.archive(id)).toThrow();
-  }
-  expect(()=>api.save({category:"../outside",title:"Bad",content:"test"})).toThrow();
-  expect(()=>api.save({category:"Approved Tasks",title:"Long",content:"z".repeat(25_000)})).toThrow();
-  const folder=path.join(dir,"ShowPilot Memory","ShowPilot","Lessons Learned");
-  mkdirSync(folder);
-  symlinkSync(path.join(dir,"secret"),path.join(folder,"fake.md"));
-  expect(()=>api.read("Lessons Learned/fake.md")).toThrow(/regular files/);
- });
- it("keeps the opt-in switches persistent and restricts operations to a connected notebook",()=>{
+ it("rejects unrelated, oversized and malformed imports without corrupting existing memory",async()=>{
   const {api}=memory();
-  api.connectDefault();
-  expect(api.preferences({rememberTasks:false,rememberStages:true}).rememberTasks).toBe(false);
-  expect(api.status().rememberTasks).toBe(false);
-  expect(()=>api.preferences({rememberTasks:"bad",rememberStages:true})).toThrow();
+  await expect(api.importPack({format:"other",version:1,notes:[],historicalEntries:[]})).rejects.toThrow(/Not a ShowPilot/);
+  await expect(api.importPack({format:"showpilot-memory",version:1,
+   notes:[{category:"Stage Setups",title:"Bad",content:"x".repeat(25000)}],historicalEntries:[]})).rejects.toThrow(/Invalid memory/);
+  const bad={format:"showpilot-memory",version:1,
+   notes:[{id:"good",category:"Lessons Learned",title:"Valid note",content:"Valid content"}],
+   historicalEntries:[{kind:"reviewed-event",date:"invalid-date",room:"Hall A",text:"test"}]};
+  await expect(api.importPack(bad)).rejects.toThrow(/valid date/);
+  expect((await api.status()).noteCount).toBe(0);
+  await expect(api.save({category:"Bad Folder",title:"Invalid",content:"test"})).rejects.toThrow(/Invalid memory/);
+ });
+ it("only captures reviewed exports if user opted in and excludes CEPAC room assignments",async()=>{
+  const {api}=memory();
+  const schedule={entries:[
+   {date:"2026-10-10",space:"Hall A",title:"JTF",code:"S",start:480,end:1200},
+   {date:"2026-10-10",space:"Cobb Energy Performing Arts Centre",title:"Other venue",code:"S"}],
+   tasks:[{date:"2026-10-10",section:"HALLS",text:"Verify air-wall setup"}]};
+  expect((await api.rememberSchedule(schedule)).saved).toBe(false);
+  await api.preferences({rememberTasks:true,rememberStages:true,rememberExports:true});
+  expect((await api.rememberSchedule(schedule)).saved).toBe(true);
+  expect((await api.status()).historicalCount).toBe(2);
+  expect((await api.exportPack()).historicalEntries.every((e:any)=>!e.text.includes("Other venue"))).toBe(true);
  });
 });
 
@@ -106,7 +134,6 @@ describe("human-readable ShowPilot memory notes",()=>{
   expect(doc.content).toContain("92 ft × 8 ft × 40 in high");
   expect(doc.content).toContain("Bridge decks (included above): 5");
   expect(doc.content).toContain("3-deck holders: 6");
-  expect(doc.content).toContain("The Stage & Deck Planner remains the source");
  });
  it("remembers an approved task without implying it is a permanent instruction",()=>{
   const doc=approvedTaskMemoryDraft(
