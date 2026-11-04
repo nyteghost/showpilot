@@ -18,7 +18,7 @@ export function ShowPilotLocalFoundation(){
  async function template(){if(!bridge)return;setBusy(true);setError("");try{setState(await bridge.chooseTemplate())}catch(e){setError(String(e))}finally{setBusy(false)}}
  return <section className="rounded-xl border p-4 space-y-3" aria-label="ShowPilot Local Intelligence foundation">
   <h2 className="flex items-center gap-2 font-semibold"><Cpu size={19}/> ShowPilot Local Intelligence — foundation</h2>
-  <p className="text-sm text-muted-foreground">Offline-first preparation for a future bundled llama.cpp engine. This does not install or run AI models. Existing scheduling and WebGPU AI continue unchanged.</p>
+  <p className="text-sm text-muted-foreground">The separate llama.cpp/CUDA engine is still planned and does not currently run. The existing on-device WebGPU model can now power the Stage Planner, Floor Maps, Event Schedule staffing review, and AI Task Assistant. Load a model under Settings & AI → Local GPU AI. Native Memory and Post-Con notes are available to those local assistants.</p>
   {!bridge?<p className="text-sm">Portable desktop controls are available in the packaged ShowPilot app.</p>:!state?<p role="status" className="text-sm">Reading local settings…</p>:<>
    <p role="status" className="text-sm"><strong>Engine:</strong> {state.engineReady?"Ready":"Not installed"} · {state.message}</p>
    <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={state.enabled} disabled={busy} onChange={e=>void configure({enabled:e.target.checked})}/> Enable future local engine when installed</label>
