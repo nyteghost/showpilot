@@ -135,6 +135,21 @@ Event Schedule includes an optional **AI Task Assistant** for stage/room-turn an
 
 AI may misinterpret inputs or suggest inappropriate work; treat its output as a review aid rather than an instruction.
 
+## Real-World Diagnostics — one-click local hardware and workflow testing
+
+Under **Settings & AI → Real-World Diagnostics**, press **Run all diagnostics** on the actual Windows portable work PC. It tests:
+
+- The packaged Windows/Electron environment and hardware GPU availability.
+- A real WebGPU compute-shader dispatch with GPU readback (a four-byte synthetic result) to distinguish actual compute capability from merely detecting an adapter.
+- Synthetic stage inventory and bridge-solving, floor-map booth/utility parsing, CGC-only engineer staffing, Post-Con venue filtering, and safety validation of AI suggestions.
+- Read-only native SQLite integrity checks, table schema, in-process JSON export/restore round-trip, historical-memory counts, saved Post-Con counts, and the latest automatic JSON backup's readability. It does **not** overwrite live memory or create/delete backup files.
+- With **Include actual Local GPU AI generation** enabled, a tiny actual on-device inference plus synthetic Stage Planner, Floor Maps, Event Schedule, and engineering-task requests, provided a local model is **already loaded**. No model download or model switch occurs during diagnostics. Small models can return invalid proposals; those cases appear as warnings/failures with static, privacy-safe codes.
+- A separate checklist for **manual validation with real workbooks, floor maps, printing and offline runtime**; these checks cannot be claimed as passed automatically.
+
+After testing, use **Download diagnostic log** (plain text) or **Copy report** and send the result to support/ChatGPT. The log includes only allowlisted environment capabilities, test status codes, safe counts, durations and your own manual-check flags. **It does not include** filenames, paths, staff, event names, notes, private schedule data, API keys, prompts, or raw model output. Diagnostics run locally and do not upload information anywhere. No real project is modified.
+
+If GPU tests are skipped, open **Settings & AI → Local GPU AI**, click **Download / Load Local AI**, verify **Active AI → Ready**, then rerun diagnostics. If backup checks warn, create a private backup under **Settings & AI → ShowPilot Native Memory** on an IT-approved separate drive. For a full real-world sign-off, also complete the manual checklist after inspecting an actual stage crew sheet, floor map, Excel export, and saved/reopened Post-Con.
+
 ## ShowPilot Native Memory — local SQLite database
 
 The Windows and Linux desktop apps include a private, offline SQLite memory database (`showpilot-memory.sqlite` under ShowPilot's OS user-data folder). SQLite runs inside the app using bundled WebAssembly; **Obsidian, a database server, an AI server, and administrator privileges are not required**.
