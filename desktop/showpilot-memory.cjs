@@ -436,6 +436,54 @@ async function rememberSchedule(payload){
 async function openFolder(){
  await ready();const message=await shell.openPath(dataDir());if(message)throw Error(message);return {opened:true};
 }
+
+/** Read-only support inspection. Never return stored text, employee names,
+ * local paths, post-con entries, or other sensitive content to the report. */
+async function diagnosticsSummary(){
+ await ready();
+ const integrity=queryRows("PRAGMA quick_check");
+ const integrityOK=integrity.length===1&&integrity[0].quick_check==="ok";
+ const expected=["meta","notes","historical_entries","postcon_reports"];
+ const tablesOK=expected.every(name=>queryRows("SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name=?",[name])[0]?.n===1);
+ const exported=await exportPack();
+ const roundtrip=JSON.parse(JSON.stringify(exported));
+ const exportOK=roundtrip.format==="showpilot-memory"&&roundtrip.version===1&&
+  roundtrip.notes.length===exported.notes.length&&
+  roundtrip.archivedNotes.length===exported.archivedNotes.length&&
+  roundtrip.historicalEntries.length===exported.historicalEntries.length&&
+  roundtrip.postConReports.length===exported.postConReports.length;
+ const folder=backupPath();
+ let folderAccessible=false,snapshotCount=0,latestValid=false,latestDays=-1;
+ try{
+  const stat=fs.lstatSync(folder);
+  if(stat.isDirectory()&&!stat.isSymbolicLink()){
+   folderAccessible=true;
+   const candidates=availableBackups(folder);
+   snapshotCount=candidates.length;
+   if(candidates.length){
+    const last=candidates[candidates.length-1];
+    const filename=path.join(folder,last);
+    const file=fs.lstatSync(filename);
+    if(file.isFile()&&!file.isSymbolicLink()&&file.size>0&&file.size<=MAX_FILE){
+     const backup=JSON.parse(fs.readFileSync(filename,"utf8"));
+     latestValid=backup?.format==="showpilot-memory"&&backup.version===1&&
+      Array.isArray(backup.notes)&&Array.isArray(backup.archivedNotes)&&
+      Array.isArray(backup.historicalEntries)&&Array.isArray(backup.postConReports);
+     if(latestValid)latestDays=Math.max(0,Math.floor((Date.now()-file.mtimeMs)/(24*60*60*1000)));
+    }
+   }
+  }
+ }catch{/* Backups are optional and must not stop read-only diagnostics. */}
+ return {
+  sqliteIntegrityOK:integrityOK,schemaOK:tablesOK,exportRoundtripOK:exportOK,
+  activeNoteCount:exported.notes.length,archivedNoteCount:exported.archivedNotes.length,
+  historicalCount:exported.historicalEntries.length,postConCount:exported.postConReports.length,
+  weeklyBackupEnabled:backupEnabled(),backupFolderAccessible:folderAccessible,
+  backupCount:snapshotCount,latestBackupValid:latestValid,latestBackupAgeDays:latestDays,
+  // Settings paths, actual memory records and backup bytes are never returned.
+ };
+}
+
 function setupMemoryIpc(){
  const wrap=(name,fn)=>ipcMain.handle("showpilot-memory:"+name,(_,...args)=>fn(...args));
  wrap("status",status);wrap("create-default",status);wrap("preferences",preferences);
@@ -447,4 +495,4 @@ function setupMemoryIpc(){
  wrap("open-folder",openFolder);
  startWeeklyBackups();
 }
-module.exports={setupMemoryIpc,status,preferences,list,search,read,save,edit,archive,importPack,exportPack,rememberSchedule,openFolder,ready,backupNow,automaticBackupCheck,setBackupEnabled,chooseBackupFolder,postConList,postConSave,postConArchive};
+module.exports={setupMemoryIpc,status,preferences,list,search,read,save,edit,archive,importPack,exportPack,rememberSchedule,openFolder,ready,backupNow,automaticBackupCheck,setBackupEnabled,chooseBackupFolder,postConList,postConSave,postConArchive,diagnosticsSummary};
