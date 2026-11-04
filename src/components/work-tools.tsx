@@ -233,8 +233,19 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
       const out=await makeSelectedWorkbook(kind);
       const lib=await import("@/lib/work-files");
       lib.downloadBlob(out.blob,"ShowPilot-"+fileSuffix(out.period)+"-original-template.xlsx");
+      let memoryMessage="";
+      if(window.showpilotMemory&&aiScope){
+        try{
+          const memory=window.showpilotMemory;
+          if((await memory.status()).rememberExports){
+            const chosen=scopedScheduleData(entries,tasks,aiScope);
+            const result=await memory.rememberSchedule({entries:chosen.entries,tasks:chosen.tasks});
+            if(result.saved)memoryMessage=" Reviewed event history added to local memory.";
+          }
+        }catch(e){memoryMessage=" Local memory could not be updated: "+(e as Error).message;}
+      }
       setExportStatus("Exported "+currentExportLabel+" using the unchanged source workbook structure."+
-        (out.week?" Exactly one visible worksheet.":""));
+        (out.week?" Exactly one visible worksheet.":"")+memoryMessage);
     }catch(e){setExportStatus("Export not generated: "+(e as Error).message);}
     finally{setExportBusy(false)}
   }
