@@ -230,3 +230,35 @@ describe("per-show Post-Con reports in native ShowPilot memory",()=>{
   expect((await api.postConList())).toHaveLength(0);
  });
 });
+
+
+describe("read-only Native Memory support diagnostics",()=>{
+ it("checks SQLite integrity, Post-Con schema and JSON backup without leaking private notes",async()=>{
+  const {api,dir}=memory();
+  await api.save({category:"Lessons Learned",title:"PRIVATE CUSTOMER RESTRICTED",content:"Private staff notes and schedule details"});
+  const before=readFileSync(path.join(dir,"showpilot-memory.sqlite"));
+  const summary=await api.diagnosticsSummary();
+  const after=readFileSync(path.join(dir,"showpilot-memory.sqlite"));
+  expect(summary.sqliteIntegrityOK).toBe(true);
+  expect(summary.schemaOK).toBe(true);
+  expect(summary.exportRoundtripOK).toBe(true);
+  expect(summary.activeNoteCount).toBe(1);
+  expect(summary.latestBackupValid).toBe(false);
+  expect(after.equals(before)).toBe(true);
+  expect(JSON.stringify(summary)).not.toMatch(/PRIVATE|staff notes|schedule details|\.sqlite|[A-Z]:\\\\/);
+ });
+ it("verifies JSON snapshots after actual historical import, without exporting their text",async()=>{
+  const {api}=memory();
+  await api.importPack({
+   format:"showpilot-memory",version:1,
+   notes:[{category:"Recurring Events",title:"PRIVATE SHOW",content:"Confidential event info"}],
+   historicalEntries:[{date:"2025-01-06",kind:"CGC-room-or-task",room:"Hall A",text:"PRIVATE EVENT"}]
+  });
+  const summary=await api.diagnosticsSummary();
+  expect(summary.sqliteIntegrityOK).toBe(true);
+  expect(summary.backupCount).toBeGreaterThanOrEqual(1);
+  expect(summary.backupFolderAccessible).toBe(true);
+  expect(summary.latestBackupValid).toBe(true);
+  expect(JSON.stringify(summary)).not.toContain("PRIVATE");
+ });
+});
