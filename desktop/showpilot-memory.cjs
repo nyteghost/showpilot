@@ -10,7 +10,7 @@ const initSqlJs=require("sql.js/dist/sql-wasm-inline.js");
 const CATEGORIES=["Stage Setups","Ballroom Configurations","Recurring Events","Engineering Procedures","Approved Tasks","Lessons Learned"];
 const MAX_NOTE=24000, MAX_FILE=32*1024*1024, MAX_ENTRIES=25000, MAX_NOTES=10000, MAX_POSTCONS=5000;
 const WEEK_MS=7*24*60*60*1000, BACKUP_CHECK_MS=6*60*60*1000, BACKUP_KEEP=12;
-const BACKUP_NAME=/^ShowPilot-Memory-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}-[a-f0-9]{8}\.json$/;
+const BACKUP_NAME=/^ShowPilot-Memory-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z?-[a-f0-9]{8}\.json$/;
 let backupTimer=null,backupError="";
 let engine=null,SQL=null,initializePromise=null;
 const dataDir=()=>app.getPath("userData");
