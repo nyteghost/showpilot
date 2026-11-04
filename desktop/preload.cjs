@@ -39,3 +39,5 @@ contextBridge.exposeInMainWorld("showpilotMemory",Object.freeze({
 }));
 
 contextBridge.exposeInMainWorld("showpilotLocal",Object.freeze({status:()=>ipcRenderer.invoke("showpilot-local:status"),configure:(next)=>ipcRenderer.invoke("showpilot-local:configure",next),chooseTemplate:()=>ipcRenderer.invoke("showpilot-local:template"),readTemplate:()=>ipcRenderer.invoke("showpilot-local:read-template")}));
+
+contextBridge.exposeInMainWorld("showpilotDiagnostics",Object.freeze({inspect:()=>ipcRenderer.invoke("showpilot-diagnostics:inspect")}));
