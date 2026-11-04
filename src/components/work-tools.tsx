@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { Briefcase, CalendarClock, CalendarDays, CalendarPlus, CalendarSync, Download, ExternalLink, FileUp, GitBranch, Layers, Eye, Map as MapIcon, Store } from "lucide-react";
+import { Briefcase, CalendarClock, CalendarDays, CalendarPlus, CalendarSync, Download, ExternalLink, FileUp, GitBranch, Layers, Eye, Map as MapIcon, Store, ClipboardCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -15,6 +15,8 @@ import type {PreviewWorkbook} from "@/lib/showpilot-excel-preview";
 import type {ReviewDateScope} from "@/lib/showpilot-review-months";
 import {scopedScheduleData} from "@/lib/showpilot-export-scope";
 import { AiTaskAssistant } from "@/components/showpilot-ai-task-assistant";
+import { PostConPanel } from "@/components/showpilot-postcon-panel";
+import { rememberPostConShows } from "@/lib/showpilot-postcon";
 import { applyReview, emptyReviewDraft, fingerprintRows, parseDraft, parseReviewProject, storageKey, type ReviewDraft, type ReviewProject } from "@/lib/showpilot-review";
 
 const dayLabel = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
@@ -42,6 +44,7 @@ const TABS = [
   { id: "deck", label: "Deck", Icon: Layers, hint: "Plan a stage from the decks, stairs and rails in the warehouse." },
   { id: "vendors", label: "Vendors", Icon: Store, hint: "Compare prices and rentals across your usual suppliers." },
   { id: "floor", label: "Floor map", Icon: MapIcon, hint: "Color a floor plan from the work order: who ordered what power, where." },
+  { id: "postcon", label: "Post-Con", Icon: ClipboardCheck, hint: "Record how each completed CGC show went, what to improve and what to remember next time." },
 ] as const;
 export type WorkTabId = (typeof TABS)[number]["id"];
 type TabId = WorkTabId;
