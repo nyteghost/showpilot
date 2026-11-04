@@ -1,6 +1,6 @@
 /** Private ShowPilot SQLite-backed memory, with portable JSON import and export. */
 export type MemoryCategory="Stage Setups"|"Ballroom Configurations"|"Recurring Events"|"Engineering Procedures"|"Approved Tasks"|"Lessons Learned";
-export type MemoryStatus={configured:boolean;available:boolean;storage:"sqlite";databasePath:string;vault:string;rememberTasks:boolean;rememberStages:boolean;rememberExports:boolean;noteCount:number;historicalCount:number;migratedCount:number;error?:string};
+export type MemoryStatus={configured:boolean;available:boolean;storage:"sqlite";databasePath:string;vault:string;rememberTasks:boolean;rememberStages:boolean;rememberExports:boolean;noteCount:number;historicalCount:number;migratedCount:number;archivedCount:number;weeklyBackupEnabled:boolean;backupFolder:string;lastBackupAt:string;backupError:string;error?:string};
 export type MemorySummary={id:string;category:MemoryCategory;title:string;excerpt:string;modified:string};
 export type MemoryReference={id:string;category:MemoryCategory;title:string;excerpt:string};
 export type MemoryDraft={category:MemoryCategory;title:string;content:string};
@@ -16,6 +16,10 @@ export type MemoryBridge={
  archive(id:string):Promise<{archived:true}>;
  importJson():Promise<MemoryImportResult>;
  exportJson():Promise<{cancelled?:boolean;saved?:boolean;notes?:number;history?:number}>;
+ backupNow():Promise<{created:boolean;reason?:string;path?:string;lastBackupAt?:string;notes?:number;archived?:number;history?:number}>;
+ setWeeklyBackup(enabled:boolean):Promise<MemoryStatus>;
+ chooseBackupFolder():Promise<MemoryStatus>;
+ openBackupFolder():Promise<{opened:true}>;
  rememberSchedule(payload:{entries:readonly unknown[];tasks:readonly unknown[]}):Promise<{saved:boolean;eventsAdded?:number;reason?:string}>;
  openFolder():Promise<{opened:true}>;
 };
