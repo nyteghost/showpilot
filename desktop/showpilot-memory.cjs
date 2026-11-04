@@ -8,7 +8,7 @@ const fs=require("node:fs"),path=require("node:path"),crypto=require("node:crypt
 const initSqlJs=require("sql.js/dist/sql-wasm-inline.js");
 
 const CATEGORIES=["Stage Setups","Ballroom Configurations","Recurring Events","Engineering Procedures","Approved Tasks","Lessons Learned"];
-const MAX_NOTE=24000, MAX_FILE=32*1024*1024, MAX_ENTRIES=25000, MAX_NOTES=10000;
+const MAX_NOTE=24000, MAX_FILE=32*1024*1024, MAX_ENTRIES=25000, MAX_NOTES=10000, MAX_POSTCONS=5000;
 const WEEK_MS=7*24*60*60*1000, BACKUP_CHECK_MS=6*60*60*1000, BACKUP_KEEP=12;
 const BACKUP_NAME=/^ShowPilot-Memory-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}-[a-f0-9]{8}\.json$/;
 let backupTimer=null,backupError="";
@@ -134,7 +134,9 @@ async function ready(){
    "CREATE TABLE IF NOT EXISTS notes(id TEXT PRIMARY KEY,category TEXT NOT NULL,title TEXT NOT NULL,content TEXT NOT NULL,created TEXT NOT NULL,modified TEXT NOT NULL,origin TEXT NOT NULL,archived INTEGER NOT NULL DEFAULT 0);"+
    "CREATE INDEX IF NOT EXISTS notes_category ON notes(category,archived);"+
    "CREATE TABLE IF NOT EXISTS historical_entries(id TEXT PRIMARY KEY,kind TEXT NOT NULL,date TEXT NOT NULL,room TEXT NOT NULL,area TEXT NOT NULL,description TEXT NOT NULL,source TEXT NOT NULL,week TEXT NOT NULL,approval TEXT NOT NULL);"+
-   "CREATE INDEX IF NOT EXISTS historical_date ON historical_entries(date,room);");
+   "CREATE INDEX IF NOT EXISTS historical_date ON historical_entries(date,room);"+
+   "CREATE TABLE IF NOT EXISTS postcon_reports(id TEXT PRIMARY KEY,event_id TEXT NOT NULL,show_name TEXT NOT NULL,show_date TEXT NOT NULL,rooms TEXT NOT NULL,rating INTEGER NOT NULL,went_well TEXT NOT NULL,issues TEXT NOT NULL,staffing TEXT NOT NULL,stage TEXT NOT NULL,floor TEXT NOT NULL,follow_up TEXT NOT NULL,created TEXT NOT NULL,modified TEXT NOT NULL,archived INTEGER NOT NULL DEFAULT 0);"+
+   "CREATE INDEX IF NOT EXISTS postcon_date ON postcon_reports(show_date,archived);");
   if(!fs.existsSync(file))persist();
   migrateLegacy();
   return true;
@@ -149,6 +151,7 @@ async function status(){
   rememberExports:meta("rememberExports","false")==="true",
   noteCount:count("SELECT COUNT(*) n FROM notes WHERE archived=0"),
   historicalCount:count("SELECT COUNT(*) n FROM historical_entries"),
+  postConCount:count("SELECT COUNT(*) n FROM postcon_reports WHERE archived=0"),
   migratedCount:Number(meta("legacy_migrated_count","0")),
   archivedCount:count("SELECT COUNT(*) n FROM notes WHERE archived=1"),
   weeklyBackupEnabled:backupEnabled(),backupFolder:backupPath(),
@@ -178,12 +181,21 @@ async function search(query){
    id:n.id,category:n.category,title:n.title,excerpt:n.content.slice(0,550),
    score:words.reduce((sum,w)=>sum+(n.title.toLowerCase().includes(w)?5:0)+(n.content.toLowerCase().includes(w)?1:0),0)
  })).filter(n=>n.score>0).sort((a,b)=>b.score-a.score);
+ const postcons=queryRows("SELECT * FROM postcon_reports WHERE archived=0 ORDER BY show_date DESC LIMIT 3000").map(n=>({
+  id:n.id,category:"Lessons Learned",title:"Post-Con: "+n.show_name+" ("+n.show_date+")",
+  excerpt:["Post-con review: "+n.show_name+" "+n.show_date+" "+n.rooms,
+   "Worked: "+n.went_well,"Issues: "+n.issues,"Staffing: "+n.staffing,
+   "Stage: "+n.stage,"Floor: "+n.floor,"Follow-up: "+n.follow_up].join("; ").slice(0,650),
+  score:words.reduce((sum,w)=>sum+(n.show_name.toLowerCase().includes(w)?6:0)+
+   ([n.rooms,n.went_well,n.issues,n.staffing,n.stage,n.floor,n.follow_up].some(v=>v.toLowerCase().includes(w))?3:0),0)
+ })).filter(n=>n.score>0).sort((a,b)=>b.score-a.score);
  const history=queryRows("SELECT id,kind,date,room,description,source,approval FROM historical_entries ORDER BY date DESC LIMIT 12000").map(n=>({
   id:n.id,category:"Recurring Events",title:n.date+" "+n.room,
   excerpt:"Archived historical example ("+n.approval+"): "+n.description+"; source "+n.source+". Verify current event and staffing.",
   score:words.reduce((sum,w)=>sum+(n.description.toLowerCase().includes(w)?3:0)+(n.room.toLowerCase().includes(w)?2:0),0)
  })).filter(n=>n.score>0).sort((a,b)=>b.score-a.score);
- const picks=[...notes.slice(0,2),...(history.length?[history[0]]:[]),...notes.slice(2,4),...history.slice(1,3)].slice(0,3);
+ const picks=[...(postcons.length?[postcons[0]]:[]),...notes.slice(0,2),
+  ...(history.length?[history[0]]:[]),...postcons.slice(1,2),...history.slice(1,3)].slice(0,3);
  return picks.map(({score,...note})=>note);
 }
 async function read(id){
@@ -210,21 +222,27 @@ function validatePack(pack){
  if(!pack||pack.format!=="showpilot-memory"||pack.version!==1||!Array.isArray(pack.notes)||!Array.isArray(pack.historicalEntries))throw Error("Not a ShowPilot Memory JSON v1 file.");
  if(pack.notes.length>MAX_NOTES||pack.historicalEntries.length>MAX_ENTRIES)throw Error("Import exceeds the supported memory size");
  const archived=Array.isArray(pack.archivedNotes)?pack.archivedNotes:[];
+ const postcons=Array.isArray(pack.postConReports)?pack.postConReports:[];
+ if(postcons.length>MAX_POSTCONS)throw Error("Too many post-con reports in import");
  if(archived.length+pack.notes.length>MAX_NOTES)throw Error("Import exceeds maximum note count");
- return {notes:pack.notes.map(validateNote),archivedNotes:archived.map(n=>({...validateNote(n),archived:1})),entries:pack.historicalEntries};
+ return {notes:pack.notes.map(validateNote),archivedNotes:archived.map(n=>({...validateNote(n),archived:1})),
+  entries:pack.historicalEntries,postcons:postcons.map(validatePostCon)};
 }
 async function importPack(pack){
  await ready();
- const validated=validatePack(pack),beforeNotes=count("SELECT COUNT(*) n FROM notes"),beforeEvents=count("SELECT COUNT(*) n FROM historical_entries");
+ const validated=validatePack(pack),beforeNotes=count("SELECT COUNT(*) n FROM notes"),
+  beforeEvents=count("SELECT COUNT(*) n FROM historical_entries"),beforePostcons=count("SELECT COUNT(*) n FROM postcon_reports");
  transaction(()=>{
   for(const note of validated.notes)insertNote({...note,origin:note.origin||"json-import"});
   for(const note of validated.archivedNotes)insertNote({...note,origin:note.origin||"json-import"});
   for(const entry of validated.entries)insertEntry(entry);
+  for(const report of validated.postcons)insertPostCon(report,true);
  });
  const result={notesAdded:count("SELECT COUNT(*) n FROM notes")-beforeNotes,
   historyAdded:count("SELECT COUNT(*) n FROM historical_entries")-beforeEvents,
-  notesSeen:validated.notes.length+validated.archivedNotes.length,historySeen:validated.entries.length};
- if(backupEnabled()&&(result.notesAdded||result.historyAdded)){
+  notesSeen:validated.notes.length+validated.archivedNotes.length,historySeen:validated.entries.length,
+  postConsAdded:count("SELECT COUNT(*) n FROM postcon_reports")-beforePostcons};
+ if(backupEnabled()&&(result.notesAdded||result.historyAdded||result.postConsAdded)){
   try{await backupNow(true);}catch(e){backupError=(e instanceof Error?e.message:String(e)).slice(0,250);}
  }
  return result;
@@ -243,7 +261,8 @@ async function exportPack(){
   source:"ShowPilot Native Memory",
   notes:queryRows("SELECT id,category,title,content,created,modified,origin FROM notes WHERE archived=0 ORDER BY created"),
   archivedNotes:queryRows("SELECT id,category,title,content,created,modified,origin FROM notes WHERE archived=1 ORDER BY created"),
-  historicalEntries:queryRows("SELECT id,kind,date,room,area,description AS text,source AS original_source,week,approval FROM historical_entries ORDER BY date")};
+  historicalEntries:queryRows("SELECT id,kind,date,room,area,description AS text,source AS original_source,week,approval FROM historical_entries ORDER BY date"),
+  postConReports:queryRows("SELECT id,event_id AS eventId,show_name AS showName,show_date AS showDate,rooms,rating,went_well AS wentWell,issues,staffing,stage,floor,follow_up AS followUp,created,modified,archived FROM postcon_reports ORDER BY show_date")};
 }
 async function exportJson(){
  const out=await exportPack();
@@ -271,7 +290,7 @@ function availableBackups(folder){
 async function backupNow(force=false){
  await ready();
  if(!backupEnabled()&&!force)return {created:false,reason:"disabled"};
- if(count("SELECT COUNT(*) n FROM notes")+count("SELECT COUNT(*) n FROM historical_entries")===0)return {created:false,reason:"empty"};
+ if(count("SELECT COUNT(*) n FROM notes")+count("SELECT COUNT(*) n FROM historical_entries")+count("SELECT COUNT(*) n FROM postcon_reports")===0)return {created:false,reason:"empty"};
  const since=Date.parse(meta("lastWeeklyBackup",""));
  if(!force&&Number.isFinite(since)&&Date.now()-since<WEEK_MS)return {created:false,reason:"not-due"};
  const folder=safeBackupDirectory();
@@ -295,7 +314,7 @@ async function backupNow(force=false){
   const file=path.join(folder,name);
   try{if(fs.lstatSync(file).isFile()&&!fs.lstatSync(file).isSymbolicLink())fs.unlinkSync(file);}catch{}
  }
- return {created:true,path:target,lastBackupAt:date,notes:pack.notes.length,archived:pack.archivedNotes.length,history:pack.historicalEntries.length};
+ return {created:true,path:target,lastBackupAt:date,notes:pack.notes.length,archived:pack.archivedNotes.length,history:pack.historicalEntries.length,postCons:pack.postConReports.length};
 }
 async function automaticBackupCheck(){
  try{const result=await backupNow(false);if(result.created)backupError="";return result;}
@@ -335,6 +354,62 @@ function startWeeklyBackups(){
  backupTimer.unref?.();
 }
 
+
+function validatePostCon(input){
+ if(!input||typeof input!=="object")throw Error("Post-con report is missing.");
+ const report={
+  id:safe(input.id,160),eventId:safe(input.eventId,100),showName:safe(input.showName,140),
+  showDate:safe(input.showDate,20),rooms:safe(input.rooms,300),
+  rating:Number(input.rating)||0,
+  wentWell:safe(input.wentWell,4000),issues:safe(input.issues,4000),
+  staffing:safe(input.staffing,4000),stage:safe(input.stage,4000),
+  floor:safe(input.floor,4000),followUp:safe(input.followUp,4000),
+  created:safe(input.created,50),modified:safe(input.modified,50),
+  archived:input.archived===1?1:0
+ };
+ if(!report.showName||!/^\d{4}-\d{2}-\d{2}$/.test(report.showDate)||
+   !Number.isFinite(Date.parse(report.showDate+"T12:00:00Z"))||
+   !Number.isInteger(report.rating)||report.rating<0||report.rating>5)
+  throw Error("Post-con needs a show name, valid show date and rating 0–5.");
+ if(report.showDate>new Date().toISOString().slice(0,10))throw Error("Post-con reports are for completed shows, not future events.");
+ if(/\b(?:cepac|cobb energy|performing arts)\b/i.test(report.showName+" "+report.rooms))
+  throw Error("Post-con records must be for Cobb Galleria Centre only.");
+ if(![report.wentWell,report.issues,report.staffing,report.stage,report.floor,report.followUp].some(Boolean))
+  throw Error("Enter at least one observation or follow-up before saving a Post-Con.");
+ return report;
+}
+function insertPostCon(report,ignore=false){
+ const id=report.id||digest("postcon|"+report.showDate+"|"+(report.eventId||report.showName.toLowerCase()));
+ const t=now();
+ const args=[id,report.eventId,report.showName,report.showDate,report.rooms,report.rating,
+  report.wentWell,report.issues,report.staffing,report.stage,report.floor,report.followUp,
+  report.created||t,report.modified||t,report.archived===1?1:0];
+ sqlRun("INSERT "+(ignore?"OR IGNORE ":"")+"INTO postcon_reports(id,event_id,show_name,show_date,rooms,rating,went_well,issues,staffing,stage,floor,follow_up,created,modified,archived) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",args);
+ return id;
+}
+async function postConList(){
+ await ready();return queryRows("SELECT id,event_id AS eventId,show_name AS showName,show_date AS showDate,rooms,rating,went_well AS wentWell,issues,staffing,stage,floor,follow_up AS followUp,created,modified FROM postcon_reports WHERE archived=0 ORDER BY show_date DESC,modified DESC LIMIT 5000");
+}
+async function postConSave(input){
+ await ready();const report=validatePostCon(input);
+ const id=report.id||digest("postcon|"+report.showDate+"|"+(report.eventId||report.showName.toLowerCase()));
+ const existing=queryRows("SELECT created FROM postcon_reports WHERE id=?",[id])[0];
+ transaction(()=>{
+  sqlRun("INSERT INTO postcon_reports(id,event_id,show_name,show_date,rooms,rating,went_well,issues,staffing,stage,floor,follow_up,created,modified,archived) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,0) "+
+   "ON CONFLICT(id) DO UPDATE SET event_id=excluded.event_id,show_name=excluded.show_name,show_date=excluded.show_date,rooms=excluded.rooms,rating=excluded.rating,went_well=excluded.went_well,issues=excluded.issues,staffing=excluded.staffing,stage=excluded.stage,floor=excluded.floor,follow_up=excluded.follow_up,modified=excluded.modified,archived=0",
+   [id,report.eventId,report.showName,report.showDate,report.rooms,report.rating,
+    report.wentWell,report.issues,report.staffing,report.stage,report.floor,report.followUp,existing?.created||now(),now()]);
+ });
+ return {id,saved:true};
+}
+async function postConArchive(id){
+ await ready();if(typeof id!=="string"||!id||id.length>160)throw Error("Invalid Post-Con id");
+ transaction(()=>{
+  sqlRun("UPDATE postcon_reports SET archived=1,modified=? WHERE id=? AND archived=0",[now(),id]);
+  if(engine.getRowsModified()!==1)throw Error("Post-Con report not found.");
+ });
+ return {archived:true};
+}
 async function rememberSchedule(payload){
  await ready();
  if(meta("rememberExports","false")!=="true")return {saved:false,reason:"disabled"};
@@ -368,7 +443,8 @@ function setupMemoryIpc(){
  wrap("import-json",importJson);wrap("export-json",exportJson);wrap("remember-schedule",rememberSchedule);
  wrap("backup-now",()=>backupNow(true));wrap("backup-enable",setBackupEnabled);
  wrap("backup-choose-folder",chooseBackupFolder);wrap("backup-open-folder",openBackupFolder);
+ wrap("postcon-list",postConList);wrap("postcon-save",postConSave);wrap("postcon-archive",postConArchive);
  wrap("open-folder",openFolder);
  startWeeklyBackups();
 }
-module.exports={setupMemoryIpc,status,preferences,list,search,read,save,edit,archive,importPack,exportPack,rememberSchedule,openFolder,ready,backupNow,automaticBackupCheck,setBackupEnabled,chooseBackupFolder};
+module.exports={setupMemoryIpc,status,preferences,list,search,read,save,edit,archive,importPack,exportPack,rememberSchedule,openFolder,ready,backupNow,automaticBackupCheck,setBackupEnabled,chooseBackupFolder,postConList,postConSave,postConArchive};
