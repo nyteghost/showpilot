@@ -73,4 +73,15 @@ describe("CGC post-con show catalog",()=>{
   expect(both).toHaveLength(1);
   expect(both[0]?.showDate).toBe("2025-10-12");
  });
+ it("expands Hall AB and connected ballroom combinations into actual CGC rooms",()=>{
+  const shows=postConShows([
+   {date:"2025-11-02",space:"Hall AB",eventId:"C5",title:"Combined Hall Expo",code:"S"},
+   {date:"2025-11-02",space:"BallRoom ABC",eventId:"C5",title:"Combined Hall Expo",code:"S"}
+  ] as EventEntry[]);
+  expect(shows).toHaveLength(1);
+  expect(shows[0]?.rooms).toContain("Hall A");
+  expect(shows[0]?.rooms).toContain("Hall B");
+  expect(shows[0]?.rooms).toContain("BallRoom A");
+ });
+
 });
