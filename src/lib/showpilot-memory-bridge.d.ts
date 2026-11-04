@@ -1,10 +1,15 @@
 /** Private ShowPilot SQLite-backed memory, with portable JSON import and export. */
 export type MemoryCategory="Stage Setups"|"Ballroom Configurations"|"Recurring Events"|"Engineering Procedures"|"Approved Tasks"|"Lessons Learned";
-export type MemoryStatus={configured:boolean;available:boolean;storage:"sqlite";databasePath:string;vault:string;rememberTasks:boolean;rememberStages:boolean;rememberExports:boolean;noteCount:number;historicalCount:number;migratedCount:number;archivedCount:number;weeklyBackupEnabled:boolean;backupFolder:string;lastBackupAt:string;backupError:string;error?:string};
+export type MemoryStatus={configured:boolean;available:boolean;storage:"sqlite";databasePath:string;vault:string;rememberTasks:boolean;rememberStages:boolean;rememberExports:boolean;noteCount:number;historicalCount:number;postConCount:number;migratedCount:number;archivedCount:number;weeklyBackupEnabled:boolean;backupFolder:string;lastBackupAt:string;backupError:string;error?:string};
 export type MemorySummary={id:string;category:MemoryCategory;title:string;excerpt:string;modified:string};
 export type MemoryReference={id:string;category:MemoryCategory;title:string;excerpt:string};
 export type MemoryDraft={category:MemoryCategory;title:string;content:string};
 export type MemoryImportResult={cancelled?:boolean;notesAdded?:number;historyAdded?:number;notesSeen?:number;historySeen?:number};
+export type PostConReport={
+ id?:string;eventId:string;showName:string;showDate:string;rooms:string;
+ rating:number;wentWell:string;issues:string;staffing:string;stage:string;floor:string;followUp:string;
+ created?:string;modified?:string;
+};
 export type MemoryBridge={
  status():Promise<MemoryStatus>;
  preferences(value:{rememberTasks:boolean;rememberStages:boolean;rememberExports:boolean}):Promise<MemoryStatus>;
@@ -21,6 +26,9 @@ export type MemoryBridge={
  chooseBackupFolder():Promise<MemoryStatus>;
  openBackupFolder():Promise<{opened:true}>;
  rememberSchedule(payload:{entries:readonly unknown[];tasks:readonly unknown[]}):Promise<{saved:boolean;eventsAdded?:number;reason?:string}>;
+ postConList():Promise<(PostConReport & {id:string})[]>;
+ postConSave(report:PostConReport):Promise<{id:string;saved:true}>;
+ postConArchive(id:string):Promise<{archived:true}>;
  openFolder():Promise<{opened:true}>;
 };
 declare global{interface Window{showpilotMemory?:MemoryBridge}}
