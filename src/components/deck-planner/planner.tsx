@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { StageLayout, type LayoutStage, type PositionedLayoutStage } from "@/components/deck-planner/stage-layout";
 import { crewPrintDocument, printCrewPages, type CrewPrintStage } from "@/lib/stage-crew-print";
 import { stageMemoryDraft } from "@/lib/showpilot-memory-notes";
+import { LocalPlanningAssistant } from "@/components/showpilot-planning-assistant";
 import { allocateSingleDeckStages } from "@/lib/single-deck-allocation";
 import { EDGE_MODES, NO_EXTRAS, NO_PARTS, DEFAULT_HAVE, OPENING_FT, addParts, checkParts, parseHave, rampRunFt, stageParts } from "@/lib/stage-extras";
 import { INVENTORY, FULL_STOCK, STAIR_TYPES, DEFAULT_PREFS, planStage, type Deck, type Holder, type Bridge, type Result, type Stock, type PlanPrefs } from "@/lib/deck-solver";
@@ -258,6 +259,8 @@ function StagePanel({
   title,
   defaultWidth,
   defaultLength,
+  eventName = "",
+  showDate = "",
   stock = FULL_STOCK,
   onUsage,
   onLayoutChange,
@@ -268,6 +271,8 @@ function StagePanel({
   title: string;
   defaultWidth: number;
   defaultLength: number;
+  eventName?: string;
+  showDate?: string;
   labelPrefix?: string;
   stock?: Stock;
   onUsage?: (u: Stock) => void;
@@ -658,6 +663,24 @@ function StagePanel({
                 />
               </div>
 
+              <LocalPlanningAssistant kind="stage"
+                memoryQuery={[eventName,displayTitle,"stage setup",width+"x"+length].filter(Boolean).join(" ").slice(0,155)}
+                context={{eventName,showDate,stageName:displayTitle,widthFt:width,lengthFt:length,heightIn,stock,
+                  preferences:{mostlyThree,allowTwo},
+                  currentSolver:result.ok?{buildable:true,holders:result.holders.length,bridges:result.bridges.length,decks:result.decks.length}:{buildable:false,reason:result.reason}}}
+                onApply={(suggestion)=>{
+                  const c=suggestion.stage;
+                  if(!c)return;
+                  if(!planStage(c.widthFt,c.lengthFt,stock,{mostlyThree:c.mostlyThree,allowTwo:c.allowTwo}).ok){
+                    setPlaceError("Inventory changed; rerun local AI before applying this size.");return;
+                  }
+                  setManual(false);setPieces([]);setWidth(c.widthFt);setLength(c.lengthFt);
+                  setHeightIn(c.heightIn);setHeightText(String(c.heightIn));
+                  setMostlyThree(c.mostlyThree);setAllowTwo(c.allowTwo);setPlanNonce(n=>n+1);
+                  setPlaceError("AI-suggested dimensions applied. Verify the diagram, bridge safety and crew sheet.");
+                }}
+                applyLabel="Apply validated dimensions"
+              />
               <div>
                 <div className="block text-sm font-medium">Stairs</div>
                 <div className="mt-1 grid grid-cols-3 gap-2">
@@ -1821,6 +1844,8 @@ export function DeckPlanner() {
                 title={enabledIndexes.length > 1 ? `Stage ${n}` : "Stage"}
                 defaultWidth={i === 0 ? 24 : i === 1 ? 16 : 8}
                 defaultLength={i <= 1 ? (i === 0 ? 16 : 8) : 8}
+                eventName={eventName}
+                showDate={showDate}
                 labelPrefix={i === 0 ? undefined : `S${i + 1}-`}
                 stock={stock}
                 onUsage={setUsedFor(i)}
