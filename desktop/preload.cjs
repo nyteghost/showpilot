@@ -27,6 +27,10 @@ contextBridge.exposeInMainWorld("showpilotMemory",Object.freeze({
  archive:(id)=>ipcRenderer.invoke("showpilot-memory:archive",id),
  importJson:()=>ipcRenderer.invoke("showpilot-memory:import-json"),
  exportJson:()=>ipcRenderer.invoke("showpilot-memory:export-json"),
+ backupNow:()=>ipcRenderer.invoke("showpilot-memory:backup-now"),
+ setWeeklyBackup:(enabled)=>ipcRenderer.invoke("showpilot-memory:backup-enable",enabled),
+ chooseBackupFolder:()=>ipcRenderer.invoke("showpilot-memory:backup-choose-folder"),
+ openBackupFolder:()=>ipcRenderer.invoke("showpilot-memory:backup-open-folder"),
  rememberSchedule:(payload)=>ipcRenderer.invoke("showpilot-memory:remember-schedule",payload),
  openFolder:()=>ipcRenderer.invoke("showpilot-memory:open-folder"),
 }));
