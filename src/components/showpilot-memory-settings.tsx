@@ -106,6 +106,25 @@ export function ShowPilotMemorySettings(){
     </div>
     <p className="text-xs text-muted-foreground">Extract the memory ZIP first, then choose the included <code>ShowPilot-Memory-Import-2025-2026.json</code>. Re-importing the same package skips existing records. Older Obsidian-compatible notes are copied into SQLite automatically on first launch; their original files are left untouched.</p>
    </div>
+   {status&&<div className="rounded-lg border p-3 space-y-2" aria-label="Weekly automatic memory backups">
+    <div className="flex items-center justify-between gap-2 flex-wrap">
+     <h3 className="font-semibold text-sm">Weekly memory backups</h3>
+     <label className="flex gap-2 items-center text-sm"><input type="checkbox" disabled={busy} checked={status.weeklyBackupEnabled} onChange={e=>void perform(()=>bridge.setWeeklyBackup(e.target.checked),"Weekly backup setting updated.")}/> Automatic weekly backups</label>
+    </div>
+    <p className="text-xs text-muted-foreground">When enabled, ShowPilot makes a verified JSON backup at launch when due and checks again while running. If the app is closed during the scheduled week, it catches up on the next launch. It retains the latest 12 automatic snapshots, including archived notes.</p>
+    <p className="text-xs break-all"><strong>Backup folder:</strong> {status.backupFolder}</p>
+    <p className="text-xs"><strong>Last successful backup:</strong> {status.lastBackupAt?new Date(status.lastBackupAt).toLocaleString():"Not yet created"}</p>
+    {status.backupError&&<p role="alert" className="text-xs text-destructive">Backup needs attention: {status.backupError}</p>}
+    <div className="flex flex-wrap gap-2">
+     <Button size="sm" variant="outline" disabled={busy} onClick={()=>void perform(async()=>{
+      const result=await bridge.backupNow();
+      setMessage(result.created?"Verified memory backup created: "+result.path:"Backup not created: "+(result.reason??"unknown"));
+     },"")}>Back up now</Button>
+     <Button size="sm" variant="outline" disabled={busy} onClick={()=>void perform(()=>bridge.chooseBackupFolder(),"Backup folder selected.")}>Choose backup folder</Button>
+     <Button size="sm" variant="outline" disabled={busy} onClick={()=>void perform(()=>bridge.openBackupFolder(),"Opened backup folder.")}>Open backup folder</Button>
+    </div>
+    <p className="text-xs text-muted-foreground">For protection against computer failure, choose an IT-approved second drive or shared backup location. Backups contain plain-text company history—do not save them to an unapproved cloud service. To restore, select a saved JSON using Import JSON memory.</p>
+   </div>}
    {status&&<div className="rounded-lg border p-3 space-y-2">
     <h3 className="text-sm font-semibold">What ShowPilot should remember</h3>
     <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" disabled={busy} checked={status.rememberTasks} onChange={e=>updatePrefs({rememberTasks:e.target.checked})}/> Approved AI engineering tasks</label>
