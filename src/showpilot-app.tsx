@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   CalendarDays, CalendarClock, Layers3, Store, Map,
-  LayoutDashboard, Menu, Moon, Sun, ChevronRight, ShieldCheck, PanelLeftClose, PanelLeftOpen, Settings2
+  LayoutDashboard, Menu, Moon, Sun, ChevronRight, ShieldCheck, PanelLeftClose, PanelLeftOpen, Settings2, ClipboardCheck
 } from "lucide-react";
 import { ShowServicesTools, type WorkTabId } from "@/components/work-tools";
 import { BackupPanel } from "@/components/showpilot-backup";
@@ -18,6 +18,7 @@ const sections: { id: WorkTabId; label: string; desc: string; Icon: typeof Calen
   {id:"shifts",label:"My Shifts",desc:"Read, edit and export your personal shifts to Google Calendar",Icon:CalendarClock,note:"Calendar tools"},
   {id:"deck",label:"Stage & Deck Planner",desc:"Plan stage sizes, configurations, stairs and inventory",Icon:Layers3,note:"Stage operations"},
   {id:"floor",label:"Floor Maps",desc:"Color booth utility locations and resolve work-order questions",Icon:Map,note:"Exhibitor utilities"},
+  {id:"postcon",label:"Post-Con Reports",desc:"Capture show outcomes, staffing lessons, stage notes and floor-map improvements",Icon:ClipboardCheck,note:"Show history & lessons"},
   {id:"vendors",label:"Vendors",desc:"Manage and compare purchase and rental quotes",Icon:Store,note:"Purchasing & rentals"},
 ];
 
