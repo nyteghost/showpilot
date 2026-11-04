@@ -26,7 +26,7 @@ export function ShowPilotMemorySettings(){
  const perform=async(callback:()=>Promise<unknown>,messageIfSuccess:string)=>{
   if(busy)return;
   setBusy(true);setMessage("");
-  try{await callback();await refresh();setMessage(messageIfSuccess);}
+  try{await callback();await refresh();if(messageIfSuccess)setMessage(messageIfSuccess);}
   catch(e){setMessage("Memory operation failed: "+(e as Error).message);}
   finally{setBusy(false);}
  };
@@ -44,7 +44,7 @@ export function ShowPilotMemorySettings(){
    const result=await bridge.importJson();
    if(result.cancelled){setMessage("Import cancelled.");return;}
    setMessage("Imported "+result.notesAdded+" new notes and "+result.historyAdded+" new historical entries. Existing memories were kept.");
-  },"Import completed.");
+  },"");
  };
  const exportData=()=>{
   if(!bridge)return;
@@ -52,7 +52,7 @@ export function ShowPilotMemorySettings(){
    const result=await bridge.exportJson();
    if(result.cancelled){setMessage("Export cancelled.");return;}
    setMessage("Local JSON backup saved ("+result.notes+" notes and "+result.history+" historical entries).");
-  },"Backup completed.");
+  },"");
  };
  const open=async(id:string)=>{
   if(!bridge)return;
