@@ -39,11 +39,11 @@ cd "$HOME/Applications/ShowPilot"
 
 Keep the extracted files together, rather than copying only the `showpilot` executable. When replacing a build, close ShowPilot first; the app's user data is stored separately under your Linux account's application data directory.
 
-**KDE/KWallet:** Before saving Google Calendar authorization or cloud AI keys, unlock/configure **KWallet**. ShowPilot refuses the insecure Linux `basic_text` credential-backend fallback. If the wallet is unavailable, schedule exports, local plans, Obsidian memory, and other offline features still work. Local GPU AI depends on whether the Electron/Chromium WebGPU implementation and your NVIDIA driver support WebGPU on that system; the build does not guarantee accelerated inference.
+**KDE/KWallet:** Before saving Google Calendar authorization or cloud AI keys, unlock/configure **KWallet**. ShowPilot refuses the insecure Linux `basic_text` credential-backend fallback. If the wallet is unavailable, schedule exports, local plans, native memory, and other offline features still work. Local GPU AI depends on whether the Electron/Chromium WebGPU implementation and your NVIDIA driver support WebGPU on that system; the build does not guarantee accelerated inference.
 
 **If the Linux window fails to render:** On NVIDIA systems try the existing application with `--ozone-platform=x11` from a Plasma X11 session; don't disable Chromium's sandbox to work around a launch problem. You can share the terminal output so the launch issue can be fixed properly.
 
-The workflow also creates **`showpilot-browser-beta`**, an offline-capable browser build that can be served locally. The **Windows and Linux desktop builds** provide the desktop-specific integrations, including direct Obsidian notebook folder access.
+The workflow also creates **`showpilot-browser-beta`**, an offline-capable browser build that can be served locally. The **Windows and Linux desktop builds** provide the desktop-specific integrations, including direct native SQLite memory file access.
 
 ### Update channels
 
