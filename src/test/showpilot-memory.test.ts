@@ -194,3 +194,39 @@ describe("human-readable ShowPilot memory notes",()=>{
   expect(safeMemoryReferences(undefined)).toEqual([]);
  });
 });
+
+
+describe("per-show Post-Con reports in native ShowPilot memory",()=>{
+ const review={
+  eventId:"A100",showName:"Technology Expo",showDate:"2025-10-12",rooms:"Hall A, Hall B",
+  rating:4,wentWell:"Early equipment delivery",issues:"Late booth numbers",
+  staffing:"Verify closing coverage",stage:"12x8 stage supported",
+  floor:"Double-check booth 102",followUp:"Confirm utility orders earlier"
+ };
+ it("saves, edits, searches and restores a CGC Post-Con through JSON backup",async()=>{
+  const {api}=memory();
+  const created=await api.postConSave(review);
+  expect(created.saved).toBe(true);
+  expect((await api.postConList()).length).toBe(1);
+  expect((await api.status()).postConCount).toBe(1);
+  expect((await api.search("Technology")).some((r:{title:string})=>r.title.includes("Post-Con"))).toBe(true);
+  const updated=await api.postConSave({...review,id:created.id,issues:"New booth lesson"});
+  expect(updated.id).toBe(created.id);
+  expect((await api.postConList())[0].issues).toBe("New booth lesson");
+  const json=await api.exportPack();
+  expect(json.postConReports).toHaveLength(1);
+  const second=memory();
+  await second.api.importPack(json);
+  expect((await second.api.postConList())[0].issues).toBe("New booth lesson");
+  await api.postConArchive(created.id);
+  expect(await api.postConList()).toHaveLength(0);
+  expect((await api.exportPack()).postConReports[0].archived).toBe(1);
+ });
+ it("does not accept future, empty, or other-building Post-Con reports",async()=>{
+  const {api}=memory();
+  await expect(api.postConSave({...review,showDate:"2099-01-01"})).rejects.toThrow(/completed shows/);
+  await expect(api.postConSave({...review,rooms:"CEPAC Ballroom"})).rejects.toThrow(/Cobb Galleria/);
+  await expect(api.postConSave({...review,wentWell:"",issues:"",staffing:"",stage:"",floor:"",followUp:""})).rejects.toThrow(/observation/i);
+  expect((await api.postConList())).toHaveLength(0);
+ });
+});
