@@ -37,6 +37,11 @@ contextBridge.exposeInMainWorld("showpilotMemory",Object.freeze({
  postConArchive:(id)=>ipcRenderer.invoke("showpilot-memory:postcon-archive",id),
  showCatalogList:()=>ipcRenderer.invoke("showpilot-memory:show-catalog-list"),
  showCatalogSave:(shows)=>ipcRenderer.invoke("showpilot-memory:show-catalog-save",shows),
+ eventFileList:(eventKey,includeArchived)=>ipcRenderer.invoke("showpilot-memory:event-file-list",eventKey,includeArchived),
+ eventFileSave:(input)=>ipcRenderer.invoke("showpilot-memory:event-file-save",input),
+ eventFileOpen:(id)=>ipcRenderer.invoke("showpilot-memory:event-file-open",id),
+ eventFileRead:(id)=>ipcRenderer.invoke("showpilot-memory:event-file-read",id),
+ eventFileArchive:(id,archived)=>ipcRenderer.invoke("showpilot-memory:event-file-archive",id,archived),
  openFolder:()=>ipcRenderer.invoke("showpilot-memory:open-folder"),
 }));
 
