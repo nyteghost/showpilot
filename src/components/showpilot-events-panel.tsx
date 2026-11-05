@@ -18,7 +18,7 @@ const preFields=[["overview","Pre-show overview"],["staffing","Staffing and engi
 const postFields=[["wentWell","What went well"],["issues","Issues and outcomes"],["staffing","Staffing lessons"],["stage","Stage notes"],["floor","Floor-map improvements"],["followUp","Follow-ups"]] as const;
 
 type EventSection="overview"|"documents"|"precon"|"postcon"|"stage"|"floor";
-export function ShowPilotEventsPanel({active=true,stagePlanner,floorMaps}:{active?:boolean;stagePlanner?:ReactNode;floorMaps?:ReactNode}){
+export function ShowPilotEventsPanel({active=true,stagePlanner,floorMaps}:{active?:boolean;stagePlanner?:ReactNode;floorMaps?:(files:File[],eventId:string)=>ReactNode}){
  const bridge=window.showpilotMemory;
  const [shows,setShows]=useState<PostConShow[]>(()=>loadPostConShows());
  const [selectedKey,setSelectedKey]=useState("");
@@ -30,6 +30,7 @@ export function ShowPilotEventsPanel({active=true,stagePlanner,floorMaps}:{activ
  const [precon,setPrecon]=useState<PreConDraft|null>(null);
  const [postcon,setPostcon]=useState<PostConReport|null>(null);
  const [zipSchedule,setZipSchedule]=useState<ZipScheduleEvidence|null>(null);
+ const [floorFiles,setFloorFiles]=useState<File[]>([]);
  const [message,setMessage]=useState("");
  const [section,setSection]=useState<EventSection>("overview");
  const [filesRevision,setFilesRevision]=useState(0);
@@ -43,6 +44,23 @@ export function ShowPilotEventsPanel({active=true,stagePlanner,floorMaps}:{activ
   setMessage("Event ZIP imported. The documents are stored locally under this show.");
  };
  const show=shows.find(s=>s.key===selectedKey);
+ const openFloorMaps=async()=>{
+  selectSection("floor");
+  if(!show||!bridge||!floorMaps)return;
+  try{
+   const files=await bridge.eventFileList(show.key);
+   const layouts=files.filter(x=>x.kind==="diagram"&&x.available&&
+    ["pdf","png","jpg","jpeg","webp"].includes(x.extension)&&
+    /hall|exhibit|floor[\\s_-]*(?:plan|map)|event[\\s_-]*layout/i.test(x.name));
+   const orders=files.filter(x=>x.kind==="work-order"&&x.available&&x.extension==="pdf");
+   const selected=[...layouts.sort((a,b)=>Number(b.extension==="pdf")-Number(a.extension==="pdf")).slice(0,1),...orders.slice(0,2)];
+   const inputs=await Promise.all(selected.map(async item=>{
+    const data=await bridge.eventFileRead(item.id);
+    return new File([new Uint8Array(data.bytes)],data.name,{type:item.extension==="pdf"?"application/pdf":"image/"+item.extension});
+   }));
+   setFloorFiles(inputs);
+  }catch(e){setMessage("Unable to load the event's attached floor plan: "+String(e));}
+ };
  const visible=useMemo(()=>shows.filter(s=>
   (s.showName+" "+s.eventId+" "+s.rooms+" "+s.showDate).toLowerCase().includes(search.toLowerCase())
  ),[shows,search]);
@@ -90,7 +108,7 @@ export function ShowPilotEventsPanel({active=true,stagePlanner,floorMaps}:{activ
  },[bridge,selectedKey,filesRevision]);
  const choose=(key:string)=>{
   if(notesDirty&&!window.confirm("Switch events? Unsaved general notes will be lost."))return;
-  setSelectedKey(key);setNoteText("");setNoteId("");setNotesDirty(false);
+  setSelectedKey(key);setFloorFiles([]);setNoteText("");setNoteId("");setNotesDirty(false);
   setPrecon(null);setPostcon(null);setMessage("");
  };
  const saveNote=async()=>{
@@ -140,7 +158,7 @@ export function ShowPilotEventsPanel({active=true,stagePlanner,floorMaps}:{activ
     ["stage","Stage & Deck Planner",Layers],
     ["floor","Floor Maps",MapIcon]
    ] as const).map(([id,title,Icon])=>
-    <button key={id} role="tab" aria-selected={section===id} type="button" onClick={()=>selectSection(id)}
+    <button key={id} role="tab" aria-selected={section===id} type="button" onClick={()=>id==="floor"?void openFloorMaps():selectSection(id)}
      className={"flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-semibold transition-colors "+
       (section===id?"bg-blue-600 text-white border-blue-600":"hover:bg-muted")}>
      <Icon size={16}/>{title}
@@ -205,13 +223,13 @@ export function ShowPilotEventsPanel({active=true,stagePlanner,floorMaps}:{activ
    </div>}
   </div>
   {section==="documents"&&<div className="space-y-3">
-   {show&&bridge?<ShowPilotEventDocuments key={show.key+":"+filesRevision} show={show} onOpenStage={()=>selectSection("stage")} onOpenFloorMaps={()=>selectSection("floor")}/>
+   {show&&bridge?<ShowPilotEventDocuments key={show.key+":"+filesRevision} show={show} onOpenStage={()=>selectSection("stage")} onOpenFloorMaps={()=>void openFloorMaps()}/>
     :<div className="rounded-xl border p-4 text-sm text-muted-foreground">Choose a show or import an event ZIP to see its work orders, EOCs and diagrams.</div>}
   </div>}
   <div hidden={section!=="precon"}>{visited.includes("precon")&&<PreConPanel focusShow={show}/>}</div>
   <div hidden={section!=="postcon"}>{visited.includes("postcon")&&<PostConPanel focusShow={show}/>}</div>
   <div hidden={section!=="stage"}>{visited.includes("stage")&&stagePlanner}</div>
-  <div hidden={section!=="floor"}>{visited.includes("floor")&&floorMaps}</div>
+  <div hidden={section!=="floor"}>{visited.includes("floor")&&floorMaps?.(floorFiles,show?.eventId??"")}</div>
   {message&&<p role="status" className="rounded border p-2 text-xs">{message}</p>}
  </section>;
 }
