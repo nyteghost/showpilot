@@ -83,6 +83,10 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
   setBusy(true);setStatus("Saving event documents locally…");
   try{
    if(mode==="new"){
+    // Recheck SQLite itself: an app upgrade may still be loading the catalog.
+    const current=await bridge.showCatalogList();
+    if(current.some(existing=>existing.key===key))
+     throw Error("That show already exists in SQLite. Choose Existing show instead of overwriting it.");
     await bridge.showCatalogSave([{key,eventId:eventId.trim(),showName:name.trim(),
      startDate:start,showDate:end,rooms:rooms.join(", ")}]);
     window.dispatchEvent(new Event("showpilot:postcon-catalog"));
