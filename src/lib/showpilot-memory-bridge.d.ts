@@ -12,6 +12,14 @@ export type PostConReport={
  created?:string;modified?:string;
 };
 export type ShowCatalogRecord={key:string;eventId:string;showName:string;showDate:string;rooms:string;startDate?:string};
+export type EventZipInspection={
+ files:{path:string;name:string;bytes:number;kind:EventFileKind}[];
+ ignored:string[];manifest:null|{showName:string;eventId:string;startDate:string;showDate:string;rooms:string};totalBytes:number;
+};
+export type EventZipImportResult={
+ eventKey:string;imported:{id:string;name:string;kind:EventFileKind;extension:string}[];
+ duplicates:string[];ignored:string[];errors:{name:string;error:string}[];
+};
 export type MemoryBridge={
  status():Promise<MemoryStatus>;
  preferences(value:{rememberTasks:boolean;rememberStages:boolean;rememberExports:boolean}):Promise<MemoryStatus>;
@@ -38,6 +46,9 @@ export type MemoryBridge={
  eventFileOpen(id:string):Promise<{opened:true}>;
  eventFileRead(id:string):Promise<{bytes:Uint8Array;extension:string;name:string}>;
  eventFileArchive(id:string,archived?:boolean):Promise<{archived:boolean}>;
+ eventZipInspect(bytes:ArrayBuffer):Promise<EventZipInspection>;
+ eventZipImport(input:{eventKey:string;bytes:ArrayBuffer}):Promise<EventZipImportResult>;
+ eventFileSetEocExcerpts(id:string,excerpts:EocExcerpt[]):Promise<{saved:true;count:number}>;
  openFolder():Promise<{opened:true}>;
 };
 declare global{interface Window{showpilotMemory?:MemoryBridge}}
