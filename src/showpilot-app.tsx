@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import {
-  CalendarDays, CalendarClock, Layers3, Store, Map,
+  CalendarDays, CalendarClock, Layers3, Store, Map, FolderOpen,
   LayoutDashboard, Menu, Moon, Sun, ChevronRight, ShieldCheck, PanelLeftClose, PanelLeftOpen, Settings2, ClipboardCheck, ClipboardList
 } from "lucide-react";
 import { ShowServicesTools, type WorkTabId } from "@/components/work-tools";
@@ -16,6 +16,7 @@ import showpilotIcon from "./assets/showpilot-approved.webp";
 type Screen = "dashboard" | "settings" | WorkTabId;
 const sections: { id: WorkTabId; label: string; desc: string; Icon: typeof CalendarDays; note: string }[] = [
   {id:"events",label:"Event Schedule",desc:"Import Ungerboeck reports, plan engineering coverage and export Excel",Icon:CalendarDays,note:"Reports & staffing"},
+  {id:"eventhub",label:"Events",desc:"Show notes, work orders, EOCs, event diagrams and Pre/Post-Con information",Icon:FolderOpen,note:"Central show records"},
   {id:"shifts",label:"My Shifts",desc:"Read, edit and export your personal shifts to Google Calendar",Icon:CalendarClock,note:"Calendar tools"},
   {id:"deck",label:"Stage & Deck Planner",desc:"Plan stage sizes, configurations, stairs and inventory",Icon:Layers3,note:"Stage operations"},
   {id:"floor",label:"Floor Maps",desc:"Color booth utility locations and resolve work-order questions",Icon:Map,note:"Exhibitor utilities"},
