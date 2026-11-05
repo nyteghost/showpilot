@@ -93,6 +93,9 @@ describe("Pre-Con and Post-Con group by real Event names, never function descrip
    row("2026-11-08","Cobb Energy Show","Program","42422","Cobb Energy Performing Arts Centre"),
   ];
   expect(postConShowsFromReportRows(rows).map(s=>s.showName)).toEqual(["Leadership Cobb"]);
+  const genericNames=["Move In - RPM","AV Move In","Move In - Exhibitors/Vendors","Move In - Sponsor Showcase","Decorator Day/RPM Move In","Tables & Chairs Inc. Move-In","Program","Breakout Session","Certification Room","General Session","Vendor Load-In/Marquee Letters drop-off"];
+  const functionRows=genericNames.map((event,i)=>row("2026-11-08",event,"Example function",String(52000+i),"Ballroom A (BRA)"));
+  expect(postConShowsFromReportRows(functionRows)).toEqual([]);
  });
  it("uses a clean v2 persistent catalog, not the old function-level v1 key",()=>{
    expect(POSTCON_CATALOG_KEY).toBe("showpilot:postcon:known-shows:v2");
