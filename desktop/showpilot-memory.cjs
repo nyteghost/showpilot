@@ -138,7 +138,9 @@ async function ready(){
    "CREATE TABLE IF NOT EXISTS postcon_reports(id TEXT PRIMARY KEY,event_id TEXT NOT NULL,show_name TEXT NOT NULL,show_date TEXT NOT NULL,rooms TEXT NOT NULL,rating INTEGER NOT NULL,went_well TEXT NOT NULL,issues TEXT NOT NULL,staffing TEXT NOT NULL,stage TEXT NOT NULL,floor TEXT NOT NULL,follow_up TEXT NOT NULL,created TEXT NOT NULL,modified TEXT NOT NULL,archived INTEGER NOT NULL DEFAULT 0);"+
    "CREATE INDEX IF NOT EXISTS postcon_date ON postcon_reports(show_date,archived);"+
    "CREATE TABLE IF NOT EXISTS show_catalog(key TEXT PRIMARY KEY,event_id TEXT NOT NULL,show_name TEXT NOT NULL,start_date TEXT NOT NULL,show_date TEXT NOT NULL,rooms TEXT NOT NULL,modified TEXT NOT NULL);"+
-   "CREATE INDEX IF NOT EXISTS show_catalog_dates ON show_catalog(start_date,show_date);");
+   "CREATE INDEX IF NOT EXISTS show_catalog_dates ON show_catalog(start_date,show_date);"+
+   "CREATE TABLE IF NOT EXISTS event_files(id TEXT PRIMARY KEY,event_key TEXT NOT NULL,kind TEXT NOT NULL,name TEXT NOT NULL,extension TEXT NOT NULL,byte_size INTEGER NOT NULL,sha256 TEXT NOT NULL,eoc_json TEXT NOT NULL,created TEXT NOT NULL,archived INTEGER NOT NULL DEFAULT 0);"+
+   "CREATE INDEX IF NOT EXISTS event_files_key ON event_files(event_key,archived);");
   if(!fs.existsSync(file))persist();
   migrateLegacy();
   return true;
@@ -155,6 +157,7 @@ async function status(){
   historicalCount:count("SELECT COUNT(*) n FROM historical_entries"),
   postConCount:count("SELECT COUNT(*) n FROM postcon_reports WHERE archived=0"),
    showCatalogCount:count("SELECT COUNT(*) n FROM show_catalog"),
+   eventFileCount:count("SELECT COUNT(*) n FROM event_files WHERE archived=0"),
   migratedCount:Number(meta("legacy_migrated_count","0")),
   archivedCount:count("SELECT COUNT(*) n FROM notes WHERE archived=1"),
   weeklyBackupEnabled:backupEnabled(),backupFolder:backupPath(),
