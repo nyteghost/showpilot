@@ -19,7 +19,7 @@ import { LocalPlanningAssistant } from "@/components/showpilot-planning-assistan
 import { staffingPlanningContext } from "@/lib/showpilot-planning";
 import { PostConPanel } from "@/components/showpilot-postcon-panel";
 import { PreConPanel } from "@/components/showpilot-precon-panel";
-import { rememberPostConShows } from "@/lib/showpilot-postcon";
+import { rememberPostConShowsFromReportRows } from "@/lib/showpilot-postcon";
 import { applyReview, emptyReviewDraft, fingerprintRows, parseDraft, parseReviewProject, storageKey, type ReviewDraft, type ReviewProject } from "@/lib/showpilot-review";
 
 const dayLabel = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
@@ -184,7 +184,6 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
     setEntries(approved.entries);
     setTasks(approved.tasks);
     setShared(sharedSpaces(approved.entries));
-    rememberPostConShows(approved.entries); // local show-name/date/room catalog for pre/post-con dropdowns
   }
   async function build(src: { rows: EventRow[]; existing?: File; sources: number }, includePending: boolean, approved: string[] = [], overrideDraft?: ReviewDraft) {
     const nextDraft = draftFor(src.rows, overrideDraft);
@@ -195,6 +194,10 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
     setVenueReview([...new Set(scope.needsReview.map((r) => r.space || "(no space)"))].sort());
     setPending([...new Set(live.filter(isPendingRow).map((r) => (r.event || r.description) + " (" + r.status + ")"))].sort());
     const rows = includePending ? live : live.filter((r) => !isPendingRow(r));
+    // The Event and Event ID columns name the actual show. A function
+    // description may be a valid engineering schedule entry, but must not
+    // become an individual Pre-Con or Post-Con dropdown choice.
+    const showCatalog=rememberPostConShowsFromReportRows(live);
     const proposals = summarizeEvents(rows, true);
     const dayList = [...new Set(live.map((r) => r.date))].sort();
     const statuses = new Map<string, number>();
@@ -212,7 +215,8 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
     setSuggestedTasks(notes);
     setMerged(!!src.existing);
     setStatus(src.sources + " reports · " + proposals.length + " suggested entries. Review them before exporting."
-      + (src.existing ? " Typed shifts and PTO in the existing workbook remain protected." : ""));
+      + (src.existing ? " Typed shifts and PTO in the existing workbook remain protected." : "")
+      + (showCatalog.shows===0 ? " No named shows were identified for Pre-Con/Post-Con. Re-export a report with Event and Event ID columns; function descriptions won't be listed as shows." : ""));
     compileReview(proposals, notes, nextDraft);
   }
   const currentExportLabel=aiScope?.view==="week"?"selected week":
