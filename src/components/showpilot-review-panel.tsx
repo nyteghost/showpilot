@@ -20,7 +20,7 @@ const minutes = (s: string) => {
 const uniqueId = (type: string) => type + ":" + Date.now() + ":" + Math.random().toString(36).slice(2, 10);
 
 export function ScheduleReview({
-  originalRows, proposed, suggestedTasks, draft, onChange, onSaveProject, conflictTarget, onScopeChange,
+  originalRows, proposed, suggestedTasks, draft, onChange, onSaveProject, conflictTarget, onScopeChange, initialScope,
 }: {
   originalRows: EventRow[];
   proposed: EventEntry[];
@@ -30,6 +30,7 @@ export function ScheduleReview({
   onSaveProject: () => void;
   conflictTarget?: {date:string;space:string;title:string;nonce:number}|null;
   onScopeChange?: (scope:ReviewDateScope)=>void;
+  initialScope?: ReviewDateScope|null;
 }) {
   const reviewRef = useRef<HTMLElement>(null);
   useEffect(()=>{
@@ -40,10 +41,10 @@ export function ScheduleReview({
   },[conflictTarget]);
   const [mode, setMode] = useState<"imported"|"review"|"changes">("review");
   const [search, setSearch] = useState("");
-  const [view, setView] = useState<"month"|"week"|"day"|"all">("month");
-  const [monthChoice, setMonthChoice] = useState("");
-  const [weekChoice, setWeekChoice] = useState("");
-  const [date, setDate] = useState("");
+  const [view, setView] = useState<"month"|"week"|"day"|"all">(()=>initialScope?.view??"month");
+  const [monthChoice, setMonthChoice] = useState(()=>initialScope?.view==="month"?initialScope.value:"");
+  const [weekChoice, setWeekChoice] = useState(()=>initialScope?.view==="week"?initialScope.value:"");
+  const [date, setDate] = useState(()=>initialScope?.view==="day"?initialScope.value:"");
   const [page, setPage] = useState(0);
   const [editing, setEditing] = useState<string | null>(null);
   const [editable, setEditable] = useState<EventEntry | null>(null);
