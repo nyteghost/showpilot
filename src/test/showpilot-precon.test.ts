@@ -40,6 +40,7 @@ describe("Pre-Con and Post-Con 30-day show dropdowns",()=>{
   const saved=mergePostConShows(previous,latest);
   expect(saved).toHaveLength(1);
   expect(saved[0]?.showDate).toBe("2026-11-09");
+  expect(saved[0]?.startDate).toBe("2026-11-05");
  });
 });
 describe("Pre-Con notes in existing local memory",()=>{
