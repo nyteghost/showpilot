@@ -35,6 +35,8 @@ contextBridge.exposeInMainWorld("showpilotMemory",Object.freeze({
  postConList:()=>ipcRenderer.invoke("showpilot-memory:postcon-list"),
  postConSave:(report)=>ipcRenderer.invoke("showpilot-memory:postcon-save",report),
  postConArchive:(id)=>ipcRenderer.invoke("showpilot-memory:postcon-archive",id),
+ showCatalogList:()=>ipcRenderer.invoke("showpilot-memory:show-catalog-list"),
+ showCatalogSave:(shows)=>ipcRenderer.invoke("showpilot-memory:show-catalog-save",shows),
  openFolder:()=>ipcRenderer.invoke("showpilot-memory:open-folder"),
 }));
 
