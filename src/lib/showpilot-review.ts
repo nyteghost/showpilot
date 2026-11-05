@@ -1,4 +1,5 @@
 import type { EventEntry, EventRow, TaskNote } from "./work-tools";
+import type {ReviewDateScope} from "./showpilot-review-months";
 
 export type Change<T> = { action: "replace"; value: T } | { action: "remove" };
 export type Added<T> = { id: string; value: T };
@@ -126,6 +127,8 @@ export type ReviewProject = {
   approvedSpaces: string[];
   includePending: boolean;
   note: string;
+  scope?: ReviewDateScope;
+  templateSaved?: boolean;
 };
 
 export function parseReviewProject(text: string): ReviewProject {
@@ -142,5 +145,9 @@ export function parseReviewProject(text: string): ReviewProject {
     kind: "showpilot-review-project", version: 1, originalRows: p.originalRows as EventRow[],
     draft: parseDraft(JSON.stringify(p.draft)), approvedSpaces,
     includePending: p.includePending === true, note: typeof p.note === "string" ? p.note.slice(0, 200) : "",
+    ...(p.scope&&typeof p.scope==="object"&&["week","day","month","all"].includes((p.scope as ReviewDateScope).view)&&
+      typeof (p.scope as ReviewDateScope).value==="string"&& (p.scope as ReviewDateScope).value.length<=20
+      ? {scope:p.scope as ReviewDateScope}:{}),
+    templateSaved:p.templateSaved===true,
   };
 }
