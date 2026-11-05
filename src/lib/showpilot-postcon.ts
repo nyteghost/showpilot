@@ -47,3 +47,36 @@ export function rememberPostConShows(entries:readonly EventEntry[]):void{
   window.dispatchEvent(new Event("showpilot:postcon-catalog"));
  }catch{/* Browser storage may be unavailable. The Post-Con form still supports manual shows. */}
 }
+
+/** Use local work-PC calendar dates, never UTC time-of-day boundaries, to avoid
+ * a completed show dropping off the list near midnight.
+ */
+export function localIsoDate(date=new Date()):string{
+ return [date.getFullYear(),String(date.getMonth()+1).padStart(2,"0"),String(date.getDate()).padStart(2,"0")].join("-");
+}
+export function shiftedIsoDay(day:string,amount:number):string{
+ const dt=new Date(day+"T12:00:00Z");
+ if(Number.isNaN(dt.getTime()))return "";
+ dt.setUTCDate(dt.getUTCDate()+amount);
+ return dt.toISOString().slice(0,10);
+}
+/** Last 30 complete calendar days including today, with recent shows first. */
+export function completedShowsLastMonth(shows:readonly PostConShow[],today=localIsoDate()):PostConShow[]{
+ const start=shiftedIsoDay(today,-29);
+ return shows.filter(s=>s.showDate>=start&&s.showDate<=today).sort((a,b)=>b.showDate.localeCompare(a.showDate));
+}
+/** Upcoming and currently scheduled CGC events for pre-show planning. */
+export function upcomingPreConShows(shows:readonly PostConShow[],today=localIsoDate(),days=60):PostConShow[]{
+ const until=shiftedIsoDay(today,days);
+ return shows.filter(s=>s.showDate>=today&&s.showDate<=until).sort((a,b)=>a.showDate.localeCompare(b.showDate));
+}
+/** Read-only SQLite reviewed-event rows and imported catalog refer to the same
+ * local CGC show list. Don't invent show metadata from unrelated shift history.
+ */
+export type ShowHistoryRow={date:string;room:string;title:string;phase:string};
+export function historyToShowCatalog(rows:readonly ShowHistoryRow[]):PostConShow[]{
+ return postConShows(rows.map(r=>({
+  date:r.date,space:r.room,title:r.title,code:r.phase as EventEntry["code"],
+  start:0,end:0,eventId:""
+ })) as EventEntry[]);
+}
