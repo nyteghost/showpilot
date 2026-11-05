@@ -121,6 +121,32 @@ function withinDirectory(child,parent){
  const c=path.resolve(child).toLowerCase(),p=path.resolve(parent).toLowerCase();
  return c===p||c.startsWith(p+path.sep);
 }
+const RESULT_NAME="last-update-result.json";
+function updateResultPath(userData){
+ return path.join(userData,"ShowPilot Updates",RESULT_NAME);
+}
+function updateResult(userData,status,message,version=""){
+ const file=updateResultPath(userData);
+ fs.mkdirSync(path.dirname(file),{recursive:true,mode:0o700});
+ const result={status,message:String(message).slice(0,900),version,updated:new Date().toISOString()};
+ fs.writeFileSync(file,JSON.stringify(result),{mode:0o600});
+ return result;
+}
+function readUpdateResult(userData){
+ const file=updateResultPath(userData);
+ try{
+  const data=JSON.parse(fs.readFileSync(file,"utf8").replace(/^\uFEFF/,""));
+  if(!["pending","success","failed"].includes(data.status))return null;
+  if(typeof data.message!=="string"||typeof data.updated!=="string")return null;
+  if(data.status==="pending"&&Date.now()-Date.parse(data.updated)>4*60*1000)
+   return {...data,status:"failed",message:"The previous installer did not confirm completion. Check the installation log. Your saved data has not been deleted."};
+  return {status:data.status,message:data.message.slice(0,900),version:data.version||"",updated:data.updated};
+ }catch{return null}
+}
+function updateLogPath(userData){
+ return path.join(userData,"ShowPilot Updates","last-update.log");
+}
+
 function prepareInstallPaths(version){
  if(process.platform!=="win32"||app.isPackaged!==true)
   throw new Error("One-click installation currently supports the packaged Windows portable application only.");
@@ -197,20 +223,29 @@ async function installWindowsRelease(sender,release,installedVersion){
   notify(sender,{phase:"staging",message:"Download verified. Preparing the replacement app…",percent:100});
   await stagePackage(paths);
   try{fs.unlinkSync(paths.zipFile)}catch{}
+  // Persist intent before exit: the next launch can show the helper's result,
+  // even when the main Electron process is no longer available to report it.
+  updateResult(paths.userData,"pending","Download verified; preparing to close ShowPilot and install "+release.version+".",release.version);
   notify(sender,{phase:"restarting",message:"Starting the update helper and restarting ShowPilot…",percent:100});
   await spawnInstall(paths);
-  // Reply to the IPC call before closing the app. A separate PowerShell
-  // process waits for ShowPilot.exe to exit, swaps folders and relaunches.
-  setTimeout(()=>app.quit(),900);
+  // The detached helper waits for all Electron processes to release the
+  // application folder. If a window blocks graceful quit, a second attempt
+  // ensures this old process cannot leave the updater waiting forever.
+  const forceQuit=setTimeout(()=>app.exit(0),7000);
+  forceQuit.unref?.();
+  const quit=setTimeout(()=>app.quit(),700);
+  quit.unref?.();
   return {started:true,version:release.version};
  }catch(e){
   if(paths){
    try{fs.unlinkSync(paths.zipFile)}catch{}
    try{fs.rmSync(paths.stageDir,{recursive:true,force:true})}catch{}
   }
+  if(paths)try{updateResult(paths.userData,"failed",e instanceof Error?e.message:String(e),release.version)}catch{}
   notify(sender,{phase:"error",message:e instanceof Error?e.message:String(e),percent:0});
   throw e;
  }finally{updateRunning=false;}
 }
 module.exports={semverCompare,officialReleaseAssetUrl,releaseAssetsForRun,
- assertDownloadUrl,checksumFromRelease,downloadVerified,prepareInstallPaths,installWindowsRelease};
+ assertDownloadUrl,checksumFromRelease,downloadVerified,prepareInstallPaths,installWindowsRelease,
+ readUpdateResult,updateResult,updateLogPath};
