@@ -226,26 +226,31 @@ function validatePack(pack){
  if(pack.notes.length>MAX_NOTES||pack.historicalEntries.length>MAX_ENTRIES)throw Error("Import exceeds the supported memory size");
  const archived=Array.isArray(pack.archivedNotes)?pack.archivedNotes:[];
  const postcons=Array.isArray(pack.postConReports)?pack.postConReports:[];
+ const shows=Array.isArray(pack.showCatalog)?pack.showCatalog:[];
  if(postcons.length>MAX_POSTCONS)throw Error("Too many post-con reports in import");
+ if(shows.length>MAX_SHOW_CATALOG)throw Error("Too many show catalog entries in import");
  if(archived.length+pack.notes.length>MAX_NOTES)throw Error("Import exceeds maximum note count");
  return {notes:pack.notes.map(validateNote),archivedNotes:archived.map(n=>({...validateNote(n),archived:1})),
-  entries:pack.historicalEntries,postcons:postcons.map(validatePostCon)};
+  entries:pack.historicalEntries,postcons:postcons.map(validatePostCon),shows:shows.map(validateShowCatalogItem)};
 }
 async function importPack(pack){
  await ready();
  const validated=validatePack(pack),beforeNotes=count("SELECT COUNT(*) n FROM notes"),
-  beforeEvents=count("SELECT COUNT(*) n FROM historical_entries"),beforePostcons=count("SELECT COUNT(*) n FROM postcon_reports");
+  beforeEvents=count("SELECT COUNT(*) n FROM historical_entries"),beforePostcons=count("SELECT COUNT(*) n FROM postcon_reports"),
+   beforeShows=count("SELECT COUNT(*) n FROM show_catalog");
  transaction(()=>{
   for(const note of validated.notes)insertNote({...note,origin:note.origin||"json-import"});
   for(const note of validated.archivedNotes)insertNote({...note,origin:note.origin||"json-import"});
   for(const entry of validated.entries)insertEntry(entry);
   for(const report of validated.postcons)insertPostCon(report,true);
+   for(const show of validated.shows)insertShowCatalog(show);
  });
  const result={notesAdded:count("SELECT COUNT(*) n FROM notes")-beforeNotes,
   historyAdded:count("SELECT COUNT(*) n FROM historical_entries")-beforeEvents,
   notesSeen:validated.notes.length+validated.archivedNotes.length,historySeen:validated.entries.length,
-  postConsAdded:count("SELECT COUNT(*) n FROM postcon_reports")-beforePostcons};
- if(backupEnabled()&&(result.notesAdded||result.historyAdded||result.postConsAdded)){
+  postConsAdded:count("SELECT COUNT(*) n FROM postcon_reports")-beforePostcons,
+   showsAdded:count("SELECT COUNT(*) n FROM show_catalog")-beforeShows};
+ if(backupEnabled()&&(result.notesAdded||result.historyAdded||result.postConsAdded||result.showsAdded)){
   try{await backupNow(true);}catch(e){backupError=(e instanceof Error?e.message:String(e)).slice(0,250);}
  }
  return result;
@@ -265,7 +270,8 @@ async function exportPack(){
   notes:queryRows("SELECT id,category,title,content,created,modified,origin FROM notes WHERE archived=0 ORDER BY created"),
   archivedNotes:queryRows("SELECT id,category,title,content,created,modified,origin FROM notes WHERE archived=1 ORDER BY created"),
   historicalEntries:queryRows("SELECT id,kind,date,room,area,description AS text,source AS original_source,week,approval FROM historical_entries ORDER BY date"),
-  postConReports:queryRows("SELECT id,event_id AS eventId,show_name AS showName,show_date AS showDate,rooms,rating,went_well AS wentWell,issues,staffing,stage,floor,follow_up AS followUp,created,modified,archived FROM postcon_reports ORDER BY show_date")};
+  postConReports:queryRows("SELECT id,event_id AS eventId,show_name AS showName,show_date AS showDate,rooms,rating,went_well AS wentWell,issues,staffing,stage,floor,follow_up AS followUp,created,modified,archived FROM postcon_reports ORDER BY show_date"),
+   showCatalog:readShowCatalogRows()};
 }
 async function exportJson(){
  const out=await exportPack();
@@ -293,7 +299,7 @@ function availableBackups(folder){
 async function backupNow(force=false){
  await ready();
  if(!backupEnabled()&&!force)return {created:false,reason:"disabled"};
- if(count("SELECT COUNT(*) n FROM notes")+count("SELECT COUNT(*) n FROM historical_entries")+count("SELECT COUNT(*) n FROM postcon_reports")===0)return {created:false,reason:"empty"};
+ if(count("SELECT COUNT(*) n FROM notes")+count("SELECT COUNT(*) n FROM historical_entries")+count("SELECT COUNT(*) n FROM postcon_reports")+count("SELECT COUNT(*) n FROM show_catalog")===0)return {created:false,reason:"empty"};
  const since=Date.parse(meta("lastWeeklyBackup",""));
  if(!force&&Number.isFinite(since)&&Date.now()-since<WEEK_MS)return {created:false,reason:"not-due"};
  const folder=safeBackupDirectory();
@@ -317,7 +323,7 @@ async function backupNow(force=false){
   const file=path.join(folder,name);
   try{if(fs.lstatSync(file).isFile()&&!fs.lstatSync(file).isSymbolicLink())fs.unlinkSync(file);}catch{}
  }
- return {created:true,path:target,lastBackupAt:date,notes:pack.notes.length,archived:pack.archivedNotes.length,history:pack.historicalEntries.length,postCons:pack.postConReports.length};
+ return {created:true,path:target,lastBackupAt:date,notes:pack.notes.length,archived:pack.archivedNotes.length,history:pack.historicalEntries.length,postCons:pack.postConReports.length,shows:pack.showCatalog.length};
 }
 async function automaticBackupCheck(){
  try{const result=await backupNow(false);if(result.created)backupError="";return result;}
