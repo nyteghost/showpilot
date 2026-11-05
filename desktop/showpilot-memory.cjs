@@ -533,6 +533,75 @@ async function eventFileArchive(id,archived=true){
  return {archived:archived!==false};
 }
 
+function exportedEventFiles(){
+ return queryRows("SELECT id,event_key AS eventKey,kind,name,extension,byte_size AS bytes,sha256,eoc_json AS eocJson,created,archived FROM event_files ORDER BY created")
+  .map(record=>({...record,eocExcerpts:JSON.parse(record.eocJson||"[]"),eocJson:undefined}));
+}
+function validateEventManifest(record){
+ if(!record||typeof record!=="object"||!EVENT_KINDS.has(record.kind))throw Error("Invalid backed-up event document.");
+ const id=safe(record.id,50),eventKey=safe(record.eventKey,180),named=safeEventFileName(record.name);
+ const sha256=safe(record.sha256,70),size=Number(record.bytes),created=safe(record.created,50);
+ if(!/^[a-f0-9-]{36}$/i.test(id)||!eventKey||
+    !/^[a-f0-9]{64}$/.test(sha256)||named.extension!==record.extension||
+    !Number.isSafeInteger(size)||size<1||size>MAX_EVENT_FILE)
+  throw Error("Invalid backed-up event document metadata.");
+ return {id,eventKey,kind:record.kind,name:named.name,extension:named.extension,
+  bytes:size,sha256,created,eocExcerpts:sanitizeEocExcerpts(record.eocExcerpts),archived:record.archived===1||record.archived===true};
+}
+function verifiedAssetSource(record,root){
+ const file=path.join(root,eventStoredName(record));
+ try{
+  const stat=fs.lstatSync(file);
+  if(!stat.isFile()||stat.isSymbolicLink()||stat.size!==record.bytes)return null;
+  return digest(fs.readFileSync(file))===record.sha256?file:null;
+ }catch{return null;}
+}
+/** Rolling companion folder: JSON snapshots retain metadata; this folder
+ * contains verified original bytes. Restore by keeping both together.
+ */
+function copyEventAssets(folder,records){
+ const targetFolder=path.join(folder,"ShowPilot Event Files");
+ fs.mkdirSync(targetFolder,{recursive:true,mode:0o700});
+ const st=fs.lstatSync(targetFolder);
+ if(!st.isDirectory()||st.isSymbolicLink())throw Error("Event backup folder is unsafe.");
+ let copied=0;
+ for(const record of records){
+  const source=verifiedAssetSource(record,eventFileDir());
+  if(!source)throw Error("Original event document is missing or failed integrity check: "+record.name);
+  if(verifiedAssetSource(record,targetFolder))continue;
+  const target=path.join(targetFolder,eventStoredName(record));
+  if(fs.existsSync(target))throw Error("Event backup contains a mismatched document: "+record.name);
+  const temp=target+"."+crypto.randomBytes(4).toString("hex")+".tmp";
+  try{
+   fs.copyFileSync(source,temp);
+   if(!verifiedAssetSource(record,{toString:()=>targetFolder})){
+    const actual=fs.readFileSync(temp);
+    if(actual.length!==record.bytes||digest(actual)!==record.sha256)
+     throw Error("Backup attachment verification failed.");
+   }
+   fs.renameSync(temp,target);copied++;
+  }catch(e){try{fs.unlinkSync(temp)}catch{}throw e;}
+ }
+ return copied;
+}
+function restoreEventAssets(records,fromFolder){
+ let restored=0,unavailable=0;
+ for(const record of records){
+  if(verifiedAssetSource(record,eventFileDir()))continue;
+  const parent=fromFolder?path.join(fromFolder,"ShowPilot Event Files"):null;
+  const file=parent?verifiedAssetSource(record,parent):null;
+  if(!file){unavailable++;continue;}
+  fs.mkdirSync(eventFileDir(),{recursive:true,mode:0o700});
+  const dest=eventStoredPath(record);
+  if(fs.existsSync(dest))throw Error("Existing event file is damaged: "+record.name);
+  const temporary=dest+"."+crypto.randomBytes(4).toString("hex")+".tmp";
+  try{fs.copyFileSync(file,temporary);if(digest(fs.readFileSync(temporary))!==record.sha256)throw Error("Event file restore verification failed.");
+   fs.renameSync(temporary,dest);restored++;
+  }catch(e){try{fs.unlinkSync(temporary)}catch{}throw e;}
+ }
+ return {restored,unavailable};
+}
+
 function validatePostCon(input){
  if(!input||typeof input!=="object")throw Error("Post-con report is missing.");
  const report={
