@@ -5,15 +5,18 @@ export const ROOMS=["Hall A","Hall B","Hall C","Hall D","BallRoom A","BallRoom B
 export function normalizeEventDate(value:string):string{
  const v=value.trim().replace(/,/g,"");
  const m=/^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(v),u=/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})$/.exec(v);
- const y=m?+m[1]:u?(+u[3]<100?2000+(+u[3]):+u[3]):0;
- const mo=m?+m[2]:u?+u[1]:0,d=m?+m[3]:u?+u[2]:0;
+ const monthNames=["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
+ const named=/^(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{1,2})\s+(\d{4})$/i.exec(v);
+ const y=m?+m[1]:u?(+u[3]<100?2000+(+u[3]):+u[3]):named?+named[3]:0;
+ const mo=m?+m[2]:u?+u[1]:named?monthNames.indexOf(named[1].slice(0,3).toLowerCase())+1:0;
+ const d=m?+m[3]:u?+u[2]:named?+named[2]:0;
  const t=new Date(Date.UTC(y,mo-1,d));
  return y>=2020&&y<=2100&&t.getUTCFullYear()===y&&t.getUTCMonth()===mo-1&&t.getUTCDate()===d
   ?y+"-"+String(mo).padStart(2,"0")+"-"+String(d).padStart(2,"0"):"";
 }
 export function cgcRoomsFromText(text:string):string[]{
  const found=new Set<string>();
- const re=/\b(?:exhibit\s*)?(halls?|ball\s*rooms?)\s*(?:[:#-]\s*)?([A-G](?:\s*(?:[,/&+]|-|\band\b|\bthrough\b|\bto\b)\s*[A-G])*)/gi;
+ const re=/\b(?:exhibit\s*)?(halls?|ball\s*rooms?)\s*(?:[:#-]\s*)?([A-G](?:[A-G]|\s*(?:[,/&+-]|\band\b|\bthrough\b|\bto\b)\s*[A-G])*)/gi;
  for(const m of text.matchAll(re)){
   const hall=/hall/i.test(m[1]),letters=hall?"ABCD":"ABCDEFG",value=m[2].toUpperCase();
   const chars=(value.match(/[A-G]/g)||[]).filter(x=>letters.includes(x));
@@ -55,7 +58,7 @@ export function discoverEventMetadata(sources:readonly EventMetadataSource[],man
     add(key,normalizeEventDate(field(re)),source.path);
    const range=/^(?:event\s*dates?|date\s*range)\s*[:-]?\s*(.*)$/i.exec(line);
    if(range){
-    const dates=range[1].match(/\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}/g)||[];
+    const dates=range[1].match(/\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}|(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2},?\s+\d{4}/gi)||[];
     if(dates.length>=2){add("startDate",normalizeEventDate(dates[0]!),source.path);add("showDate",normalizeEventDate(dates[1]!),source.path);}
    }
    for(const room of cgcRoomsFromText(line))add("room",room,source.path);
