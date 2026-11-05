@@ -197,7 +197,10 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
     // The Event and Event ID columns name the actual show. A function
     // description may be a valid engineering schedule entry, but must not
     // become an individual Pre-Con or Post-Con dropdown choice.
-    const showCatalog=rememberPostConShowsFromReportRows(live);
+    const showCatalog=await rememberPostConShowsFromReportRows(live).catch(error=>({
+      shows:0,unnamedRows:0,storage:"none" as const,
+      error:error instanceof Error?error.message:String(error)
+    }));
     const proposals = summarizeEvents(rows, true);
     const dayList = [...new Set(live.map((r) => r.date))].sort();
     const statuses = new Map<string, number>();
@@ -216,7 +219,10 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
     setMerged(!!src.existing);
     setStatus(src.sources + " reports · " + proposals.length + " suggested entries. Review them before exporting."
       + (src.existing ? " Typed shifts and PTO in the existing workbook remain protected." : "")
-      + (showCatalog.shows===0 ? " No named shows were identified for Pre-Con/Post-Con. Re-export a report with Event and Event ID columns; function descriptions won't be listed as shows." : ""));
+      + ("error" in showCatalog ? " Show catalog was NOT saved: "+showCatalog.error+". Check Settings & AI local memory before updating ShowPilot." : "")
+      + (showCatalog.shows===0 && !("error" in showCatalog) ? " No named shows were identified for Pre-Con/Post-Con. Re-export a report with Event and Event ID columns; function descriptions won't be listed as shows." : "")
+      + (showCatalog.storage==="sqlite" ? " "+showCatalog.shows+" shows saved to persistent SQLite for future app updates." : "")
+      + (showCatalog.storage==="browser" ? " Show list cached for this browser only; open the desktop app for durable saving." : ""));
     compileReview(proposals, notes, nextDraft);
   }
   const currentExportLabel=aiScope?.view==="week"?"selected week":
