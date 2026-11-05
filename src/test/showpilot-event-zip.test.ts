@@ -62,7 +62,7 @@ describe("Secure event ZIP import",()=>{
   const duplicate=createZip([{name:"EOC.PDF",data:pdf},{name:"eoc.pdf",data:pdf}]);
   expect(()=>zip.inspect(duplicate)).toThrow(/Duplicate/);
   const damaged=createZip([{name:"EOC.pdf",data:pdf}]);
-  const changed=Buffer.from(damaged);changed[35]=0;
+  const changed=Buffer.from(damaged);const directory=changed.readUInt32LE(changed.length-22+16);changed.writeUInt32LE(0,directory+16);
   expect(()=>zip.contents(changed)).toThrow(/integrity|invalid|distance|incorrect|corrupt|data/i);
   expect(()=>zip.inspect(Buffer.from("not a zip"))).toThrow(/Event ZIP/);
   const unsupported=createZip([{name:"EOC.pdf",data:pdf,method:9}]);
