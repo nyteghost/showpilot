@@ -30,7 +30,7 @@ export function ShowPilotLocalFoundation(){
    <label className="flex items-center gap-2 text-sm"><input type="checkbox" disabled={busy} checked={state.background} onChange={e=>void configure({background:e.target.checked})}/> Allow optional background analysis when engine becomes available</label>
    <div className="rounded-lg border p-3 space-y-2">
     <h3 className="flex items-center gap-2 font-medium text-sm"><FileSpreadsheet size={17}/> Approved Excel master template</h3>
-    <p className="text-xs text-muted-foreground">{state.template.stored?"Reference saved locally ("+Math.round((state.template.bytes??0)/1024)+" KB). Exporter integration is planned for the next phase.":"No reference workbook saved yet."}</p>
+    <p className="text-xs text-muted-foreground">{state.template.stored?"Reference saved locally ("+Math.round((state.template.bytes??0)/1024)+" KB). Event Schedule can use this layout for selected-week Excel exports.":"No reference workbook saved yet."}</p>
     <Button size="sm" variant="outline" disabled={busy} onClick={()=>void template()}><FileSpreadsheet size={15}/> Choose master XLSX</Button>
    </div>
    <Button size="sm" variant="ghost" onClick={()=>void bridge.status().then(setState)}><RefreshCw size={14}/> Refresh status</Button>
