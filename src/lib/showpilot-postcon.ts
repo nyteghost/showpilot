@@ -75,22 +75,50 @@ export function mergePostConShows(previous:readonly PostConShow[],current:readon
  }
  return [...all.values()].sort((a,b)=>b.showDate.localeCompare(a.showDate)).slice(0,400);
 }
+/** Retain a browser cache only as a migration/fallback, not the authority. */
 export function loadPostConShows():PostConShow[]{
- try{const raw=localStorage.getItem(POSTCON_CATALOG_KEY);const all=raw?JSON.parse(raw):[];return Array.isArray(all)?mergePostConShows([],all):[];}
+ try{const raw=localStorage.getItem(POSTCON_CATALOG_KEY);const all=raw?JSON.parse(raw):[];
+  return Array.isArray(all)?mergePostConShows([],all):[];}
  catch{return [];}
 }
-/** Populate both dropdowns from the source report's show column ONLY. */
-export function rememberPostConShowsFromReportRows(rows:readonly EventRow[]):{shows:number;unnamedRows:number}{
- const unnamedRows=rows.filter(row=>validDate(row.date)&&!row.event?.trim()).length;
- try{
-  const found=postConShowsFromReportRows(rows);
-  if(found.length){
-   localStorage.setItem(POSTCON_CATALOG_KEY,JSON.stringify(mergePostConShows(loadPostConShows(),found)));
-   window.dispatchEvent(new Event("showpilot:postcon-catalog"));
+/** On every launch load the persistent app database. Bring forward v2 cached
+ * show names once if still available; never import the old polluted v1 cache.
+ */
+export async function loadDurableShowCatalog():Promise<PostConShow[]>{
+ const cached=loadPostConShows();
+ const bridge=typeof window==="undefined"?undefined:window.showpilotMemory;
+ if(!bridge?.showCatalogList||!bridge?.showCatalogSave)return cached;
+ if(cached.length){
+  try{await bridge.showCatalogSave(cached);}catch{
+   // A malformed old cache must not prevent loading valid database records.
   }
-  return {shows:found.length,unnamedRows};
- }catch{/* Storage may be unavailable. Both forms still accept manual shows. */}
- return {shows:0,unnamedRows};
+ }
+ const durable=mergePostConShows([],await bridge.showCatalogList());
+ try{localStorage.setItem(POSTCON_CATALOG_KEY,JSON.stringify(durable));}catch{/* SQLite is authoritative. */}
+ return durable;
+}
+/** Populate both dropdowns with real report Event names and persist immediately
+ * to SQLite. The user can close/reopen ShowPilot or replace the portable build.
+ */
+export async function rememberPostConShowsFromReportRows(rows:readonly EventRow[]):Promise<{shows:number;unnamedRows:number;storage:"sqlite"|"browser"|"none"}>{
+ const unnamedRows=rows.filter(row=>validDate(row.date)&&!row.event?.trim()).length;
+ const found=postConShowsFromReportRows(rows);
+ if(!found.length)return {shows:0,unnamedRows,storage:"none"};
+ const bridge=typeof window==="undefined"?undefined:window.showpilotMemory;
+ if(bridge?.showCatalogSave&&bridge.showCatalogList){
+  await bridge.showCatalogSave(found); // Database fsync/atomic replace confirmed by main process.
+  const all=await bridge.showCatalogList();
+  try{localStorage.setItem(POSTCON_CATALOG_KEY,JSON.stringify(mergePostConShows([],all)))}catch{}
+  window.dispatchEvent(new Event("showpilot:postcon-catalog"));
+  return {shows:found.length,unnamedRows,storage:"sqlite"};
+ }
+ try{
+  localStorage.setItem(POSTCON_CATALOG_KEY,JSON.stringify(mergePostConShows(loadPostConShows(),found)));
+  window.dispatchEvent(new Event("showpilot:postcon-catalog"));
+  return {shows:found.length,unnamedRows,storage:"browser"};
+ }catch{
+  return {shows:found.length,unnamedRows,storage:"none"};
+ }
 }
 
 /** Use local work-PC calendar dates, never UTC time-of-day boundaries, to avoid
