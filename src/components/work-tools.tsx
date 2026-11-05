@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { Briefcase, CalendarClock, CalendarDays, CalendarPlus, CalendarSync, Download, ExternalLink, FileUp, GitBranch, Layers, Eye, Map as MapIcon, Store, ClipboardCheck } from "lucide-react";
+import { Briefcase, CalendarClock, CalendarDays, CalendarPlus, CalendarSync, FolderOpen, Download, ExternalLink, FileUp, GitBranch, Layers, Eye, Map as MapIcon, Store, ClipboardCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -19,6 +19,7 @@ import { LocalPlanningAssistant } from "@/components/showpilot-planning-assistan
 import { staffingPlanningContext } from "@/lib/showpilot-planning";
 import { PostConPanel } from "@/components/showpilot-postcon-panel";
 import { PreConPanel } from "@/components/showpilot-precon-panel";
+import {ShowPilotEventsPanel} from "@/components/showpilot-events-panel";
 import { rememberPostConShowsFromReportRows } from "@/lib/showpilot-postcon";
 import { applyReview, emptyReviewDraft, fingerprintRows, parseDraft, parseReviewProject, storageKey, type ReviewDraft, type ReviewProject } from "@/lib/showpilot-review";
 
@@ -42,7 +43,8 @@ export function WorkTools() {
 }
 
 const TABS = [
-  { id: "events", label: "Events", Icon: CalendarDays, hint: "Turn Ungerboeck event PDFs into the engineering schedule workbook." },
+  { id: "events", label: "Event Schedule", Icon: CalendarDays, hint: "Import event reports and create reviewed engineering schedules." },
+  { id: "eventhub", label: "Events", Icon: FolderOpen, hint: "Show details, Pre/Post-Con notes, work orders, EOCs and diagrams." },
   { id: "shifts", label: "My shifts", Icon: CalendarClock, hint: "Pull your shifts from the monthly schedule and put them on your calendar." },
   { id: "deck", label: "Deck", Icon: Layers, hint: "Plan a stage from the decks, stairs and rails in the warehouse." },
   { id: "vendors", label: "Vendors", Icon: Store, hint: "Compare prices and rentals across your usual suppliers." },
@@ -84,6 +86,7 @@ export function ShowServicesTools({ page = false, selectedTab, hideTabBar = fals
             {!page && <a href={`/work?tab=${tab}`} target="_blank" rel="noreferrer" className="inline-flex shrink-0 items-center gap-1 text-xs text-primary underline"><ExternalLink className="size-3.5" /> Open as its own page</a>}
           </div>
           {visited.includes("events") && <KeepAliveTabContent value="events"><EventsTab venueOnly={venueOnly} /></KeepAliveTabContent>}
+          {visited.includes("eventhub") && <KeepAliveTabContent value="eventhub"><ShowPilotEventsPanel active={activeTab==="eventhub"} /></KeepAliveTabContent>}
           {visited.includes("shifts") && <KeepAliveTabContent value="shifts"><ShiftsTab /></KeepAliveTabContent>}
           {visited.includes("deck") && <KeepAliveTabContent value="deck"><DeckTab /></KeepAliveTabContent>}
           {visited.includes("vendors") && <KeepAliveTabContent value="vendors"><StandaloneVendors /></KeepAliveTabContent>}
