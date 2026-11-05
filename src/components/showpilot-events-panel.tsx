@@ -72,7 +72,7 @@ export function ShowPilotEventsPanel({active=true}:{active?:boolean}){
     if(live){setPrecon(loaded);setPostcon(postReports.find(r=>matches(r.eventId,r.showName,selected))??null);}
    }).catch(e=>{if(live)setMessage("Unable to load this show's linked notes: "+String(e))});
   return ()=>{live=false};
- },[selectedKey,active,bridge]);
+ },[selectedKey,active,bridge,section]);
  const choose=(key:string)=>{
   if(notesDirty&&!window.confirm("Switch events? Unsaved general notes will be lost."))return;
   setSelectedKey(key);setNoteText("");setNoteId("");setNotesDirty(false);
