@@ -1,7 +1,7 @@
 import {describe,expect,it} from "vitest";
-import {postConShows,completedShowsLastMonth,upcomingPreConShows,mergePostConShows} from "@/lib/showpilot-postcon";
+import {postConShows,postConShowsFromReportRows,POSTCON_CATALOG_KEY,completedShowsLastMonth,upcomingPreConShows,mergePostConShows} from "@/lib/showpilot-postcon";
 import {encodePreCon,decodePreCon,preConNoteTitle,emptyPreCon} from "@/lib/showpilot-precon";
-import type {EventEntry} from "@/lib/work-tools";
+import type {EventEntry,EventRow} from "@/lib/work-tools";
 
 const entry=(date:string,title:string,eventId:string,space="Hall AB"):EventEntry=>
  ({date,title,eventId,space,code:"S",start:600,end:960});
@@ -56,5 +56,45 @@ describe("Pre-Con notes in existing local memory",()=>{
   expect(()=>encodePreCon({...draft,rooms:"CEPAC"})).toThrow(/Cobb Convention/);
   expect(()=>encodePreCon({...draft,overview:"",staffing:"",stage:"",floor:"",followUp:""})).toThrow(/at least one/);
   expect(()=>decodePreCon("not a Pre-Con note")).toThrow(/not a ShowPilot/);
+ });
+});
+
+
+describe("Pre-Con and Post-Con group by real Event names, never function descriptions",()=>{
+ const row=(date:string,event:string,description:string,eventId:string,space:string):EventRow=>({
+  date,event,description,eventId,space,usage:"",level:2,start:"09:00 AM",end:"05:00 PM"
+ });
+ it("lists each actual show once across its function rows, rooms and dates",()=>{
+  const rows=[
+   row("2026-11-03","Coldwell Banker Realty Atlanta Unlocking Home Parties","Vendor Load-In/Marquee Letters drop-off","42389","Ballroom ABE (BRABE)"),
+   row("2026-11-04","Coldwell Banker Realty Atlanta Unlocking Home Parties","Client Move-In","42389","Ballroom ABE (BRABE)"),
+   row("2026-11-05","Coldwell Banker Realty Atlanta Unlocking Home Parties","Program","42389","Ballroom ABE (BRABE)"),
+   row("2026-11-05","Coldwell Banker Realty Atlanta Unlocking Home Parties","Breakout Session","42389","Ballroom ABE (BRABE)"),
+   row("2026-11-09","Front Row Card Show","Move In","42611","Exhibit Hall AB (EXAB)"),
+   row("2026-11-10","Front Row Card Show","General Session","42611","Exhibit Hall AB (EXAB)"),
+  ];
+  const shows=postConShowsFromReportRows(rows);
+  expect(shows).toHaveLength(2);
+  expect(shows.find(s=>s.eventId==="42389")).toMatchObject({
+    showName:"Coldwell Banker Realty Atlanta Unlocking Home Parties",
+    startDate:"2026-11-03",showDate:"2026-11-05",rooms:"BallRoom A, BallRoom B, BallRoom E"
+  });
+  expect(shows.find(s=>s.eventId==="42611")).toMatchObject({
+    showName:"Front Row Card Show",startDate:"2026-11-09",showDate:"2026-11-10",rooms:"Hall A, Hall B"
+  });
+  expect(shows.some(s=>["Program","Move In","Breakout Session"].includes(s.showName))).toBe(false);
+ });
+ it("does not convert unnamed functions into fake shows",()=>{
+  const rows=[
+   row("2026-11-05","","Move In","42389","Ballroom ABE (BRABE)"),
+   row("2026-11-05","Program","Program","42389","Ballroom ABE (BRABE)"),
+   row("2026-11-05","","General Session","42389","Ballroom ABE (BRABE)"),
+   row("2026-11-08","Leadership Cobb","General Session","42421","Ballroom A (BRA)"),
+   row("2026-11-08","Cobb Energy Show","Program","42422","Cobb Energy Performing Arts Centre"),
+  ];
+  expect(postConShowsFromReportRows(rows).map(s=>s.showName)).toEqual(["Leadership Cobb"]);
+ });
+ it("uses a clean v2 persistent catalog, not the old function-level v1 key",()=>{
+   expect(POSTCON_CATALOG_KEY).toBe("showpilot:postcon:known-shows:v2");
  });
 });
