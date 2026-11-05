@@ -403,3 +403,58 @@ describe("offline Events workspace attachments",()=>{
   expect(await api.eventFileList(front.key)).toEqual([]);
  });
 });
+
+
+describe("Events ZIP import into native SQLite",()=>{
+ const zip=nativeRequire("./event-zip.cjs") as {crc32:(bytes:Buffer)=>number};
+ function archive(files:{name:string;data:Buffer}[]):Buffer{
+  const local:Buffer[]=[],central:Buffer[]=[];
+  let offset=0;
+  for(const file of files){
+   const name=Buffer.from(file.name),data=file.data,crc=zip.crc32(data);
+   const l=Buffer.alloc(30);
+   l.writeUInt32LE(0x04034b50);l.writeUInt16LE(20,4);
+   l.writeUInt32LE(crc,14);l.writeUInt32LE(data.length,18);l.writeUInt32LE(data.length,22);l.writeUInt16LE(name.length,26);
+   const c=Buffer.alloc(46);
+   c.writeUInt32LE(0x02014b50);c.writeUInt16LE(20,4);c.writeUInt16LE(20,6);
+   c.writeUInt32LE(crc,16);c.writeUInt32LE(data.length,20);c.writeUInt32LE(data.length,24);
+   c.writeUInt16LE(name.length,28);c.writeUInt32LE(offset,42);
+   local.push(l,name,data);central.push(c,name);
+   offset+=l.length+name.length+data.length;
+  }
+  const cd=Buffer.concat(central),footer=Buffer.alloc(22);
+  footer.writeUInt32LE(0x06054b50);footer.writeUInt16LE(files.length,8);footer.writeUInt16LE(files.length,10);
+  footer.writeUInt32LE(cd.length,12);footer.writeUInt32LE(offset,16);
+  return Buffer.concat([...local,cd,footer]);
+ }
+ const show={key:"id:42611",eventId:"42611",showName:"Front Row Card Show",
+  startDate:"2026-11-07",showDate:"2026-11-10",rooms:"Hall A, Hall B"};
+ const sample=()=>archive([
+  {name:"event.json",data:Buffer.from(JSON.stringify(show))},
+  {name:"EOCs/EOC - Front Row.pdf",data:Buffer.from("%PDF-1.7\nSynthetic test PDF\n")},
+  {name:"Floor Maps/Hall AB diagram.png",data:Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0x00])},
+  {name:"run.exe",data:Buffer.from("not allowed")}
+ ]);
+ it("inspects safely, associates with a confirmed show, saves and deduplicates documents",async()=>{
+  const {api,dir}=memory();
+  const data=sample();
+  const preview=await api.eventZipInspect(data);
+  expect(preview.manifest).toMatchObject({showName:show.showName,eventId:show.eventId});
+  expect(preview.files.map((f:any)=>f.kind).sort()).toEqual(["diagram","eoc"]);
+  await expect(api.eventZipImport({eventKey:show.key,bytes:data})).rejects.toThrow(/Select or create/);
+  await api.showCatalogSave([show]);
+  const result=await api.eventZipImport({eventKey:show.key,bytes:data});
+  expect(result.imported).toHaveLength(2);
+  expect(result.ignored).toEqual(["run.exe"]);
+  expect(result.errors).toEqual([]);
+  const eoc=result.imported.find((f:any)=>f.kind==="eoc");
+  await api.eventFileSetEocExcerpts(eoc.id,[
+   {section:"Event Notes",page:1,text:"Confirm load-in"},
+   {section:"Engineering",page:1,text:"Verify stage"},
+   {section:"Utility",page:2,text:"Verify power"}]);
+  expect((await memory(dir).api.eventFileList(show.key)).find((f:any)=>f.id===eoc.id).eocExcerpts).toHaveLength(3);
+  const second=await api.eventZipImport({eventKey:show.key,bytes:data});
+  expect(second.imported).toHaveLength(0);expect(second.duplicates).toHaveLength(2);
+  expect(await api.eventFileList(show.key)).toHaveLength(2);
+ });
+});
