@@ -1,7 +1,10 @@
 import {useEffect,useMemo,useState} from "react";
-import {BookOpen,CalendarRange,Save,Search} from "lucide-react";
+import {BookOpen,CalendarRange,Save,Search,FileArchive,ClipboardCheck,CalendarClock,FolderOpen} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import {ShowPilotEventDocuments} from "@/components/showpilot-event-documents";
+import {ShowPilotEventZipImport} from "@/components/showpilot-event-zip-import";
+import {PreConPanel} from "@/components/showpilot-precon-panel";
+import {PostConPanel} from "@/components/showpilot-postcon-panel";
 import {decodePreCon,type PreConDraft} from "@/lib/showpilot-precon";
 import {loadDurableShowCatalog,loadPostConShows,type PostConShow} from "@/lib/showpilot-postcon";
 import type {PostConReport} from "@/lib/showpilot-memory-bridge";
@@ -25,6 +28,17 @@ export function ShowPilotEventsPanel({active=true}:{active?:boolean}){
  const [precon,setPrecon]=useState<PreConDraft|null>(null);
  const [postcon,setPostcon]=useState<PostConReport|null>(null);
  const [message,setMessage]=useState("");
+ const [section,setSection]=useState<"overview"|"documents"|"precon"|"postcon">("overview");
+ const [filesRevision,setFilesRevision]=useState(0);
+ const [visited,setVisited]=useState<Array<"precon"|"postcon">>([]);
+ const selectSection=(next:"overview"|"documents"|"precon"|"postcon")=>{
+  setSection(next);
+  if(next==="precon"||next==="postcon")setVisited(v=>v.includes(next)?v:[...v,next]);
+ };
+ const imported=(key:string)=>{
+  setSelectedKey(key);setFilesRevision(v=>v+1);selectSection("documents");
+  setMessage("Event ZIP imported. The documents are stored locally under this show.");
+ };
  const show=shows.find(s=>s.key===selectedKey);
  const visible=useMemo(()=>shows.filter(s=>
   (s.showName+" "+s.eventId+" "+s.rooms+" "+s.showDate).toLowerCase().includes(search.toLowerCase())
@@ -78,15 +92,16 @@ export function ShowPilotEventsPanel({active=true}:{active?:boolean}){
   finally{setSaving(false)}
  };
  return <section className="space-y-4" aria-label="Events">
-  <div className="space-y-3 rounded-xl border p-4">
+  <div className="rounded-xl border p-4 space-y-3">
    <div className="flex gap-2 items-start"><CalendarRange size={22}/><div>
     <h2 className="text-lg font-semibold">Events — central show records</h2>
-    <p className="text-sm text-muted-foreground">Every imported CGC show in one place: dates, room locations, Pre-Con and Post-Con information, general notes, work orders, EOCs and event diagrams.</p>
+    <p className="text-sm text-muted-foreground">Choose a CGC event or import an event ZIP. Manage its work orders, EOCs, diagrams, Pre-Con preparation and Post-Con lessons in one workspace.</p>
    </div></div>
    <div className="grid gap-3 md:grid-cols-3">
     <label className="text-sm font-semibold">Search shows
      <span className="relative mt-1 block"><Search size={15} className="absolute left-2 top-2.5 text-muted-foreground"/>
-      <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search names, event ID, rooms…"
+      <input value={search} onChange={e=>setSearch(e.target.value)}
+       placeholder="Search by show name, event ID or room…"
        className="w-full rounded border bg-background py-2 pl-8 pr-2 font-normal"/>
      </span>
     </label>
@@ -98,8 +113,21 @@ export function ShowPilotEventsPanel({active=true}:{active?:boolean}){
      </select>
     </label>
    </div>
-   <p className="text-xs text-muted-foreground">{shows.length} saved show{shows.length===1?"":"s"}. Only actual event names, not individual schedule functions. New shows are added when an Event Schedule report is imported.</p>
-   {!bridge&&<p className="text-sm text-amber-600">Saving notes and attaching documents requires the ShowPilot desktop application with local memory enabled.</p>}
+   <p className="text-xs text-muted-foreground">{shows.length} saved CGC show{shows.length===1?"":"s"}. Events imported from ShowPilot Event Schedule or event ZIPs are saved in SQLite and remain available after software updates.</p>
+  </div>
+  <ShowPilotEventZipImport shows={shows} selectedKey={selectedKey} onImported={imported} active={active}/>
+  <div className="flex flex-wrap gap-2 rounded-lg border p-2" role="tablist" aria-label="Events sections">
+   {([
+    ["overview","Overview & notes",BookOpen],
+    ["documents","Event documents",FolderOpen],
+    ["precon","Pre-Con Notes",CalendarClock],
+    ["postcon","Post-Con Reports",ClipboardCheck]
+   ] as const).map(([id,title,Icon])=>
+    <button key={id} role="tab" aria-selected={section===id} type="button" onClick={()=>selectSection(id)}
+     className={"flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-semibold transition-colors "+
+      (section===id?"bg-blue-600 text-white border-blue-600":"hover:bg-muted")}>
+     <Icon size={16}/>{title}
+    </button>)}
   </div>
   {show&&<div className="rounded-xl border p-4">
    <h3 className="text-lg font-semibold">{show.showName}</h3>
@@ -109,33 +137,42 @@ export function ShowPilotEventsPanel({active=true}:{active?:boolean}){
     <p><strong>CGC rooms:</strong> {show.rooms}</p>
    </div>
   </div>}
-  {show&&bridge&&<>
-   <div className="grid gap-4 lg:grid-cols-2">
-    <div className="space-y-2 rounded-xl border p-4">
-     <div className="flex items-center gap-2"><BookOpen size={17}/><h3 className="font-semibold">Pre-Con preparation</h3></div>
-     {precon?preFields.filter(([key])=>precon[key].trim()).map(([key,label])=>
-      <div key={key} className="text-sm"><strong>{label}</strong><p className="whitespace-pre-wrap break-words text-muted-foreground">{precon[key]}</p></div>)
-      :<p className="text-sm text-muted-foreground">No saved Pre-Con notes for this event. Add preparation notes in the Pre-Con Notes tab.</p>}
+  <div hidden={section!=="overview"}>
+   {show&&bridge?<div className="space-y-4">
+    <div className="grid gap-4 lg:grid-cols-2">
+     <div className="space-y-2 rounded-xl border p-4">
+      <div className="flex items-center gap-2"><BookOpen size={17}/><h3 className="font-semibold">Pre-Con preparation</h3></div>
+      {precon?preFields.filter(([key])=>precon[key].trim()).map(([key,label])=>
+       <div key={key} className="text-sm"><strong>{label}</strong><p className="whitespace-pre-wrap break-words text-muted-foreground">{precon[key]}</p></div>)
+       :<p className="text-sm text-muted-foreground">No saved Pre-Con notes for this show. Open the Pre-Con Notes section above.</p>}
+     </div>
+     <div className="space-y-2 rounded-xl border p-4">
+      <div className="flex items-center gap-2"><BookOpen size={17}/><h3 className="font-semibold">Post-Con outcomes</h3></div>
+      {postcon?postFields.filter(([key])=>postcon[key]?.trim()).map(([key,label])=>
+       <div key={key} className="text-sm"><strong>{label}</strong><p className="whitespace-pre-wrap break-words text-muted-foreground">{postcon[key]}</p></div>)
+       :<p className="text-sm text-muted-foreground">No saved Post-Con report. Open the Post-Con Reports section above.</p>}
+     </div>
     </div>
-    <div className="space-y-2 rounded-xl border p-4">
-     <div className="flex items-center gap-2"><BookOpen size={17}/><h3 className="font-semibold">Post-Con outcomes</h3></div>
-     {postcon?postFields.filter(([key])=>postcon[key]?.trim()).map(([key,label])=>
-      <div key={key} className="text-sm"><strong>{label}</strong><p className="whitespace-pre-wrap break-words text-muted-foreground">{postcon[key]}</p></div>)
-      :<p className="text-sm text-muted-foreground">No saved Post-Con report for this show. Outcomes and lessons appear here after the report is saved.</p>}
+    <div className="space-y-3 rounded-xl border p-4">
+     <h3 className="font-semibold">General event notes</h3>
+     <textarea className="min-h-36 w-full rounded border bg-background p-3 text-sm" maxLength={15000}
+      value={noteText} onChange={e=>{setNoteText(e.target.value);setNotesDirty(true)}}
+      placeholder="Special instructions, client changes, outstanding questions, contacts and other details…"/>
+     <div className="flex items-center gap-3">
+      <Button size="sm" disabled={!noteText.trim()||saving} onClick={()=>void saveNote()}><Save size={15}/>{saving?"Saving…":"Save notes"}</Button>
+      {notesDirty&&<span className="text-xs text-amber-600">Unsaved changes</span>}
+     </div>
     </div>
-   </div>
-   <div className="space-y-3 rounded-xl border p-4">
-    <h3 className="font-semibold">General event notes</h3>
-    <textarea className="min-h-36 w-full rounded border bg-background p-3 text-sm" maxLength={15000}
-     value={noteText} onChange={e=>{setNoteText(e.target.value);setNotesDirty(true)}}
-     placeholder="Show details, special instructions, client changes, outstanding questions, key contacts, and other notes…"/>
-    <div className="flex items-center gap-3">
-     <Button size="sm" disabled={!noteText.trim()||saving} onClick={()=>void saveNote()}><Save size={15}/>{saving?"Saving…":"Save notes"}</Button>
-     {notesDirty&&<span className="text-xs text-amber-600">Unsaved changes</span>}
-    </div>
-   </div>
-   <ShowPilotEventDocuments key={show.key} show={show}/>
-  </>}
+   </div>:<div className="rounded-xl border p-4 text-sm text-muted-foreground">
+    {bridge?"Choose a show above, or import a ZIP to create one, to see its event notes.":"Saving show notes requires the ShowPilot portable desktop app."}
+   </div>}
+  </div>
+  {section==="documents"&&<div className="space-y-3">
+   {show&&bridge?<ShowPilotEventDocuments key={show.key+":"+filesRevision} show={show}/>
+    :<div className="rounded-xl border p-4 text-sm text-muted-foreground">Choose a show or import an event ZIP to see its work orders, EOCs and diagrams.</div>}
+  </div>}
+  <div hidden={section!=="precon"}>{visited.includes("precon")&&<PreConPanel focusShow={show}/>}</div>
+  <div hidden={section!=="postcon"}>{visited.includes("postcon")&&<PostConPanel focusShow={show}/>}</div>
   {message&&<p role="status" className="rounded border p-2 text-xs">{message}</p>}
  </section>;
 }
