@@ -1,7 +1,8 @@
 import {useEffect,useRef,useState} from "react";
-import {Archive,Download,FileImage,FileText,FolderOpen,RotateCcw,UploadCloud,X} from "lucide-react";
+import {Archive,Download,FileImage,FileText,FolderOpen,RotateCcw,UploadCloud,X,Layers,Map as MapIcon} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import type {PostConShow} from "@/lib/showpilot-postcon";
+import {stageMentionedInEoc,hallLayoutAttached,eocAttendance} from "@/lib/showpilot-event-highlights";
 import {EVENT_ALLOWED_EXTENSIONS,extractEocFromPdf,guessEventFileKind,kindTitle,validateEventFile,type EventFileKind,type EventFileRecord,type EocSection} from "@/lib/showpilot-event-assets";
 
 type Document=EventFileRecord&{available:boolean};
@@ -10,7 +11,7 @@ const focus:EocSection[]=["Event Notes","Engineering","Utility"];
 const displayBytes=(n:number)=>n<1024?String(n)+" B":n<1024**2?String(Math.round(n/1024))+" KB":(n/(1024**2)).toFixed(1)+" MB";
 const mime=(ext:string)=>ext==="pdf"?"application/pdf":ext==="png"?"image/png":ext==="webp"?"image/webp":"image/jpeg";
 
-export function ShowPilotEventDocuments({show}:{show:PostConShow}){
+export function ShowPilotEventDocuments({show,onOpenStage,onOpenFloorMaps}:{show:PostConShow;onOpenStage?:()=>void;onOpenFloorMaps?:()=>void}){
  const bridge=window.showpilotMemory;
  const [files,setFiles]=useState<Document[]>([]);
  const [archived,setArchived]=useState(false);
@@ -79,6 +80,9 @@ export function ShowPilotEventDocuments({show}:{show:PostConShow}){
   }catch(e){setMessage("Backup failed: "+(e instanceof Error?e.message:String(e)));}
  };
  const eocs=files.filter(file=>file.kind==="eoc"&&!file.archived);
+ const attendance=eocAttendance(eocs);
+ const stageRequested=eocs.some(file=>stageMentionedInEoc(file.eocExcerpts));
+ const layoutAvailable=hallLayoutAttached(files.filter(f=>!f.archived));
  return <div className="space-y-4">
   <div className="rounded-xl border p-4 space-y-3">
    <div className="flex flex-wrap items-center justify-between gap-2">
@@ -133,8 +137,28 @@ export function ShowPilotEventDocuments({show}:{show:PostConShow}){
    <p className="text-xs text-muted-foreground">The originals remain unchanged in ShowPilot's private event-file vault, including when you install an update. Archived files are never deleted. Backups include original files in a companion folder beside the JSON snapshot.</p>
   </div>
   <div className="rounded-xl border p-4 space-y-3">
-   <h3 className="font-semibold">EOC quick reference</h3>
-   <p className="text-xs text-muted-foreground">Showing only <strong>Event Notes, Engineering, and Utility</strong> from attached EOC PDFs. Excerpts are local text extraction with source page numbers; always confirm details against the original PDF.</p>
+   <div className="flex flex-wrap items-start justify-between gap-3">
+    <div className="space-y-2">
+     <h3 className="font-semibold">EOC quick reference</h3>
+     <div className="flex flex-wrap gap-2">
+      {stageRequested&&onOpenStage&&<Button size="sm" variant="outline" onClick={onOpenStage}><Layers size={15}/> Open Stage &amp; Deck Planner</Button>}
+      {layoutAvailable&&onOpenFloorMaps&&<Button size="sm" variant="outline" onClick={onOpenFloorMaps}><MapIcon size={15}/> Open Floor Maps</Button>}
+     </div>
+    </div>
+    <div className="min-w-44 rounded-md border p-3 text-right" aria-label="EOC attendance">
+     <p className="text-xs font-semibold text-muted-foreground">Attendance</p>
+     {attendance.readings.length?
+      <><strong className="block text-lg tabular-nums">{attendance.conflicting?"Review figures":attendance.readings[0]!.value}</strong>
+       <div className="space-y-1 text-xs text-muted-foreground">
+        {attendance.readings.slice(0,6).map((a,i)=><p key={a.file+":"+a.page+":"+i}>
+         {attendance.conflicting?a.value+" · ":""}{a.file} · page {a.page}
+        </p>)}
+       </div>
+       {attendance.conflicting&&<p className="mt-1 text-xs text-amber-600">Different attendance figures found. Verify the EOC.</p>}
+      </>:<p className="text-sm text-muted-foreground">Not found in EOC</p>}
+    </div>
+   </div>
+   <p className="text-xs text-muted-foreground">Showing <strong>Event Notes, Engineering, and Utility</strong> with source PDF page numbers. Attendance is shown above when listed in the EOC. Always verify against the original PDF.</p>
    <div className="grid gap-3 lg:grid-cols-3">
     {focus.map(section=>{
      const matched=eocs.flatMap(file=>file.eocExcerpts.filter(x=>x.section===section).map(x=>({file,x})));
