@@ -502,7 +502,7 @@ async function diagnosticsSummary(){
  await ready();
  const integrity=queryRows("PRAGMA quick_check");
  const integrityOK=integrity.length===1&&integrity[0].quick_check==="ok";
- const expected=["meta","notes","historical_entries","postcon_reports"];
+ const expected=["meta","notes","historical_entries","postcon_reports","show_catalog"];
  const tablesOK=expected.every(name=>queryRows("SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name=?",[name])[0]?.n===1);
  const exported=await exportPack();
  const roundtrip=JSON.parse(JSON.stringify(exported));
@@ -510,7 +510,8 @@ async function diagnosticsSummary(){
   roundtrip.notes.length===exported.notes.length&&
   roundtrip.archivedNotes.length===exported.archivedNotes.length&&
   roundtrip.historicalEntries.length===exported.historicalEntries.length&&
-  roundtrip.postConReports.length===exported.postConReports.length;
+  roundtrip.postConReports.length===exported.postConReports.length&&
+  roundtrip.showCatalog.length===exported.showCatalog.length;
  const folder=backupPath();
  let folderAccessible=false,snapshotCount=0,latestValid=false,latestDays=-1;
  try{
@@ -527,7 +528,9 @@ async function diagnosticsSummary(){
      const backup=JSON.parse(fs.readFileSync(filename,"utf8"));
      latestValid=backup?.format==="showpilot-memory"&&backup.version===1&&
       Array.isArray(backup.notes)&&Array.isArray(backup.archivedNotes)&&
-      Array.isArray(backup.historicalEntries)&&Array.isArray(backup.postConReports);
+      Array.isArray(backup.historicalEntries)&&Array.isArray(backup.postConReports)&&
+       // Backups created before show-catalog support remain valid.
+       (!("showCatalog" in backup)||Array.isArray(backup.showCatalog));
      if(latestValid)latestDays=Math.max(0,Math.floor((Date.now()-file.mtimeMs)/(24*60*60*1000)));
     }
    }
@@ -536,7 +539,7 @@ async function diagnosticsSummary(){
  return {
   sqliteIntegrityOK:integrityOK,schemaOK:tablesOK,exportRoundtripOK:exportOK,
   activeNoteCount:exported.notes.length,archivedNoteCount:exported.archivedNotes.length,
-  historicalCount:exported.historicalEntries.length,postConCount:exported.postConReports.length,
+  historicalCount:exported.historicalEntries.length,postConCount:exported.postConReports.length,showCatalogCount:exported.showCatalog.length,
   weeklyBackupEnabled:backupEnabled(),backupFolderAccessible:folderAccessible,
   backupCount:snapshotCount,latestBackupValid:latestValid,latestBackupAgeDays:latestDays,
   // Settings paths, actual memory records and backup bytes are never returned.
@@ -551,7 +554,8 @@ function setupMemoryIpc(){
  wrap("backup-now",()=>backupNow(true));wrap("backup-enable",setBackupEnabled);
  wrap("backup-choose-folder",chooseBackupFolder);wrap("backup-open-folder",openBackupFolder);
  wrap("postcon-list",postConList);wrap("postcon-save",postConSave);wrap("postcon-archive",postConArchive);
+ wrap("show-catalog-list",showCatalogList);wrap("show-catalog-save",showCatalogSave);
  wrap("open-folder",openFolder);
  startWeeklyBackups();
 }
-module.exports={setupMemoryIpc,status,preferences,list,search,read,save,edit,archive,importPack,exportPack,rememberSchedule,openFolder,ready,backupNow,automaticBackupCheck,setBackupEnabled,chooseBackupFolder,postConList,postConSave,postConArchive,diagnosticsSummary};
+module.exports={setupMemoryIpc,status,preferences,list,search,read,save,edit,archive,importPack,exportPack,rememberSchedule,openFolder,ready,backupNow,automaticBackupCheck,setBackupEnabled,chooseBackupFolder,postConList,postConSave,postConArchive,showCatalogList,showCatalogSave,diagnosticsSummary};
