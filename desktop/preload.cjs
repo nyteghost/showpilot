@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld("showpilotUpdates",Object.freeze({
  setChannel:(channel)=>ipcRenderer.invoke("showpilot-update:channel",channel),
  check:()=>ipcRenderer.invoke("showpilot-update:check"),
  open:()=>ipcRenderer.invoke("showpilot-update:open"),
+ openLog:()=>ipcRenderer.invoke("showpilot-update:open-log"),
  install:()=>ipcRenderer.invoke("showpilot-update:install"),
  onProgress:(callback)=>{
   if(typeof callback!=="function")return ()=>{};
