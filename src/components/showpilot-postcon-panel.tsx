@@ -15,7 +15,7 @@ const fields=[
  {key:"floor",label:"Floor maps and utilities",hint:"Booth numbers, utility placements and missing orders…"},
  {key:"followUp",label:"Follow-ups for next time",hint:"Actions to remember for a future show…"}
 ] as const;
-export function PostConPanel(){
+export function PostConPanel({focusShow}:{focusShow?:PostConShow}={}){
  const bridge=window.showpilotMemory;
  const [catalog,setCatalog]=useState<PostConShow[]>(()=>loadPostConShows());
  const [catalogError,setCatalogError]=useState("");
@@ -39,6 +39,25 @@ export function PostConPanel(){
   window.addEventListener("showpilot:postcon-catalog",hydrate);
   return ()=>{active=false;window.removeEventListener("showpilot:postcon-catalog",hydrate)};
  },[bridge]);
+ // Allow an Events-selected show to open its own Post-Con report even
+ // after it leaves the previous-30-day quick picker.
+ useEffect(()=>{
+  if(!focusShow)return;
+  let active=true;
+  const initial={
+   ...empty(),showName:focusShow.showName,eventId:focusShow.eventId,
+   rooms:focusShow.rooms,showDate:focusShow.showDate
+  };
+  setDraft(initial);setSelectedShow(focusShow.key);
+  if(bridge)void bridge.postConList().then(all=>{
+   if(!active)return;
+   const original=all.find(r=>
+    (focusShow.eventId&&r.eventId===focusShow.eventId)||
+    (r.showName===focusShow.showName&&r.showDate===focusShow.showDate));
+   if(original)setDraft({...original});
+  }).catch(e=>{if(active)setMessage("Unable to load this show's saved Post-Con: "+String(e))});
+  return ()=>{active=false};
+ },[focusShow?.key,bridge]);
  const change=(key:keyof PostConReport,value:string|number)=>setDraft(d=>({...d,[key]:value}));
  const chooseShow=(key:string)=>{
   const selected=catalog.find(s=>s.key===key);
@@ -82,6 +101,7 @@ export function PostConPanel(){
        <label htmlFor="postcon-previous" className="text-sm font-semibold">Completed CGC shows — last 30 days</label>
        <select id="postcon-previous" className="mt-1 w-full rounded border bg-background p-2 text-sm" value={selectedShow} onChange={e=>chooseShow(e.target.value)}>
         <option value="">Choose imported show or enter manually…</option>
+        {focusShow&&!completed.some(s=>s.key===focusShow.key)&&<option value={focusShow.key}>{focusShow.showDate} · {focusShow.showName} (selected event)</option>}
         {completed.map(s=><option key={s.key} value={s.key}>{s.showDate} · {s.showName} · {s.rooms}</option>)}
        </select>
        {catalogError&&<p role="alert" className="text-xs text-red-500">{catalogError}</p>}
