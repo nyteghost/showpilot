@@ -327,6 +327,19 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
     }catch(e){setExportStatus("Export not generated: "+(e as Error).message);}
     finally{setExportBusy(false)}
   }
+  async function exportFreshWeek(){
+    if(exportBusy||!aiScope)return;
+    setExportBusy(true);setExportStatus("");
+    try{
+      const chosen=scopedScheduleData(entries,tasks,aiScope);
+      if(!chosen.singleWeek)throw new Error("Choose Week view first.");
+      const lib=await import("@/lib/work-files");
+      const blob=await lib.eventsWorkbook(chosen.entries,undefined,chosen.tasks,{singleWeek:chosen.singleWeek});
+      lib.downloadBlob(blob,"ShowPilot-week-"+chosen.singleWeek+"-fresh-layout.xlsx");
+      setExportStatus("Selected week downloaded in the ShowPilot-generated layout. Your original master and reviewed events were not changed.");
+    }catch(e){setExportStatus("Fresh week not downloaded: "+(e as Error).message);}
+    finally{setExportBusy(false);}
+  }
   async function openExcelPreview(){
     if(previewBusy)return;
     setPreviewBusy(true);setExportStatus("");
@@ -496,6 +509,8 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
             {entries.length>0 && <Button size="sm" disabled={!aiScope||exportBusy}
               onClick={()=>void exportSelected(selectedTemplate)}><Download className="size-4"/>
               {exportBusy?"Exporting…":"Download "+currentExportLabel+" (original layout)"}</Button>}
+            {entries.length>0&&aiScope?.view==="week"&&<Button size="sm" variant="outline" disabled={exportBusy}
+              onClick={()=>void exportFreshWeek()}><Download className="size-4"/> Download week (fresh layout)</Button>}
             {exportStatus&&<p role="status" className="w-full text-xs text-muted-foreground">{exportStatus}</p>}
           </div>
           <ShowPilotExcelPreview open={previewOpen} onOpenChange={setPreviewOpen} book={previewWorkbook} title={previewTitle}/>
