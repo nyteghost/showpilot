@@ -8,6 +8,7 @@ import {PostConPanel} from "@/components/showpilot-postcon-panel";
 import {decodePreCon,type PreConDraft} from "@/lib/showpilot-precon";
 import {loadDurableShowCatalog,loadPostConShows,type PostConShow} from "@/lib/showpilot-postcon";
 import type {PostConReport} from "@/lib/showpilot-memory-bridge";
+import {parseZipSchedule,type ZipScheduleEvidence} from "@/lib/showpilot-zip-schedule";
 
 const noteTitle=(show:PostConShow)=>"Event Notes: "+show.key.slice(0,110);
 const matches=(eventId:string,name:string,show:PostConShow)=>
@@ -28,6 +29,7 @@ export function ShowPilotEventsPanel({active=true,stagePlanner,floorMaps}:{activ
  const [saving,setSaving]=useState(false);
  const [precon,setPrecon]=useState<PreConDraft|null>(null);
  const [postcon,setPostcon]=useState<PostConReport|null>(null);
+ const [zipSchedule,setZipSchedule]=useState<ZipScheduleEvidence|null>(null);
  const [message,setMessage]=useState("");
  const [section,setSection]=useState<EventSection>("overview");
  const [filesRevision,setFilesRevision]=useState(0);
@@ -74,6 +76,18 @@ export function ShowPilotEventsPanel({active=true,stagePlanner,floorMaps}:{activ
    }).catch(e=>{if(live)setMessage("Unable to load this show's linked notes: "+String(e))});
   return ()=>{live=false};
  },[selectedKey,active,bridge,section]);
+ useEffect(()=>{
+  if(!bridge||!selectedKey){setZipSchedule(null);return;}
+  let live=true;setZipSchedule(null);
+  void bridge.list("ZIP Schedule:").then(async notes=>{
+   const prefix="ZIP Schedule: "+selectedKey+" · ";
+   const newest=notes.filter(n=>n.title.startsWith(prefix)).sort((a,b)=>b.modified.localeCompare(a.modified))[0];
+   if(!newest)return;
+   const raw=await bridge.read(newest.id);
+   if(live)setZipSchedule(parseZipSchedule(raw.content));
+  }).catch(e=>{if(live)setMessage("Could not read saved ZIP schedule evidence: "+String(e));});
+  return ()=>{live=false};
+ },[bridge,selectedKey,filesRevision]);
  const choose=(key:string)=>{
   if(notesDirty&&!window.confirm("Switch events? Unsaved general notes will be lost."))return;
   setSelectedKey(key);setNoteText("");setNoteId("");setNotesDirty(false);
@@ -155,6 +169,26 @@ export function ShowPilotEventsPanel({active=true,stagePlanner,floorMaps}:{activ
        <div key={key} className="text-sm"><strong>{label}</strong><p className="whitespace-pre-wrap break-words text-muted-foreground">{postcon[key]}</p></div>)
        :<p className="text-sm text-muted-foreground">No saved Post-Con report. Open the Post-Con Reports section above.</p>}
      </div>
+    </div>
+    <div className="space-y-3 rounded-xl border p-4">
+     <div className="flex flex-wrap items-center justify-between gap-2">
+      <h3 className="font-semibold">Schedule evidence from event ZIP</h3>
+      <Button size="sm" variant="outline" onClick={()=>window.dispatchEvent(new CustomEvent("showpilot:navigate",{detail:{tab:"events"}}))}>
+       Open Event Schedule for review
+      </Button>
+     </div>
+     {zipSchedule?<div className="space-y-2 text-sm">
+      <p className="text-muted-foreground">Source: {zipSchedule.sourceZip} · Imported {zipSchedule.created.slice(0,10)}</p>
+      <p><strong>Reviewed show details:</strong> {zipSchedule.reviewed.showName} · {zipSchedule.reviewed.startDate||"Unknown"} to {zipSchedule.reviewed.showDate||"Unknown"}</p>
+      <p><strong>Reviewed locations:</strong> {zipSchedule.reviewed.rooms.join(", ")||"Not established"}</p>
+      <p className="font-semibold">Engineering, stage, utility and move-in notes to compare:</p>
+      {zipSchedule.hints.length?zipSchedule.hints.slice(0,15).map((hint,i)=>
+       <p key={i} className="rounded border p-2 text-xs">
+        <strong>{hint.topic}:</strong> {hint.text}<span className="mt-1 block text-muted-foreground">Source: {hint.source}</span>
+       </p>):<p className="text-xs text-muted-foreground">No actionable scheduling phrases were found in scanned document text.</p>}
+      {zipSchedule.detected.warnings.map((w,i)=><p key={i} className="text-xs text-amber-600">Review: {w}</p>)}
+      <p className="text-xs text-muted-foreground">Compare these source-backed suggestions with your approved engineering schedule. ZIP imports do not overwrite shifts, workbook formulas or manual edits.</p>
+     </div>:<p className="text-sm text-muted-foreground">No saved ZIP schedule review for this show yet. Import an event ZIP to collect show changes, room information and engineering notes.</p>}
     </div>
     <div className="space-y-3 rounded-xl border p-4">
      <h3 className="font-semibold">General event notes</h3>
