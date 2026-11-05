@@ -230,30 +230,45 @@ function validatePack(pack){
  const archived=Array.isArray(pack.archivedNotes)?pack.archivedNotes:[];
  const postcons=Array.isArray(pack.postConReports)?pack.postConReports:[];
  const shows=Array.isArray(pack.showCatalog)?pack.showCatalog:[];
+ const eventFiles=Array.isArray(pack.eventFiles)?pack.eventFiles:[];
  if(postcons.length>MAX_POSTCONS)throw Error("Too many post-con reports in import");
  if(shows.length>MAX_SHOW_CATALOG)throw Error("Too many show catalog entries in import");
+ if(eventFiles.length>MAX_EVENT_FILE_COUNT)throw Error("Too many event files in import");
  if(archived.length+pack.notes.length>MAX_NOTES)throw Error("Import exceeds maximum note count");
  return {notes:pack.notes.map(validateNote),archivedNotes:archived.map(n=>({...validateNote(n),archived:1})),
-  entries:pack.historicalEntries,postcons:postcons.map(validatePostCon),shows:shows.map(validateShowCatalogItem)};
+  entries:pack.historicalEntries,postcons:postcons.map(validatePostCon),shows:shows.map(validateShowCatalogItem),
+    eventFiles:eventFiles.map(validateEventManifest)};
 }
-async function importPack(pack){
+async function importPack(pack,attachmentsFolder=null){
  await ready();
  const validated=validatePack(pack),beforeNotes=count("SELECT COUNT(*) n FROM notes"),
   beforeEvents=count("SELECT COUNT(*) n FROM historical_entries"),beforePostcons=count("SELECT COUNT(*) n FROM postcon_reports"),
-   beforeShows=count("SELECT COUNT(*) n FROM show_catalog");
+   beforeShows=count("SELECT COUNT(*) n FROM show_catalog"),
+    beforeFiles=count("SELECT COUNT(*) n FROM event_files");
+ const restored=restoreEventAssets(validated.eventFiles,attachmentsFolder);
  transaction(()=>{
   for(const note of validated.notes)insertNote({...note,origin:note.origin||"json-import"});
   for(const note of validated.archivedNotes)insertNote({...note,origin:note.origin||"json-import"});
   for(const entry of validated.entries)insertEntry(entry);
   for(const report of validated.postcons)insertPostCon(report,true);
    for(const show of validated.shows)insertShowCatalog(show);
+   for(const file of validated.eventFiles){
+    // Refuse to create broken links when the binary attachment was not copied.
+    if(!verifiedAssetSource(file,eventFileDir()))continue;
+    if(!queryRows("SELECT key FROM show_catalog WHERE key=?",[file.eventKey]).length)continue;
+    sqlRun("INSERT OR IGNORE INTO event_files(id,event_key,kind,name,extension,byte_size,sha256,eoc_json,created,archived) VALUES(?,?,?,?,?,?,?,?,?,?)",
+      [file.id,file.eventKey,file.kind,file.name,file.extension,file.bytes,file.sha256,
+       JSON.stringify(file.eocExcerpts),file.created||now(),file.archived?1:0]);
+   }
  });
  const result={notesAdded:count("SELECT COUNT(*) n FROM notes")-beforeNotes,
   historyAdded:count("SELECT COUNT(*) n FROM historical_entries")-beforeEvents,
   notesSeen:validated.notes.length+validated.archivedNotes.length,historySeen:validated.entries.length,
   postConsAdded:count("SELECT COUNT(*) n FROM postcon_reports")-beforePostcons,
-   showsAdded:count("SELECT COUNT(*) n FROM show_catalog")-beforeShows};
- if(backupEnabled()&&(result.notesAdded||result.historyAdded||result.postConsAdded||result.showsAdded)){
+   showsAdded:count("SELECT COUNT(*) n FROM show_catalog")-beforeShows,
+    eventFilesAdded:count("SELECT COUNT(*) n FROM event_files")-beforeFiles,
+    eventFilesRestored:restored.restored,eventFilesMissing:restored.unavailable};
+ if(backupEnabled()&&(result.notesAdded||result.historyAdded||result.postConsAdded||result.showsAdded||result.eventFilesAdded)){
   try{await backupNow(true);}catch(e){backupError=(e instanceof Error?e.message:String(e)).slice(0,250);}
  }
  return result;
@@ -264,7 +279,7 @@ async function importJson(){
  if(result.canceled||!result.filePaths?.length)return {cancelled:true};
  const file=result.filePaths[0],st=fs.lstatSync(file);
  if(!st.isFile()||st.isSymbolicLink()||st.size>MAX_FILE)throw Error("Choose a normal ShowPilot JSON file under 32 MB.");
- return importPack(JSON.parse(fs.readFileSync(file,"utf8")));
+ return importPack(JSON.parse(fs.readFileSync(file,"utf8")),path.dirname(file));
 }
 async function exportPack(){
  await ready();
@@ -274,7 +289,7 @@ async function exportPack(){
   archivedNotes:queryRows("SELECT id,category,title,content,created,modified,origin FROM notes WHERE archived=1 ORDER BY created"),
   historicalEntries:queryRows("SELECT id,kind,date,room,area,description AS text,source AS original_source,week,approval FROM historical_entries ORDER BY date"),
   postConReports:queryRows("SELECT id,event_id AS eventId,show_name AS showName,show_date AS showDate,rooms,rating,went_well AS wentWell,issues,staffing,stage,floor,follow_up AS followUp,created,modified,archived FROM postcon_reports ORDER BY show_date"),
-   showCatalog:readShowCatalogRows()};
+   showCatalog:readShowCatalogRows(),eventFiles:exportedEventFiles()};
 }
 async function exportJson(){
  const out=await exportPack();
