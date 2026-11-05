@@ -6,6 +6,7 @@ const req=createRequire(import.meta.url);
 const zip=req("../../desktop/event-zip.cjs") as {
  inspect:(data:Uint8Array)=>{files:{path:string;name:string;bytes:number;kind:string}[];ignored:string[];manifest:any;totalBytes:number};
  contents:(data:Uint8Array)=>{files:{path:string;kind:string;bytes:Buffer}[]};
+ reviewSources:(data:Uint8Array)=>{sources:({path:string;format:"text";text:string}|{path:string;format:"pdf";bytes:Uint8Array})[];skipped:string[]};
  crc32:(b:Buffer)=>number;
 };
 function createZip(entries:{name:string;data:Uint8Array;method?:number}[]):Buffer{
@@ -51,6 +52,20 @@ describe("Secure event ZIP import",()=>{
   const extracted=zip.contents(bundle);
   expect(extracted.files.map(f=>f.path)).toEqual(preview.files.map(f=>f.path));
   expect(extracted.files[0]!.bytes.equals(pdf)).toBe(true);
+ });
+ it("scans event metadata from ZIP contents without writing extracted files to disk",()=>{
+  const bundle=createZip([
+   {name:"EOC/Event Order Confirmation.pdf",data:pdf},
+   {name:"Engineering/Work Order.txt",data:Buffer.from("Event ID: 42389\nEvent Name: Coldwell Banker Realty\nStart Date: 11/05/2026\nEnd Date: 11/07/2026\nHall AB\nStage 16 x 12")},
+   {name:"Layouts/Exhibit Hall CD Floor Map.png",data:Buffer.from("diagram")},
+   {name:"skip.exe",data:Buffer.from("bad")}
+  ]);
+  const scan=zip.reviewSources(bundle);
+  const txt=scan.sources.find(s=>s.path.includes("Work Order"));
+  expect(txt?.format).toBe("text");
+  if(txt?.format==="text")expect(txt.text).toContain("Event ID: 42389");
+  expect(scan.sources.some(s=>s.format==="pdf"&&s.path.includes("Confirmation"))).toBe(true);
+  expect(scan.sources.some(s=>s.path.includes("Hall CD"))).toBe(true);
  });
  it("rejects zip-slip and absolute paths without touching the filesystem",()=>{
   for(const bad of ["../secrets.pdf","/home/user/diagram.pdf","C:/folder/EOC.pdf","folder\\evil.pdf","folder/../../evil.pdf"]){
