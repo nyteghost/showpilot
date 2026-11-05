@@ -20,7 +20,7 @@ jobs:
           SHOWPILOT_BUILD_NUMBER: ${{ github.run_number }}
         run: node scripts/stamp-build-version.mjs
       - run: bun run check
-      - run: node --check desktop/main.cjs && node --check desktop/preload.cjs && node --check desktop/google-calendar.cjs && node --check desktop/ai-vault.cjs && node --check desktop/app-updates.cjs && node --check desktop/showpilot-memory.cjs && node --check desktop/secure-storage.cjs
+      - run: node --check desktop/main.cjs && node --check desktop/preload.cjs && node --check desktop/google-calendar.cjs && node --check desktop/ai-vault.cjs && node --check desktop/app-updates.cjs && node --check desktop/showpilot-memory.cjs && node --check desktop/secure-storage.cjs && node --check desktop/portable-updates.cjs
       - run: bun test
       - run: bun run build
       - name: Upload offline browser build
@@ -50,6 +50,18 @@ jobs:
         run: |
           $version = (Get-Content -Raw package.json | ConvertFrom-Json).version
           Compress-Archive -Path "release/win-unpacked/*" -DestinationPath "release/ShowPilot-v${version}-Portable-Windows.zip" -Force
+      - name: Test Windows in-place updater staging against actual portable ZIP
+        shell: pwsh
+        run: |
+          $version = (Get-Content -Raw package.json | ConvertFrom-Json).version
+          $archive = (Resolve-Path "release/ShowPilot-v${version}-Portable-Windows.zip").Path
+          $workspace = Join-Path $env:RUNNER_TEMP "showpilot-updater-smoke"
+          $oldApp = Join-Path $workspace "OriginalApp"
+          $stage = Join-Path $workspace ".showpilot-next-smoke"
+          New-Item -ItemType Directory -Path $oldApp,$stage -Force | Out-Null
+          & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "desktop/portable-update-helper.ps1" -Mode Stage -InstallDir $oldApp -StageDir $stage -ArchivePath $archive -LogPath (Join-Path $workspace "update-test.log")
+          if ($LASTEXITCODE -ne 0) { throw "Windows portable update staging failed." }
+          if (-not (Test-Path (Join-Path $stage "ShowPilot.exe"))) { throw "Staged executable is missing." }
       - uses: actions/upload-artifact@v4
         with:
           name: showpilot-windows-portable
