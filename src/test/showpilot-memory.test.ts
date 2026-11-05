@@ -9,7 +9,7 @@ import {stageMemoryDraft,approvedTaskMemoryDraft} from "@/lib/showpilot-memory-n
 import {safeMemoryReferences} from "@/lib/showpilot-ai-tasks";
 import {encodePreCon,decodePreCon,preConNoteTitle,emptyPreCon} from "@/lib/showpilot-precon";
 
-const nativeRequire=createRequire(import.meta.url);
+const nativeRequire=createRequire(new URL("../../desktop/showpilot-memory.cjs",import.meta.url));
 const code=readFileSync(fileURLToPath(new URL("../../desktop/showpilot-memory.cjs",import.meta.url)),"utf8");
 const dirs:string[]=[];
 type NativeMemory=Record<string,(...args:any[])=>Promise<any>>;
