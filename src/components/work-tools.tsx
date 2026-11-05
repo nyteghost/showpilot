@@ -150,6 +150,11 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
   const [venueExcluded, setVenueExcluded] = useState(0);
   const [approvedSpaces, setApprovedSpaces] = useState<string[]>([]);
   const [report, setReport] = useState("");
+  const [sessionReady,setSessionReady]=useState(!window.showpilotScheduleSession);
+  const [autoSaveEnabled,setAutoSaveEnabled]=useState(false);
+  const [autoSaveMessage,setAutoSaveMessage]=useState("");
+  const [restoredScope,setRestoredScope]=useState<ReviewDateScope|null>(null);
+  const saveSequence=useRef(0);
   const saveDraftForCurrent = (next: ReviewDraft) => {
     draftRef.current = next; setDraft(next);
     if (fingerprintRef.current) {
@@ -221,6 +226,59 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
       + (showCatalog.storage==="browser" ? " Show list cached for this browser only; open the desktop app for durable saving." : ""));
     compileReview(proposals, notes, nextDraft);
   }
+
+  // Recover the source Ungerboeck rows and every reviewer choice on next
+  // launch. Review-draft-only localStorage cannot restore an uploaded report.
+  useEffect(()=>{
+    const api=window.showpilotScheduleSession;
+    if(!api)return;
+    let live=true;
+    void (async()=>{
+      try{
+        const snapshot=await api.load();
+        if(!live)return;
+        if(snapshot?.project){
+          const p=parseReviewProject(JSON.stringify(snapshot.project));
+          const existing=snapshot.templateBytes?
+            new File([new Uint8Array(snapshot.templateBytes)],"restored-engineering-template.xlsx",
+              {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}):undefined;
+          const recovered={rows:p.originalRows,sources:1,...(existing?{existing}:{})};
+          setRestoredScope(p.scope??null);
+          setWithPending(p.includePending);setApprovedSpaces(p.approvedSpaces);
+          setSource(recovered);
+          await build(recovered,p.includePending,p.approvedSpaces,p.draft);
+          if(live){
+            setAutoSaveMessage("Restored previous Event Schedule from local autosave."+
+              (snapshot.templateMissing?" Reattach your uploaded Excel template before exporting.":""));
+            setAutoSaveEnabled(true);
+          }
+        }
+      }catch(e){if(live)setAutoSaveMessage("Couldn't restore saved schedule: "+String(e)+
+        ". The saved file was not deleted. You can reimport the original report.");}
+      finally{if(live)setSessionReady(true);}
+    })();
+    return ()=>{live=false};
+  },[]);
+
+  useEffect(()=>{
+    const api=window.showpilotScheduleSession;
+    if(!api||!sessionReady||!autoSaveEnabled||!source)return;
+    const seq=++saveSequence.current;
+    const snapshot:ReviewProject={
+      kind:"showpilot-review-project",version:1,originalRows:source.rows,
+      draft,approvedSpaces,includePending:withPending,note:"Offline autosave",
+      templateSaved:!!source.existing,...(aiScope?{scope:aiScope}:{})
+    };
+    setAutoSaveMessage("Saving Event Schedule locally…");
+    void api.save(snapshot).then(result=>{
+      if(saveSequence.current===seq)setAutoSaveMessage("Event Schedule saved locally · "+
+        new Date(result.savedAt).toLocaleTimeString());
+    }).catch(e=>{
+      if(saveSequence.current===seq)setAutoSaveMessage("Autosave failed: "+String(e)+
+        ". Download a review project before closing ShowPilot.");
+    });
+  },[source,draft,approvedSpaces,withPending,aiScope,sessionReady,autoSaveEnabled]);
+
   const currentExportLabel=aiScope?.view==="week"?"selected week":
     aiScope?.view==="month"?"selected month":aiScope?.view==="day"?"selected day":"full report";
   const fileSuffix=(scope:string)=>scope.replace(/[^a-zA-Z0-9_-]/g,"-");
@@ -239,10 +297,11 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
       const bytes=await window.showpilotLocal?.readTemplate();
       if(!bytes)throw new Error("Choose an approved master Excel template in Settings & AI first.");
       original=new File([new Uint8Array(bytes)],"approved-schedule-template.xlsx");
-      await lib.validateApprovedTemplate(original,chosen.entries);
+      await lib.validateApprovedTemplate(original,chosen.entries,{retargetWeek:!!chosen.singleWeek});
     }
     const blob=await lib.eventsWorkbook(chosen.entries,original,chosen.tasks,
-      chosen.singleWeek?{singleWeek:chosen.singleWeek,preserveTemplateLayout:true}:{preserveTemplateLayout:true});
+      chosen.singleWeek?{singleWeek:chosen.singleWeek,preserveTemplateLayout:true,retargetTemplateWeek:kind==="approved"}:
+        {preserveTemplateLayout:true});
     return {blob,period:chosen.period,week:!!chosen.singleWeek};
   }
   async function exportSelected(kind:ExportFormat){
@@ -296,6 +355,7 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
     setTimeout(()=>URL.revokeObjectURL(url),30000);
   }
   async function loadProject(f:File) {
+    setAutoSaveEnabled(false);setRestoredScope(null);setAiScope(null);
     setStatus("Opening saved review project…");
     try {
       if (f.size > 16_000_000) throw new Error("Project exceeds 16 MB.");
@@ -303,11 +363,12 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
       const nextSource={rows:p.originalRows,sources:1};
       setSource(nextSource);setWithPending(p.includePending);setApprovedSpaces(p.approvedSpaces);
       await build(nextSource,p.includePending,p.approvedSpaces,p.draft);
+      setAutoSaveEnabled(true);
       setStatus("Review project loaded. Original report and manual decisions restored. Reattach the original monthly Excel template if you need to preserve its existing shifts/PTO.");
     }catch(e){setStatus("Could not open ShowPilot project: "+(e as Error).message);}
   }
   async function load(files: File[]) {
-    
+    setAutoSaveEnabled(false);setRestoredScope(null);setAiScope(null);
     setStatus("Reading…");  setSource(null); setSuggestedEntries([]);
     setApprovedSpaces([]); setVenueReview([]); setVenueExcluded(0);
     const head = [`ShowPilot Events report · ${new Date().toISOString()}`, `build: ${__APP_VERSION__} ${__APP_COMMIT__} ${__APP_BUILD_DATE__}`];
@@ -332,6 +393,10 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
       }
       const rows = [...(await Promise.all(pdfs.map(readEventPdf))).flat(), ...reports.flat()];
       const src = { rows, sources: pdfs.length + reports.length, ...(existing ? { existing } : {}) };
+      // Cache the originally uploaded Excel workbook in the same private
+      // Windows user-data folder as this review. Never place uploads in GitHub.
+      if(existing&&window.showpilotScheduleSession)
+        await window.showpilotScheduleSession.saveTemplate(await existing.arrayBuffer());
       setSource(src);
       if (!rows.length) {
         setStatus("No event functions found. Export ShowPilot - Event Schedule as PDF or Excel from Ungerboeck. A staffing template alone does not contain event functions.");
@@ -339,6 +404,7 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
         return;
       }
       await build(src, withPending, []);
+      setAutoSaveEnabled(true);
     } catch (e) {
       setReport((old) => `${old}\nERROR: ${(e as Error).stack ?? (e as Error).message}`);
       setStatus(`Could not read that file: ${(e as Error).message}`);
@@ -347,8 +413,10 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
   const { deliver } = useDeliver();
   return (
     <div className="space-y-3 pt-2">
-      <FilePick accept="application/pdf,.xlsx" label="1. Import ShowPilot - Event Schedule (PDF or Excel) — optionally include your monthly engineering template" onFiles={load} />
-      <FilePick accept=".json,application/json" label="Or resume a saved ShowPilot review project (.json)" onFile={(f) => { void loadProject(f); }} />
+      {sessionReady?<FilePick accept="application/pdf,.xlsx" label="1. Import ShowPilot - Event Schedule (PDF or Excel) — optionally include your monthly engineering template" onFiles={load} />
+        :<p role="status" className="text-xs text-muted-foreground">Restoring your previous Event Schedule…</p>}
+      {sessionReady&&<FilePick accept=".json,application/json" label="Or resume a saved ShowPilot review project (.json)" onFile={(f) => { void loadProject(f); }} />}
+      {autoSaveMessage&&<p className={"text-xs "+(autoSaveMessage.includes("failed")?"text-destructive":"text-muted-foreground")} role="status">{autoSaveMessage}</p>}
       <p className="text-xs text-muted-foreground">S = show · Exmi = exhibitor move in / service desk · MI = move in · MO = move out · Food = meal or reception after the show · MTG = meeting · MO? = no move-out line in the report; guessed as 3 hours after the show ends, so check it. Combined halls split into each hall. Escalators = 1 hr before first show to 1 hr after.</p>
       {status && <p className={`text-sm ${/^Could not|^No /.test(status) ? "text-destructive" : ""}`} role="status">{status}</p>}
       {report && /^Could not|^No /.test(status) && (
@@ -386,7 +454,7 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
               {c.shows.map((e,i)=><button type="button" key={i} className="rounded border border-amber-500 px-2 py-1 text-xs underline" onClick={()=>setConflictTarget({date:e.date,space:e.space,title:e.title,nonce:Date.now()})}>{e.title}</button>)}
             </div>)}</div>
           </section>}
-          <ScheduleReview conflictTarget={conflictTarget} onScopeChange={setAiScope} originalRows={source.rows} proposed={suggestedEntries} suggestedTasks={suggestedTasks} draft={draft} onChange={reviewChanged} onSaveProject={saveProject} />
+          <ScheduleReview key={fingerprintRows(source.rows)} initialScope={restoredScope} conflictTarget={conflictTarget} onScopeChange={setAiScope} originalRows={source.rows} proposed={suggestedEntries} suggestedTasks={suggestedTasks} draft={draft} onChange={reviewChanged} onSaveProject={saveProject} />
           <AiTaskAssistant scope={aiScope} entries={entries} tasks={tasks} onApprove={task => reviewChanged({...draftRef.current,addedTasks:[...draftRef.current.addedTasks,{id:"ai-task:"+Date.now()+":"+Math.random().toString(36).slice(2),value:task}]})} />
           {selectedStaffingDates.length>0&&<LocalPlanningAssistant kind="staffing"
             memoryQuery={entries.filter(e=>selectedStaffingDates.includes(e.date)).slice(0,12).map(e=>e.title+" "+e.space).join(" ").slice(0,150)}
