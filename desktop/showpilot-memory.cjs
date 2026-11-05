@@ -8,7 +8,7 @@ const fs=require("node:fs"),path=require("node:path"),crypto=require("node:crypt
 const initSqlJs=require("sql.js/dist/sql-wasm-inline.js");
 
 const CATEGORIES=["Stage Setups","Ballroom Configurations","Recurring Events","Engineering Procedures","Approved Tasks","Lessons Learned"];
-const MAX_NOTE=24000, MAX_FILE=32*1024*1024, MAX_ENTRIES=25000, MAX_NOTES=10000, MAX_POSTCONS=5000;
+const MAX_NOTE=24000, MAX_FILE=32*1024*1024, MAX_ENTRIES=25000, MAX_NOTES=10000, MAX_POSTCONS=5000, MAX_SHOW_CATALOG=5000;
 const WEEK_MS=7*24*60*60*1000, BACKUP_CHECK_MS=6*60*60*1000, BACKUP_KEEP=12;
 const BACKUP_NAME=/^ShowPilot-Memory-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z?-[a-f0-9]{8}\.json$/;
 let backupTimer=null,backupError="";
@@ -136,7 +136,9 @@ async function ready(){
    "CREATE TABLE IF NOT EXISTS historical_entries(id TEXT PRIMARY KEY,kind TEXT NOT NULL,date TEXT NOT NULL,room TEXT NOT NULL,area TEXT NOT NULL,description TEXT NOT NULL,source TEXT NOT NULL,week TEXT NOT NULL,approval TEXT NOT NULL);"+
    "CREATE INDEX IF NOT EXISTS historical_date ON historical_entries(date,room);"+
    "CREATE TABLE IF NOT EXISTS postcon_reports(id TEXT PRIMARY KEY,event_id TEXT NOT NULL,show_name TEXT NOT NULL,show_date TEXT NOT NULL,rooms TEXT NOT NULL,rating INTEGER NOT NULL,went_well TEXT NOT NULL,issues TEXT NOT NULL,staffing TEXT NOT NULL,stage TEXT NOT NULL,floor TEXT NOT NULL,follow_up TEXT NOT NULL,created TEXT NOT NULL,modified TEXT NOT NULL,archived INTEGER NOT NULL DEFAULT 0);"+
-   "CREATE INDEX IF NOT EXISTS postcon_date ON postcon_reports(show_date,archived);");
+   "CREATE INDEX IF NOT EXISTS postcon_date ON postcon_reports(show_date,archived);"+
+   "CREATE TABLE IF NOT EXISTS show_catalog(key TEXT PRIMARY KEY,event_id TEXT NOT NULL,show_name TEXT NOT NULL,start_date TEXT NOT NULL,show_date TEXT NOT NULL,rooms TEXT NOT NULL,modified TEXT NOT NULL);"+
+   "CREATE INDEX IF NOT EXISTS show_catalog_dates ON show_catalog(start_date,show_date);");
   if(!fs.existsSync(file))persist();
   migrateLegacy();
   return true;
@@ -152,6 +154,7 @@ async function status(){
   noteCount:count("SELECT COUNT(*) n FROM notes WHERE archived=0"),
   historicalCount:count("SELECT COUNT(*) n FROM historical_entries"),
   postConCount:count("SELECT COUNT(*) n FROM postcon_reports WHERE archived=0"),
+   showCatalogCount:count("SELECT COUNT(*) n FROM show_catalog"),
   migratedCount:Number(meta("legacy_migrated_count","0")),
   archivedCount:count("SELECT COUNT(*) n FROM notes WHERE archived=1"),
   weeklyBackupEnabled:backupEnabled(),backupFolder:backupPath(),
@@ -354,6 +357,56 @@ function startWeeklyBackups(){
  backupTimer.unref?.();
 }
 
+
+/** Persistent offline catalog. Stores actual CGC shows, not their functions.
+ * Validated writes commit immediately to the existing SQLite database.
+ */
+const showDay=/^\d{4}-\d{2}-\d{2}$/;
+const cgcRoom=/^(?:Hall [A-D]|BallRoom [A-G])$/i;
+const otherVenue=/\b(?:cepac|cobb energy|performing arts)\b/i;
+const functionTitle=/^(?:(?:client|exhibitor|vendor|decorator|sponsor|av|a\/v)\s+)?(?:move[ -]?in|move[ -]?out|load[ -]?in|load[ -]?out|program|general session|breakout session|tables?\s*(?:&|and)\s*chairs|decorator day)(?:$|\s*[-/:]\s*.*$)/i;
+function validateShowCatalogItem(item){
+ if(!item||typeof item!=="object")throw Error("Invalid show catalog item.");
+ const eventId=safe(item.eventId,100),showName=safe(item.showName,140);
+ const startDate=safe(item.startDate||item.showDate,10),showDate=safe(item.showDate,10);
+ const key=safe(item.key,180)||(eventId?"id:"+eventId:"name:"+showName.toLowerCase());
+ const rooms=safe(item.rooms,300).split(",").map(room=>room.trim()).filter(Boolean);
+ if(!key||!showName||functionTitle.test(showName)||
+    !showDay.test(startDate)||!showDay.test(showDate)||
+    Number.isNaN(Date.parse(startDate+"T12:00:00Z"))||
+    Number.isNaN(Date.parse(showDate+"T12:00:00Z"))||
+    startDate>showDate||!rooms.length||rooms.some(r=>!cgcRoom.test(r))||
+    otherVenue.test(showName+" "+rooms.join(" ")))
+  throw Error("Only named CGC shows, valid dates and existing CGC rooms can be saved.");
+ return {key,eventId,showName,startDate,showDate,rooms:[...new Set(rooms)].sort().join(", ")};
+}
+function readShowCatalogRows(){
+ return queryRows("SELECT key,event_id AS eventId,show_name AS showName,start_date AS startDate,show_date AS showDate,rooms FROM show_catalog ORDER BY show_date DESC,show_name LIMIT 5000");
+}
+async function showCatalogList(){await ready();return readShowCatalogRows();}
+function insertShowCatalog(item){
+ const prior=queryRows("SELECT key,event_id AS eventId,show_name AS showName,start_date AS startDate,show_date AS showDate,rooms FROM show_catalog WHERE key=?",[item.key])[0];
+ const startDate=prior&&prior.startDate<item.startDate?prior.startDate:item.startDate;
+ const showDate=prior&&prior.showDate>item.showDate?prior.showDate:item.showDate;
+ const names=[prior?.showName,item.showName].filter(Boolean);
+ const showName=names.sort((a,b)=>b.length-a.length)[0]||item.showName;
+ const rooms=[...new Set([prior?.rooms,item.rooms].filter(Boolean).join(", ").split(",").map(r=>r.trim()).filter(Boolean))].sort().join(", ");
+ sqlRun("INSERT INTO show_catalog(key,event_id,show_name,start_date,show_date,rooms,modified) VALUES(?,?,?,?,?,?,?) "+
+   "ON CONFLICT(key) DO UPDATE SET event_id=excluded.event_id,show_name=excluded.show_name,start_date=excluded.start_date,show_date=excluded.show_date,rooms=excluded.rooms,modified=excluded.modified",
+   [item.key,item.eventId||prior?.eventId||"",showName,startDate,showDate,rooms,now()]);
+}
+async function showCatalogSave(items){
+ await ready();
+ if(!Array.isArray(items)||items.length>MAX_SHOW_CATALOG)throw Error("Invalid or oversized show catalog.");
+ const valid=items.map(validateShowCatalogItem);
+ const before=count("SELECT COUNT(*) n FROM show_catalog");
+ transaction(()=>{
+  for(const item of valid)insertShowCatalog(item);
+  if(count("SELECT COUNT(*) n FROM show_catalog")>MAX_SHOW_CATALOG)
+   throw Error("The local show catalog is full; no changes were saved.");
+ });
+ return {saved:true,added:count("SELECT COUNT(*) n FROM show_catalog")-before,total:count("SELECT COUNT(*) n FROM show_catalog")};
+}
 
 function validatePostCon(input){
  if(!input||typeof input!=="object")throw Error("Post-con report is missing.");
