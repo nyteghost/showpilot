@@ -3,6 +3,7 @@ import {FileArchive,UploadCloud} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import type {EventZipInspection} from "@/lib/showpilot-memory-bridge";
 import type {PostConShow} from "@/lib/showpilot-postcon";
+import {matchEventZipToShow,type EventZipMatch} from "@/lib/showpilot-event-match";
 import {extractEocFromPdf,pdfTextPages} from "@/lib/showpilot-event-assets";
 import {discoverEventMetadata,ROOMS,type EventMetadataResult,type EventMetadataSource} from "@/lib/showpilot-event-discovery";
 import {scheduleHintsFromSources,serializeZipSchedule,type ZipScheduleHint} from "@/lib/showpilot-zip-schedule";
@@ -32,7 +33,10 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
  const [scheduleHints,setScheduleHints]=useState<ZipScheduleHint[]>([]);
  const [readWarnings,setReadWarnings]=useState<string[]>([]);
  const [applyExisting,setApplyExisting]=useState(false);
- const reset=()=>{setArchive(null);setInspection(null);setMetadata(null);setScheduleHints([]);setReadWarnings([]);setApplyExisting(false);if(picker.current)picker.current.value="";};
+ const [matchResult,setMatchResult]=useState<EventZipMatch|null>(null);
+ const [availableShows,setAvailableShows]=useState<PostConShow[]|null>(null);
+ const candidates=availableShows??shows;
+ const reset=()=>{setArchive(null);setInspection(null);setMetadata(null);setScheduleHints([]);setReadWarnings([]);setApplyExisting(false);setMatchResult(null);setAvailableShows(null);if(picker.current)picker.current.value="";};
  const stage=useCallback(async(file:File)=>{
   if(!bridge?.eventZipInspect){setStatus("ZIP import requires the current ShowPilot portable desktop build.");return;}
   if(!/\.zip$/i.test(file.name)){setStatus("Choose an event ZIP file.");return;}
@@ -63,11 +67,30 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
    setArchive(file);setInspection(result);setMetadata(found);setScheduleHints(scheduleHintsFromSources(sources));setReadWarnings(scanWarnings);
    setName(found.showName);setEventId(found.eventId);setStart(found.startDate);setEnd(found.showDate);
    setRooms(found.rooms);
-   setTarget(selectedKey||"");setMode(selectedKey?"existing":"new");setApplyExisting(false);
-   setStatus("ShowPilot scanned ZIP documents for Event ID, show name, dates and CGC locations. Review them before saving.");
+   // Read the current SQLite catalog, including events imported from Event
+   // Schedule while this screen was open. Never default to the highlighted show
+   // when a ZIP carries a different Event ID.
+   const savedShows=await bridge.showCatalogList();
+   setAvailableShows(savedShows);
+   const match=matchEventZipToShow(found,savedShows);
+   setMatchResult(match);
+   if(match.status==="matched"){
+    setTarget(match.show.key);setMode("existing");
+    setStatus("Event ID "+found.eventId+" matched "+match.show.showName+". Confirm to attach these documents to its Events record.");
+   }else{
+    setTarget("");setMode("new");
+    setStatus(match.status==="conflicting-ids"?
+     "Conflicting Event IDs were found. No event was chosen automatically. Review the documents before importing.":
+     match.status==="ambiguous"?
+     "Several saved records have this Event ID. No event was chosen automatically; review the catalog first.":
+     match.status==="no-match"?
+     "Event ID "+found.eventId+" is not in the saved schedule. Review the ZIP details before creating a new event.":
+     "No Event ID found. Choose an existing event manually or create one after reviewing the details.");
+   }
+   setApplyExisting(false);
   }catch(e){reset();setStatus("Could not inspect ZIP: "+(e instanceof Error?e.message:String(e)));}
   finally{setBusy(false);}
- },[bridge,selectedKey]);
+ },[bridge,shows]);
  useEffect(()=>{
   if(!active)return;
   const dragover=(e:DragEvent)=>{if(e.dataTransfer?.types.includes("Files"))e.preventDefault();};
@@ -86,7 +109,13 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
   if(!archive||!inspection||!bridge?.eventZipImport||busy)return;
   let key=target;
   if(mode==="existing"){
-   if(!shows.some(s=>s.key===target)){setStatus("Choose an existing show.");return;}
+   const chosen=candidates.find(s=>s.key===target);
+   if(!chosen){setStatus("Choose an existing show.");return;}
+   if(metadata&&matchEventZipToShow(metadata,[chosen]).status==="no-match"){
+    setStatus("The ZIP Event ID "+metadata.eventId+" does not match "+chosen.showName+
+      " (#"+(chosen.eventId||"not provided")+"). Choose the matching event; documents were not attached.");
+    return;
+   }
   }else{
    if(!name.trim()||!validDay(start)||!validDay(end)||end<start||!rooms.length){
     setStatus("Confirm event name, start/end dates and at least one CGC room.");return;
@@ -95,14 +124,14 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
     setStatus("Only Cobb Convention Center-Atlanta shows can be added.");return;
    }
    key=eventId.trim()?"id:"+eventId.trim():"name:"+name.trim().toLowerCase();
-   if(shows.some(existing=>existing.key===key)){
+   if(candidates.some(existing=>existing.key===key)){
     setStatus("This show already exists. Choose Existing show so its name, dates and rooms are not overwritten.");return;
    }
   }
   setBusy(true);setStatus("Saving event documents locally…");
   try{
    if(mode==="existing"&&applyExisting){
-    const existing=shows.find(x=>x.key===key);
+    const existing=candidates.find(x=>x.key===key);
     if(!existing)throw Error("Selected event is no longer available.");
     if(!validDay(start)||!validDay(end)||end<start||!rooms.length)
      throw Error("Review the scanned start/end dates and rooms before updating the saved show.");
@@ -119,6 +148,15 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
     await bridge.showCatalogSave([{key,eventId:eventId.trim(),showName:name.trim(),
      startDate:start,showDate:end,rooms:rooms.join(", ")}]);
     window.dispatchEvent(new Event("showpilot:postcon-catalog"));
+   }
+   // Verify immediately before writing so a stale UI selection or a second
+   // import cannot silently attach documents under a different Event ID.
+   const live=await bridge.showCatalogList();
+   if(mode==="existing"&&metadata){
+    const selected=live.find(x=>x.key===key);
+    if(!selected)throw Error("The selected event no longer exists in the catalog.");
+    if(matchEventZipToShow(metadata,[selected]).status==="no-match")
+     throw Error("ZIP Event ID does not match the selected event. Nothing was attached.");
    }
    const result=await bridge.eventZipImport({eventKey:key,bytes:await archive.arrayBuffer()});
    let indexed=0,unreadable=0;
@@ -142,6 +180,7 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
      await bridge.save({category:"Recurring Events",title:("ZIP Schedule: "+key+" · "+archive.name).slice(0,140),content:content.slice(0,14500)});
     }catch{ /* Imported originals remain safe if optional review-note saving fails. */ }
    }
+   window.dispatchEvent(new Event("showpilot:postcon-catalog"));
    onImported(key);reset();
    setStatus(result.imported.length+" document(s) imported. "+result.duplicates.length+
     " duplicates skipped; "+result.ignored.length+" unsupported entries ignored."+
@@ -155,7 +194,7 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
  return <div className="space-y-3 rounded-xl border p-4" aria-label="Import event ZIP">
   <div className="flex items-start gap-2"><FileArchive size={21}/><div>
    <h3 className="font-semibold">Import an event ZIP</h3>
-   <p className="text-sm text-muted-foreground">Drop a show ZIP anywhere on the Events screen. Review its documents, then choose an existing show or create one. No automatic guesses are saved.</p>
+   <p className="text-sm text-muted-foreground">Upload an event ZIP to match its Event ID to the shows imported from Event Schedule. A unique ID match selects the existing event; missing or conflicting IDs require review.</p>
   </div></div>
   <div className={"cursor-pointer rounded-xl border-2 border-dashed p-5 text-center "+(dragging?"border-blue-500 bg-blue-500/10":"hover:bg-muted/30")}
    role="button" tabIndex={0} aria-label="Drop or browse for an event ZIP"
@@ -184,6 +223,9 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
      {inspection.ignored.length>0&&<p>Skipped: {inspection.ignored.slice(0,12).join(", ")}</p>}
     </div>
    </details>
+   {matchResult?.status==="matched"&&<p className="rounded-md border border-green-600/40 bg-green-600/10 px-3 py-2 text-xs font-semibold" role="status">
+    Matched Event ID {metadata?.eventId} to {matchResult.show.showName}. Documents will be filed under the existing event after confirmation.
+   </p>}
    {metadata&&<div className="space-y-2 rounded border p-3 text-xs">
     <p className="font-semibold">Information found in ZIP documents</p>
     <p>Event ID: <strong>{metadata.eventId||"Not found"}</strong> · Show: <strong>{metadata.showName||"Not found"}</strong></p>
@@ -208,7 +250,7 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
     {mode==="existing"?<label className="block text-sm">Choose saved event
      <select className="mt-1 w-full rounded border bg-background p-2" value={target} onChange={e=>setTarget(e.target.value)}>
       <option value="">Choose show…</option>
-      {shows.map(s=><option key={s.key} value={s.key}>{s.showName} · {s.startDate??s.showDate}</option>)}
+      {candidates.map(s=><option key={s.key} value={s.key}>{s.showName} · #{s.eventId||"No ID"} · {s.startDate??s.showDate}</option>)}
      </select>
      <label className="mt-2 flex items-center gap-2 text-xs">
       <input type="checkbox" checked={applyExisting} onChange={e=>setApplyExisting(e.target.checked)}/>
