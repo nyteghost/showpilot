@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { Briefcase, CalendarClock, CalendarDays, CalendarPlus, CalendarSync, FolderOpen, Download, ExternalLink, FileUp, GitBranch, Layers, Eye, Map as MapIcon, Store, ClipboardCheck } from "lucide-react";
+import { Briefcase, CalendarClock, CalendarDays, CalendarSync, FolderOpen, Download, ExternalLink, FileUp, GitBranch, Layers, Eye, Map as MapIcon, Store } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -17,8 +17,6 @@ import {scopedScheduleData} from "@/lib/showpilot-export-scope";
 import { AiTaskAssistant } from "@/components/showpilot-ai-task-assistant";
 import { LocalPlanningAssistant } from "@/components/showpilot-planning-assistant";
 import { staffingPlanningContext } from "@/lib/showpilot-planning";
-import { PostConPanel } from "@/components/showpilot-postcon-panel";
-import { PreConPanel } from "@/components/showpilot-precon-panel";
 import {ShowPilotEventsPanel} from "@/components/showpilot-events-panel";
 import { rememberPostConShowsFromReportRows } from "@/lib/showpilot-postcon";
 import { applyReview, emptyReviewDraft, fingerprintRows, parseDraft, parseReviewProject, storageKey, type ReviewDraft, type ReviewProject } from "@/lib/showpilot-review";
@@ -49,8 +47,6 @@ const TABS = [
   { id: "deck", label: "Deck", Icon: Layers, hint: "Plan a stage from the decks, stairs and rails in the warehouse." },
   { id: "vendors", label: "Vendors", Icon: Store, hint: "Compare prices and rentals across your usual suppliers." },
   { id: "floor", label: "Floor map", Icon: MapIcon, hint: "Color a floor plan from the work order: who ordered what power, where." },
-  { id: "precon", label: "Pre-Con", Icon: CalendarPlus, hint: "Plan CGC shows scheduled in the next 30 days; save and reopen pre-show notes." },
-  { id: "postcon", label: "Post-Con", Icon: ClipboardCheck, hint: "Review CGC shows from the last 30 days and save outcomes and lessons." },
 ] as const;
 export type WorkTabId = (typeof TABS)[number]["id"];
 type TabId = WorkTabId;
@@ -58,6 +54,7 @@ const TAB_KEY = "pixelpals:work-tab";
 const startTab = (): TabId => {
   try {
     const q = new URLSearchParams(location.search).get("tab") ?? localStorage.getItem(TAB_KEY);
+    if(q==="precon"||q==="postcon")return "eventhub";
     return TABS.some((x) => x.id === q) ? (q as TabId) : "events";
   } catch { return "events"; }
 };
