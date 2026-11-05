@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   CalendarDays, CalendarClock, Layers3, Store, Map, FolderOpen,
-  LayoutDashboard, Menu, Moon, Sun, ChevronRight, ShieldCheck, PanelLeftClose, PanelLeftOpen, Settings2
+  LayoutDashboard, Menu, Moon, Sun, ChevronRight, PanelLeftClose, PanelLeftOpen, Settings2
 } from "lucide-react";
 import { ShowServicesTools, type WorkTabId } from "@/components/work-tools";
 import { BackupPanel } from "@/components/showpilot-backup";
@@ -11,6 +11,7 @@ import { GoogleCalendarSettings } from "@/components/showpilot-calendar-settings
 import { ShowPilotUpdates } from "@/components/showpilot-updates";
 import { ShowPilotMemorySettings } from "@/components/showpilot-memory-settings";
 import { ShowPilotDiagnosticsPanel } from "@/components/showpilot-diagnostics-panel";
+import { getLocalAiRuntimeState, subscribeLocalAiRuntimeState } from "@/lib/showpilot-ai-local";
 import showpilotIcon from "./assets/showpilot-approved.webp";
 
 type Screen = "dashboard" | "settings" | WorkTabId;
@@ -43,6 +44,7 @@ export function App() {
   const [dark,setDark] = useState(()=>saved("showpilot:theme","light")==="dark");
   const [expanded,setExpanded] = useState(()=>saved("showpilot:sidebar","true")!=="false");
   const [mobileOpen,setMobileOpen] = useState(false);
+  const [localAiRuntime,setLocalAiRuntime] = useState(getLocalAiRuntimeState);
 
   useEffect(()=>{
     document.documentElement.classList.toggle("dark",dark);
@@ -50,6 +52,7 @@ export function App() {
   },[dark]);
   useEffect(()=>{try{localStorage.setItem("showpilot:screen",screen)}catch{}},[screen]);
   useEffect(()=>{try{localStorage.setItem("showpilot:sidebar",String(expanded))}catch{}},[expanded]);
+  useEffect(()=>subscribeLocalAiRuntimeState(setLocalAiRuntime),[]);
 
   useEffect(()=>{
     const open=(event:Event)=>{
@@ -86,7 +89,12 @@ export function App() {
         <button className="sp-mobile-menu" onClick={()=>setMobileOpen(true)} aria-label="Open navigation"><Menu size={20}/></button>
         <div className="sp-breadcrumb">SHOWPILOT <ChevronRight size={14}/> {current?.label??(screen==="settings"?"Settings & AI":"Dashboard")}</div>
         <div className="sp-header-actions">
-          <span className="sp-local"><ShieldCheck size={15}/> Local workspace</span>
+          <span className="sp-local" role="status" aria-live="polite"
+            aria-label={localAiRuntime.status==="ready"?"Local AI connected":"Local AI disconnected"}
+            title={localAiRuntime.status==="ready"?"Local AI is loaded and ready":localAiRuntime.status==="loading"?"Local AI is loading":"Local AI is not connected"}>
+            <span aria-hidden="true" className={"inline-block size-2.5 shrink-0 rounded-full "+(localAiRuntime.status==="ready"?"bg-emerald-500":"bg-red-500")}/>
+            Local Workspace
+          </span>
           <button className="sp-icon-button" onClick={()=>setDark(v=>!v)} aria-label={dark?"Use light theme":"Use dark theme"}>{dark?<Sun size={19}/>:<Moon size={19}/>}</button>
         </div>
       </header>
