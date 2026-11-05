@@ -76,6 +76,9 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
     setStatus("Only Cobb Convention Center-Atlanta shows can be added.");return;
    }
    key=eventId.trim()?"id:"+eventId.trim():"name:"+name.trim().toLowerCase();
+   if(shows.some(existing=>existing.key===key)){
+    setStatus("This show already exists. Choose Existing show so its name, dates and rooms are not overwritten.");return;
+   }
   }
   setBusy(true);setStatus("Saving event documents locally…");
   try{
