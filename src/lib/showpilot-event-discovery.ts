@@ -56,7 +56,7 @@ export function discoverEventMetadata(sources:readonly EventMetadataSource[],man
    const range=/^(?:event\s*dates?|date\s*range)\s*[:-]?\s*(.*)$/i.exec(line);
    if(range){
     const dates=range[1].match(/\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}/g)||[];
-    if(dates.length>=2){add("startDate",normalizeEventDate(dates[0]),source.path);add("showDate",normalizeEventDate(dates[1]),source.path);}
+    if(dates.length>=2){add("startDate",normalizeEventDate(dates[0]!),source.path);add("showDate",normalizeEventDate(dates[1]!),source.path);}
    }
    for(const room of cgcRoomsFromText(line))add("room",room,source.path);
   }
