@@ -338,3 +338,68 @@ describe("CGC show catalog survives portable updates through native SQLite",()=>
   expect(await api.showCatalogList()).toHaveLength(0);
  });
 });
+
+
+describe("offline Events workspace attachments",()=>{
+ const front={key:"id:42611",eventId:"42611",showName:"Front Row Card Show",
+   startDate:"2026-11-07",showDate:"2026-11-10",rooms:"Hall A, Hall B"};
+ const bytes=Buffer.from("%PDF-1.7\n% Synthetic diagnostic EOC content, no real client data.\n");
+ const create=async(api:any)=>{
+  await api.showCatalogSave([front]);
+  return api.eventFileSave({eventKey:front.key,kind:"eoc",name:"Event Order Confirmation.pdf",
+   bytes:new Uint8Array(bytes),eocExcerpts:[
+    {section:"Event Notes",page:1,text:"Confirm load-in window."},
+    {section:"Engineering",page:2,text:"Check stage requirements."},
+    {section:"Utility",page:3,text:"Verify Hall AB power orders."}
+   ]});
+ };
+ it("saves original bytes for a show and reopens them after app restart",async()=>{
+  const {api,dir}=memory();
+  const saved=await create(api);
+  expect(saved.name).toBe("Event Order Confirmation.pdf");
+  const reload=memory(dir);
+  const records=await reload.api.eventFileList(front.key);
+  expect(records).toHaveLength(1);
+  expect(records[0]).toMatchObject({id:saved.id,eventKey:front.key,kind:"eoc",available:true});
+  expect(records[0].eocExcerpts.map((v:any)=>v.section)).toEqual(["Event Notes","Engineering","Utility"]);
+  const original=await reload.api.eventFileRead(saved.id);
+  expect(Buffer.from(original.bytes).equals(bytes)).toBe(true);
+  expect((await reload.api.eventFileOpen(saved.id)).opened).toBe(true);
+ });
+ it("archives and restores without deleting originals",async()=>{
+  const {api}=memory();
+  const original=await create(api);
+  await api.eventFileArchive(original.id);
+  expect(await api.eventFileList(front.key)).toHaveLength(0);
+  expect((await api.eventFileList(front.key,true))[0].archived).toBe(true);
+  await api.eventFileArchive(original.id,false);
+  expect(await api.eventFileList(front.key)).toHaveLength(1);
+  expect(Buffer.from((await api.eventFileRead(original.id)).bytes).equals(bytes)).toBe(true);
+ });
+ it("backs up files beside JSON and restores to another computer with companion folder",async()=>{
+  const {api,dir}=memory();
+  const original=await create(api);
+  const backup=await api.backupNow(true);
+  const json=JSON.parse(readFileSync(backup.path,"utf8"));
+  expect(json.eventFiles).toHaveLength(1);
+  const copied=path.join(dir,"ShowPilot Memory Backups","ShowPilot Event Files",original.sha256+".pdf");
+  expect(readFileSync(copied).equals(bytes)).toBe(true);
+  const other=memory();
+  const restored=await other.api.importPack(json,path.dirname(backup.path));
+  expect(restored.eventFilesAdded).toBe(1);
+  expect(restored.eventFilesRestored).toBe(1);
+  expect((await other.api.eventFileList(front.key))[0].available).toBe(true);
+  expect(Buffer.from((await other.api.eventFileRead(original.id)).bytes).equals(bytes)).toBe(true);
+ });
+ it("refuses bad extensions, fake PDFs and documents without a saved event",async()=>{
+  const {api}=memory();
+  await expect(api.eventFileSave({eventKey:"id:missing",kind:"eoc",name:"EOC.pdf",bytes:new Uint8Array(bytes)}))
+   .rejects.toThrow(/saved CGC show/);
+  await api.showCatalogSave([front]);
+  await expect(api.eventFileSave({eventKey:front.key,kind:"eoc",name:"fake.exe",bytes:new Uint8Array(bytes)}))
+   .rejects.toThrow(/Unsupported/);
+  await expect(api.eventFileSave({eventKey:front.key,kind:"eoc",name:"fake.pdf",bytes:new TextEncoder().encode("not a PDF")}))
+   .rejects.toThrow(/not appear to be a PDF/);
+  expect(await api.eventFileList(front.key)).toEqual([]);
+ });
+});
