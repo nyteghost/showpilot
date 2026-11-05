@@ -55,6 +55,48 @@ jobs:
           name: showpilot-windows-portable
           path: release/ShowPilot-v*-Portable-Windows.zip
           if-no-files-found: error
+  publish-beta-windows:
+    # Private download tokens are not required on employees' work PCs:
+    # publish the already-checked portable ZIP as a public GitHub Release.
+    # This job runs only on beta after the Windows package completes.
+    if: github.ref == 'refs/heads/beta'
+    needs: windows-portable
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: showpilot-windows-portable
+          path: portable/
+      - name: Publish versioned beta release and SHA-256 checksum
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHOWPILOT_BUILD_CHANNEL: beta
+          SHOWPILOT_BUILD_NUMBER: ${{ github.run_number }}
+          SOURCE_SHA: ${{ github.sha }}
+          SOURCE_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          node scripts/stamp-build-version.mjs
+          version="$(node -p 'require("./package.json").version')"
+          archive="portable/ShowPilot-v${version}-Portable-Windows.zip"
+          checksum="${archive}.sha256"
+          test -s "$archive"
+          sha256sum "$archive" | awk '{print $1}' > "$checksum"
+          tag="showpilot-beta-v${version}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists; refusing to overwrite published assets."
+            exit 1
+          fi
+          gh release create "$tag" "$archive" "$checksum" \
+            --target "$SOURCE_SHA" \
+            --title "ShowPilot Beta v${version} (Windows portable)" \
+            --notes "ShowPilot beta Windows portable release. Actions run ID: ${SOURCE_RUN_ID}. Source commit: ${SOURCE_SHA}. Update the app through Settings & AI > App Updates. The existing local SQLite data stays outside the application." \
+            --prerelease --latest=false
+
   linux-portable:
     needs: check
     runs-on: ubuntu-latest
