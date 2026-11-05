@@ -66,6 +66,8 @@ export function extractEocFocus(pages:readonly string[]):EocExcerpt[]{
 export async function extractEocFromPdf(file:File):Promise<EocExcerpt[]>{
  if(!/\.pdf$/i.test(file.name))return [];
  const pdfjs=await import("pdfjs-dist");
+ const worker=(await import("pdfjs-dist/build/pdf.worker.min.mjs?url")).default;
+ pdfjs.GlobalWorkerOptions.workerSrc=worker;
  const bytes=await file.arrayBuffer();
  const task=pdfjs.getDocument({data:bytes});
  try{
