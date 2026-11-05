@@ -51,7 +51,7 @@ export function ShowPilotEventsPanel({active=true,stagePlanner,floorMaps}:{activ
    const files=await bridge.eventFileList(show.key);
    const layouts=files.filter(x=>x.kind==="diagram"&&x.available&&
     ["pdf","png","jpg","jpeg","webp"].includes(x.extension)&&
-    /hall|exhibit|floor[\\s_-]*(?:plan|map)|event[\\s_-]*layout/i.test(x.name));
+    /hall|exhibit|floor[\s_-]*(?:plan|map)|event[\s_-]*layout/i.test(x.name));
    const orders=files.filter(x=>x.kind==="work-order"&&x.available&&x.extension==="pdf");
    const selected=[...layouts.sort((a,b)=>Number(b.extension==="pdf")-Number(a.extension==="pdf")).slice(0,1),...orders.slice(0,2)];
    const inputs=await Promise.all(selected.map(async item=>{
