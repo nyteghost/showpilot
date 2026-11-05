@@ -1,0 +1,78 @@
+import {describe,it,expect} from "vitest";
+import {readFileSync} from "node:fs";
+import {createRequire} from "node:module";
+import {fileURLToPath} from "node:url";
+import {runInNewContext} from "node:vm";
+const req=createRequire(new URL("../../desktop/portable-updates.cjs",import.meta.url));
+const code=readFileSync(fileURLToPath(new URL("../../desktop/portable-updates.cjs",import.meta.url)),"utf8");
+const moduleObj={exports:{} as {
+ semverCompare:(a:string,b:string)=>number|null;
+ releaseAssetsForRun:(release:unknown,run:unknown,version:string)=>{archiveUrl:string;checksumUrl:string;archiveBytes:number}|null;
+ officialReleaseAssetUrl:(url:string,tag:string,name:string)=>boolean;
+ assertDownloadUrl:(url:string)=>URL;
+ prepareInstallPaths:(v:string)=>unknown;
+}};
+runInNewContext(code,{
+ module:moduleObj,exports:moduleObj.exports,
+ require:(name:string)=>name==="electron"?{app:{isPackaged:false,getPath:()=>"/tmp"},dialog:{}}:req(name),
+ Buffer,process,URL,setTimeout,
+},{filename:"desktop/portable-updates.cjs"});
+const updater=moduleObj.exports;
+const run={id:123456789,head_branch:"beta",head_sha:"a".repeat(40)};
+const version="0.1.310-beta";
+const tag="showpilot-beta-v"+version;
+const zip="ShowPilot-v"+version+"-Portable-Windows.zip";
+const base="https://github.com/nyteghost/showpilot/releases/download/"+tag+"/";
+const asset=(name:string,size:number)=>({
+ name,size,state:"uploaded",browser_download_url:base+name
+});
+const release=()=>({
+ tag_name:tag,draft:false,prerelease:true,
+ body:"ShowPilot beta Windows portable release. Actions run ID: "+run.id+". Source commit: "+run.head_sha+".",
+ assets:[asset(zip,15_000_000),asset(zip+".sha256",65)]
+});
+describe("ShowPilot Windows portable one-click updater",()=>{
+ it("only installs newer versions (never downgrades)",()=>{
+  expect(updater.semverCompare("0.1.310-beta","0.1.291-beta")).toBe(1);
+  expect(updater.semverCompare("0.1.291-beta","0.1.291-beta")).toBe(0);
+  expect(updater.semverCompare("0.1.270-beta","0.1.291-beta")).toBe(-1);
+  expect(updater.semverCompare("0.1.310","0.1.310-beta")).toBe(1);
+  expect(updater.semverCompare("legacy","0.1.310-beta")).toBeNull();
+ });
+ it("accepts only an exact public, versioned beta release matching Actions run and commit",()=>{
+  const parsed=updater.releaseAssetsForRun(release(),run,version);
+  expect(parsed).not.toBeNull();
+  expect(parsed!.archiveBytes).toBe(15_000_000);
+  expect(parsed!.archiveUrl).toBe(base+zip);
+  expect(parsed!.checksumUrl).toBe(base+zip+".sha256");
+  expect(updater.releaseAssetsForRun({...release(),tag_name:"showpilot-beta-v0.1.309-beta"},run,version)).toBeNull();
+  expect(updater.releaseAssetsForRun({...release(),body:"not associated with this run"},run,version)).toBeNull();
+  expect(updater.releaseAssetsForRun({...release(),draft:true},run,version)).toBeNull();
+  expect(updater.releaseAssetsForRun({...release(),prerelease:false},run,version)).toBeNull();
+  expect(updater.releaseAssetsForRun(release(),{...run,head_branch:"main"},version)).toBeNull();
+ });
+ it("rejects unexpected download hosts, missing checksum assets and expired links",()=>{
+  const differentHost={...release(),assets:[{...asset(zip,15_000_000),
+   browser_download_url:"https://example.org/untrusted.zip"},asset(zip+".sha256",65)]};
+  expect(updater.releaseAssetsForRun(differentHost,run,version)).toBeNull();
+  expect(updater.releaseAssetsForRun({...release(),assets:[asset(zip,15_000_000)]},run,version)).toBeNull();
+  expect(updater.releaseAssetsForRun({...release(),assets:[asset(zip,15_000_000),asset(zip+".sha256",3000)]},run,version)).toBeNull();
+  expect(()=>updater.assertDownloadUrl("https://evil.example.com/update.zip")).toThrow(/trusted GitHub/);
+  expect(()=>updater.assertDownloadUrl("http://github.com/nyteghost/showpilot/releases/download/a/b")).toThrow(/trusted GitHub/);
+  expect(updater.officialReleaseAssetUrl(base+zip,tag,zip)).toBe(true);
+  expect(updater.officialReleaseAssetUrl(base+zip+"?tampered=1",tag,zip)).toBe(false);
+ });
+ it("does not attempt to replace apps during development or on Linux",()=>{
+  expect(()=>updater.prepareInstallPaths("0.1.310-beta")).toThrow(/Windows portable/);
+ });
+ it("includes an independent Windows extraction helper with rollback and ZIP-slip checks",()=>{
+  const ps=readFileSync(fileURLToPath(new URL("../../desktop/portable-update-helper.ps1",import.meta.url)),"utf8");
+  expect(ps).toContain("Install-Zip");
+  expect(ps).toContain("Stage-Zip");
+  expect(ps).toContain("Wait"); // This is intentionally checked more precisely below.
+  expect(ps).toContain("Get-Process -Id $AppProcessId");
+  expect(ps).toContain("ZIP entry escapes its staging directory");
+  expect(ps).toContain("[System.IO.Directory]::Move($BackupDir,$InstallDir)");
+  expect(ps).toContain("Previous executable folder retained for manual rollback");
+ });
+});
