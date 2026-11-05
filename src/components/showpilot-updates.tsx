@@ -6,11 +6,13 @@ type Latest={
 };
 type Check={channel:Channel;platform:string;latest:null|Latest;upToDate:boolean;message:string};
 type UpdateProgress={phase:string;message:string;percent:number};
+type LastUpdate={status:"pending"|"success"|"failed";message:string;version:string;updated:string};
 type Api={
- status:()=>Promise<{channel:Channel;installedVersion:string;platform:string}>;
+ status:()=>Promise<{channel:Channel;installedVersion:string;platform:string;lastUpdate?:LastUpdate|null}>;
  setChannel:(v:Channel)=>Promise<{channel:Channel}>;
  check:()=>Promise<Check>;
  open:()=>Promise<unknown>;
+ openLog:()=>Promise<unknown>;
  install:()=>Promise<{cancelled?:boolean;started?:boolean;version?:string}>;
  onProgress:(callback:(event:UpdateProgress)=>void)=>(()=>void);
 };
@@ -24,8 +26,18 @@ export function ShowPilotUpdates(){
  const [busy,setBusy]=useState(false);
  const [installing,setInstalling]=useState(false);
  const [progress,setProgress]=useState<UpdateProgress|null>(null);
+ const [lastUpdate,setLastUpdate]=useState<LastUpdate|null>(null);
  const [error,setError]=useState("");
- useEffect(()=>{if(api)void api.status().then(s=>{setChannel(s.channel);setVersion(s.installedVersion);setPlatform(s.platform)}).catch(e=>setError(String(e)))},[api]);
+ useEffect(()=>{if(api)void api.status().then(s=>{
+  setChannel(s.channel);setVersion(s.installedVersion);setPlatform(s.platform);setLastUpdate(s.lastUpdate??null);
+ }).catch(e=>setError(String(e)))},[api]);
+ useEffect(()=>{
+  if(!api||lastUpdate?.status!=="pending")return;
+  const interval=window.setInterval(()=>{
+   void api.status().then(s=>setLastUpdate(s.lastUpdate??null)).catch(()=>{});
+  },3500);
+  return ()=>window.clearInterval(interval);
+ },[api,lastUpdate?.status]);
  useEffect(()=>{
   if(!api?.onProgress)return;
   return api.onProgress(setProgress);
@@ -46,6 +58,10 @@ export function ShowPilotUpdates(){
   setBusy(true);setError("");
   try{await api.open()}catch(e){setError(String(e))}
   finally{setBusy(false)}
+ };
+ const openLog=async()=>{
+  if(!api?.openLog)return;
+  try{await api.openLog()}catch(e){setError(e instanceof Error?e.message:String(e))}
  };
  const install=async()=>{
   if(!api?.install||installing)return;
@@ -79,6 +95,18 @@ export function ShowPilotUpdates(){
      className="rounded border border-border px-4 py-2 text-sm disabled:opacity-50"
      disabled={busy||installing} onClick={()=>void open()}>View GitHub build (manual)</button>}
    </div>
+   {lastUpdate&&<div className="space-y-2 rounded-md border border-border p-3" role="status">
+     <p className="text-sm font-semibold">
+      {lastUpdate.status==="failed"?"Previous automatic update did not finish":
+       lastUpdate.status==="pending"?"Automatic installation started":
+       "Previous automatic update completed"}
+     </p>
+     <p className="text-xs">{lastUpdate.message}</p>
+     {lastUpdate.status==="failed"&&<div className="flex flex-wrap gap-2 items-center">
+      <button type="button" className="rounded border border-border px-3 py-2 text-xs font-semibold" onClick={()=>void openLog()}>View installation log</button>
+      <span className="text-xs text-muted-foreground">Your saved notes, documents and schedules are not deleted when an update fails.</span>
+     </div>}
+    </div>}
    {check&&<div className="space-y-1 rounded-md border border-border bg-muted/40 p-3" role="status">
      <p className="text-sm font-medium">{check.message}</p>
      {check.latest&&<>
