@@ -18,6 +18,7 @@ import { AiTaskAssistant } from "@/components/showpilot-ai-task-assistant";
 import { LocalPlanningAssistant } from "@/components/showpilot-planning-assistant";
 import { staffingPlanningContext } from "@/lib/showpilot-planning";
 import { PostConPanel } from "@/components/showpilot-postcon-panel";
+import { PreConPanel } from "@/components/showpilot-precon-panel";
 import { rememberPostConShows } from "@/lib/showpilot-postcon";
 import { applyReview, emptyReviewDraft, fingerprintRows, parseDraft, parseReviewProject, storageKey, type ReviewDraft, type ReviewProject } from "@/lib/showpilot-review";
 
@@ -46,7 +47,8 @@ const TABS = [
   { id: "deck", label: "Deck", Icon: Layers, hint: "Plan a stage from the decks, stairs and rails in the warehouse." },
   { id: "vendors", label: "Vendors", Icon: Store, hint: "Compare prices and rentals across your usual suppliers." },
   { id: "floor", label: "Floor map", Icon: MapIcon, hint: "Color a floor plan from the work order: who ordered what power, where." },
-  { id: "postcon", label: "Post-Con", Icon: ClipboardCheck, hint: "Record how each completed CGC show went, what to improve and what to remember next time." },
+  { id: "precon", label: "Pre-Con", Icon: CalendarPlus, hint: "Plan CGC shows scheduled in the next 30 days; save and reopen pre-show notes." },
+  { id: "postcon", label: "Post-Con", Icon: ClipboardCheck, hint: "Review CGC shows from the last 30 days and save outcomes and lessons." },
 ] as const;
 export type WorkTabId = (typeof TABS)[number]["id"];
 type TabId = WorkTabId;
@@ -86,6 +88,8 @@ export function ShowServicesTools({ page = false, selectedTab, hideTabBar = fals
           {visited.includes("deck") && <KeepAliveTabContent value="deck"><DeckTab /></KeepAliveTabContent>}
           {visited.includes("vendors") && <KeepAliveTabContent value="vendors"><StandaloneVendors /></KeepAliveTabContent>}
           {visited.includes("floor") && <KeepAliveTabContent value="floor"><FloorMapPanel /></KeepAliveTabContent>}
+          {visited.includes("precon") && <KeepAliveTabContent value="precon"><PreConPanel /></KeepAliveTabContent>}
+          {visited.includes("postcon") && <KeepAliveTabContent value="postcon"><PostConPanel /></KeepAliveTabContent>}
         </Tabs>;
 }
 
@@ -180,6 +184,7 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
     setEntries(approved.entries);
     setTasks(approved.tasks);
     setShared(sharedSpaces(approved.entries));
+    rememberPostConShows(approved.entries); // local show-name/date/room catalog for pre/post-con dropdowns
   }
   async function build(src: { rows: EventRow[]; existing?: File; sources: number }, includePending: boolean, approved: string[] = [], overrideDraft?: ReviewDraft) {
     const nextDraft = draftFor(src.rows, overrideDraft);
