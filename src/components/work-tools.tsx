@@ -44,7 +44,6 @@ const TABS = [
   { id: "events", label: "Event Schedule", Icon: CalendarDays, hint: "Import event reports and create reviewed engineering schedules." },
   { id: "eventhub", label: "Events", Icon: FolderOpen, hint: "Show details, Pre/Post-Con notes, work orders, EOCs and diagrams." },
   { id: "shifts", label: "My shifts", Icon: CalendarClock, hint: "Pull your shifts from the monthly schedule and put them on your calendar." },
-  { id: "deck", label: "Deck", Icon: Layers, hint: "Plan a stage from the decks, stairs and rails in the warehouse." },
   { id: "vendors", label: "Vendors", Icon: Store, hint: "Compare prices and rentals across your usual suppliers." },
   { id: "floor", label: "Floor map", Icon: MapIcon, hint: "Color a floor plan from the work order: who ordered what power, where." },
 ] as const;
@@ -54,7 +53,7 @@ const TAB_KEY = "pixelpals:work-tab";
 const startTab = (): TabId => {
   try {
     const q = new URLSearchParams(location.search).get("tab") ?? localStorage.getItem(TAB_KEY);
-    if(q==="precon"||q==="postcon")return "eventhub";
+    if(q==="precon"||q==="postcon"||q==="deck")return "eventhub";
     return TABS.some((x) => x.id === q) ? (q as TabId) : "events";
   } catch { return "events"; }
 };
@@ -83,9 +82,8 @@ export function ShowServicesTools({ page = false, selectedTab, hideTabBar = fals
             {!page && <a href={`/work?tab=${tab}`} target="_blank" rel="noreferrer" className="inline-flex shrink-0 items-center gap-1 text-xs text-primary underline"><ExternalLink className="size-3.5" /> Open as its own page</a>}
           </div>
           {visited.includes("events") && <KeepAliveTabContent value="events"><EventsTab venueOnly={venueOnly} /></KeepAliveTabContent>}
-          {visited.includes("eventhub") && <KeepAliveTabContent value="eventhub"><ShowPilotEventsPanel active={activeTab==="eventhub"} /></KeepAliveTabContent>}
+          {visited.includes("eventhub") && <KeepAliveTabContent value="eventhub"><ShowPilotEventsPanel active={activeTab==="eventhub"} stagePlanner={<DeckTab/>} floorMaps={<FloorMapPanel/>} /></KeepAliveTabContent>}
           {visited.includes("shifts") && <KeepAliveTabContent value="shifts"><ShiftsTab /></KeepAliveTabContent>}
-          {visited.includes("deck") && <KeepAliveTabContent value="deck"><DeckTab /></KeepAliveTabContent>}
           {visited.includes("vendors") && <KeepAliveTabContent value="vendors"><StandaloneVendors /></KeepAliveTabContent>}
           {visited.includes("floor") && <KeepAliveTabContent value="floor"><FloorMapPanel /></KeepAliveTabContent>}
         </Tabs>;
