@@ -7,6 +7,7 @@ const { setupUpdates } = require("./app-updates.cjs");
 const { setupMemoryIpc } = require("./showpilot-memory.cjs");
 const {setupLocalIntelligenceIpc}=require("./local-intelligence.cjs");
 const {setupDiagnosticsIpc}=require("./showpilot-diagnostics.cjs");
+const {setupEventScheduleSessionIpc}=require("./event-schedule-session.cjs");
 let win;
 function openApp(){
  win=new BrowserWindow({
@@ -32,5 +33,5 @@ function openApp(){
  });
  win.on("closed",()=>{win=null});
 }
-app.whenReady().then(()=>{setupAiIpc();setupGoogleCalendarIpc();setupUpdates();setupMemoryIpc();setupLocalIntelligenceIpc();setupDiagnosticsIpc();openApp();app.on("activate",()=>{if(BrowserWindow.getAllWindows().length===0)openApp()})});
+app.whenReady().then(()=>{setupAiIpc();setupGoogleCalendarIpc();setupUpdates();setupMemoryIpc();setupLocalIntelligenceIpc();setupDiagnosticsIpc();setupEventScheduleSessionIpc();openApp();app.on("activate",()=>{if(BrowserWindow.getAllWindows().length===0)openApp()})});
 app.on("window-all-closed",()=>{if(process.platform!=="darwin")app.quit()});
