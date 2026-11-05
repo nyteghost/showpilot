@@ -3,7 +3,7 @@ import {Archive,CalendarClock,RotateCcw,Save,Search} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import type {MemorySummary} from "@/lib/showpilot-memory-bridge";
 import {emptyPreCon,encodePreCon,decodePreCon,preConNoteTitle,type PreConDraft} from "@/lib/showpilot-precon";
-import {loadPostConShows,upcomingPreConShows,localIsoDate,type PostConShow} from "@/lib/showpilot-postcon";
+import {loadPostConShows,loadDurableShowCatalog,upcomingPreConShows,localIsoDate,type PostConShow} from "@/lib/showpilot-postcon";
 
 const fields=[
  {key:"overview",label:"Pre-show overview and requirements",hint:"Important requests, deadlines, meeting notes, and things to verify…"},
@@ -16,6 +16,7 @@ const fields=[
 export function PreConPanel(){
  const bridge=window.showpilotMemory;
  const [catalog,setCatalog]=useState<PostConShow[]>(()=>loadPostConShows());
+ const [catalogError,setCatalogError]=useState("");
  const [notes,setNotes]=useState<MemorySummary[]>([]);
  const [draft,setDraft]=useState<PreConDraft>(()=>emptyPreCon(localIsoDate()));
  const [editingId,setEditingId]=useState<string|null>(null);
@@ -31,9 +32,16 @@ export function PreConPanel(){
  };
  useEffect(()=>{
   if(bridge)void refresh().catch(e=>setStatus("Could not load saved Pre-Con notes: "+(e as Error).message));
-  const changed=()=>setCatalog(loadPostConShows());
-  window.addEventListener("showpilot:postcon-catalog",changed);
-  return ()=>window.removeEventListener("showpilot:postcon-catalog",changed);
+  let active=true;
+  const hydrate=()=>{
+   void loadDurableShowCatalog().then(shows=>{if(active)setCatalog(shows)})
+    .catch(error=>{
+      if(active){setCatalog(loadPostConShows());setCatalogError("Could not open saved shows: "+(error instanceof Error?error.message:String(error)));}
+    });
+  };
+  hydrate();
+  window.addEventListener("showpilot:postcon-catalog",hydrate);
+  return ()=>{active=false;window.removeEventListener("showpilot:postcon-catalog",hydrate)};
  },[bridge]);
  const change=(key:keyof PreConDraft,value:string)=>{
   setDraft(d=>({...d,[key]:value}));setDirty(true);
@@ -114,6 +122,7 @@ export function PreConPanel(){
         </option>)}
        </select>
       </label>
+      {catalogError&&<p role="alert" className="text-xs text-red-500">{catalogError}</p>}
       <p className="text-xs text-muted-foreground">{upcoming.length} upcoming show{upcoming.length===1?"":"s"} found in your imported Event Schedule history. {upcoming.length===0?"Import a ShowPilot Event Schedule covering the next 30 days to populate the list.":""} This is local CGC data only.</p>
       <div className="space-y-1">
        <label className="text-sm font-semibold" htmlFor="precon-search"><Search size={14} className="inline"/> Saved Pre-Con notes ({notes.length})</label>
