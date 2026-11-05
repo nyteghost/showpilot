@@ -83,7 +83,7 @@ describe("ShowPilot Windows portable one-click updater",()=>{
   expect(ps).toContain("Write-UpdateResult 'failed'");
   expect(ps).toContain("Restarted previous ShowPilot version");
   expect(ps).toContain("SmokeTestNoRelaunch");
-  expect(ps).toContain("Previous executable folder retained for manual rollback");
+  expect(ps).toContain("Original app retained for rollback");
  });
  it("persists a readable install failure report for the next app launch",()=>{
   const dir=mkdtempSync(join(tmpdir(),"showpilot-update-status-"));
