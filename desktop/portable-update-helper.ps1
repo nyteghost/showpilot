@@ -10,7 +10,8 @@ param(
   [string]$ArchivePath = '',
   [string]$BackupDir = '',
   [int]$AppProcessId = 0,
-  [string]$LogPath = ''
+  [string]$LogPath = '',
+  [switch]$SmokeTestNoRelaunch
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
@@ -160,6 +161,11 @@ function Stage-Zip {
   Write-UpdateLog 'Staged ZIP passed path, size and executable checks.'
 }
 function Install-Zip {
+  # Only the isolated Windows CI smoke test may skip launching the extracted
+  # executable. User-initiated updates always attempt a real relaunch.
+  if ($SmokeTestNoRelaunch -and $env:SHOWPILOT_UPDATER_SMOKE_TEST -ne '1') {
+    throw 'Update test mode is restricted to the build runner.'
+  }
   if (-not $BackupDir -or -not $AppProcessId) { throw 'Missing restart information.' }
   if (-not (Test-Path -LiteralPath $InstallDir -PathType Container)) { throw 'Original installation was not found.' }
   if (Test-Path -LiteralPath $BackupDir) { throw 'Previous-version backup destination already exists.' }
@@ -184,6 +190,11 @@ function Install-Zip {
     $installedNew=$true
     Write-UpdateLog 'Moved staged update into the application folder.'
     Require-Executable $InstallDir
+    if ($SmokeTestNoRelaunch) {
+      Write-UpdateLog 'CI smoke test: previous app preserved and new app swapped into place.'
+      Write-UpdateResult 'success' 'CI updater swap smoke test passed.'
+      return
+    }
     $appProcess=Launch-ShowPilot $InstallDir
     Write-UpdateLog ('Updated ShowPilot relaunched as PID '+$appProcess.Id+'. Original app retained for rollback.')
     Write-UpdateResult 'success' 'ShowPilot update installed and launched successfully.'
@@ -218,7 +229,8 @@ function Install-Zip {
     }
     Write-UpdateResult 'failed' ('Automatic update failed: '+$failure+
       $(if($recovered){' Original version was preserved.'}else{' Check the update log before restarting manually.'}))
-    if ($recovered -and @(Running-ShowPilotProcesses).Count -eq 0) {
+    $existingApps=@(Running-ShowPilotProcesses)
+    if ($recovered -and $existingApps.Count -eq 0 -and -not $SmokeTestNoRelaunch) {
       try {
         $old=Launch-ShowPilot $InstallDir
         Write-UpdateLog ('Restarted previous ShowPilot version as PID '+$old.Id+'.')
