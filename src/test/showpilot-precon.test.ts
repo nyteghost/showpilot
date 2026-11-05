@@ -103,7 +103,14 @@ describe("Pre-Con and Post-Con group by real Event names, never function descrip
 });
 
 describe("Show dropdown hydration across portable app updates",()=>{
- afterEach(()=>vi.unstubAllGlobals());
+ const originalStorage=(globalThis as {localStorage?:unknown}).localStorage;
+ const originalWindow=(globalThis as {window?:unknown}).window;
+ afterEach(()=>{
+  if(originalStorage===undefined)Reflect.deleteProperty(globalThis,"localStorage");
+  else Object.defineProperty(globalThis,"localStorage",{configurable:true,writable:true,value:originalStorage});
+  if(originalWindow===undefined)Reflect.deleteProperty(globalThis,"window");
+  else Object.defineProperty(globalThis,"window",{configurable:true,writable:true,value:originalWindow});
+ });
  const real={key:"id:42389",eventId:"42389",showName:"Coldwell Banker Realty Atlanta",
    startDate:"2026-11-02",showDate:"2026-11-03",rooms:"BallRoom A, BallRoom B, BallRoom E"};
  const source={date:"2026-11-02",event:real.showName,eventId:real.eventId,
@@ -115,8 +122,8 @@ describe("Show dropdown hydration across portable app updates",()=>{
    showCatalogList:vi.fn(async ()=>saved),
   };
   const local=new Map<string,string>();
-  vi.stubGlobal("localStorage",{getItem:(key:string)=>local.get(key)??null,setItem:(key:string,value:string)=>{local.set(key,value);}});
-  vi.stubGlobal("window",{showpilotMemory:bridge,dispatchEvent:vi.fn()});
+  Object.defineProperty(globalThis,"localStorage",{configurable:true,writable:true,value:{getItem:(key:string)=>local.get(key)??null,setItem:(key:string,value:string)=>{local.set(key,value);}}});
+  Object.defineProperty(globalThis,"window",{configurable:true,writable:true,value:{showpilotMemory:bridge,dispatchEvent:vi.fn()}});
   return {bridge,local};
  };
  it("saves true report shows in SQLite and survives a fresh/empty browser cache",async()=>{
