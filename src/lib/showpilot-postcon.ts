@@ -16,10 +16,12 @@ const validDate=(s:string)=>/^\d{4}-\d{2}-\d{2}$/.test(s)&&!Number.isNaN(Date.pa
  */
 export function postConShowsFromReportRows(rows:readonly EventRow[]):PostConShow[]{
  const grouped=new Map<string,{eventId:string;name:string;first:string;last:string;rooms:Set<string>;names:Map<string,number>}>();
- const functionName=/^(?:(?:client|exhibitor|vendor|decorator|sponsor|av|a\/v|advanced expo services)\s+)?(?:move[ -]?in|move[ -]?out|load[ -]?in|load[ -]?out|set[ -]?up|program|general session|breakout session|registration|tables?\s*(?:&|and)\s*chairs?(?:\s+inc\.)?\s+move[ -]?in|decorator day|rehearsal|meeting)$/i;
+ const functionName=/^(?:(?:client|exhibitor|vendor|decorator|sponsor|av|a\/v|advanced expo services)\s+)?(?:move[ -]?in|move[ -]?out|load[ -]?in|load[ -]?out|set[ -]?up|program|general session|breakout session|registration|decorator day|rehearsal|meeting|certification room)(?:$|\s*[-/:]\s*.*$)/i;
+ const genericFunction=/(?:^|\b)(?:move[ -]?in|move[ -]?out|load[ -]?in|load[ -]?out)(?:$|\b)/i;
+ const tableFunction=/^tables?\s*(?:&|and)\s*chairs?(?:\s+inc\.)?\s+move[ -]?in(?:$|\b)/i;
  for(const row of rows){
   const name=(row.event??"").replace(/\s+/g," ").trim().slice(0,140);
-  if(!name||functionName.test(name)||!validDate(row.date)||excluded.test(row.space+" "+name))continue;
+  if(!name||functionName.test(name)||tableFunction.test(name)||(/^(?:av|decorator day|client|vendor|exhibitor|sponsor)\b/i.test(name)&&genericFunction.test(name))||!validDate(row.date)||excluded.test(row.space+" "+name))continue;
   const rooms=expandSpace(row.space).filter(room=>allowed.test(room));
   if(!rooms.length)continue;
   const eventId=(row.eventId??"").trim();
