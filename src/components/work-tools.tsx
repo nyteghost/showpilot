@@ -82,7 +82,7 @@ export function ShowServicesTools({ page = false, selectedTab, hideTabBar = fals
             {!page && <a href={`/work?tab=${tab}`} target="_blank" rel="noreferrer" className="inline-flex shrink-0 items-center gap-1 text-xs text-primary underline"><ExternalLink className="size-3.5" /> Open as its own page</a>}
           </div>
           {visited.includes("events") && <KeepAliveTabContent value="events"><EventsTab venueOnly={venueOnly} /></KeepAliveTabContent>}
-          {visited.includes("eventhub") && <KeepAliveTabContent value="eventhub"><ShowPilotEventsPanel active={activeTab==="eventhub"} stagePlanner={<DeckTab/>} floorMaps={<FloorMapPanel/>} /></KeepAliveTabContent>}
+          {visited.includes("eventhub") && <KeepAliveTabContent value="eventhub"><ShowPilotEventsPanel active={activeTab==="eventhub"} stagePlanner={<DeckTab/>} floorMaps={(files,eventId)=><FloorMapPanel initialEventDocuments={files} selectedEventId={eventId}/>} /></KeepAliveTabContent>}
           {visited.includes("shifts") && <KeepAliveTabContent value="shifts"><ShiftsTab /></KeepAliveTabContent>}
           {visited.includes("vendors") && <KeepAliveTabContent value="vendors"><StandaloneVendors /></KeepAliveTabContent>}
           {visited.includes("floor") && <KeepAliveTabContent value="floor"><FloorMapPanel /></KeepAliveTabContent>}
