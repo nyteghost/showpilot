@@ -7,6 +7,7 @@ import {runInNewContext} from "node:vm";
 import {fileURLToPath} from "node:url";
 import {stageMemoryDraft,approvedTaskMemoryDraft} from "@/lib/showpilot-memory-notes";
 import {safeMemoryReferences} from "@/lib/showpilot-ai-tasks";
+import {encodePreCon,decodePreCon,preConNoteTitle,emptyPreCon} from "@/lib/showpilot-precon";
 
 const nativeRequire=createRequire(import.meta.url);
 const code=readFileSync(fileURLToPath(new URL("../../desktop/showpilot-memory.cjs",import.meta.url)),"utf8");
@@ -31,6 +32,28 @@ function memory(existingDir?:string) {
 }
 afterEach(()=>{while(dirs.length){const dir=dirs.pop();if(dir)rmSync(dir,{recursive:true,force:true})}});
 
+describe("Pre-Con uses existing private SQLite notes and backups",()=>{
+ it("saves, reopens, edits, exports and restores a show planning note",async()=>{
+  const {api}=memory();
+  const input={...emptyPreCon("2026-11-19"),showName:"Test CGC Expo",eventId:"TEST-19",rooms:"Hall A, Hall B",
+   overview:"Confirm show hours",staffing:"Confirm coverage",stage:"Confirm inventory",floor:"Confirm utility map",followUp:"Request final approval"};
+  const saved=await api.save({category:"Recurring Events",title:preConNoteTitle(input),content:encodePreCon(input)});
+  const afterSave=decodePreCon((await api.read(saved.id)).content);
+  expect(afterSave).toEqual(input);
+  expect((await api.list("Pre-Con:")).some((n:any)=>n.id===saved.id)).toBe(true);
+  const changed={...input,floor:"Check updated booth assignments"};
+  await api.edit(saved.id,encodePreCon(changed));
+  expect(decodePreCon((await api.read(saved.id)).content).floor).toBe("Check updated booth assignments");
+  const pack=await api.exportPack();
+  expect(pack.notes.some((n:any)=>n.id===saved.id)).toBe(true);
+  const other=memory();
+  await other.api.importPack(pack);
+  expect(decodePreCon((await other.api.read(saved.id)).content)).toEqual(changed);
+  await api.archive(saved.id);
+  expect((await api.list("Pre-Con:")).find((n:any)=>n.id===saved.id)).toBeUndefined();
+  expect((await api.exportPack()).archivedNotes.some((n:any)=>n.id===saved.id)).toBe(true);
+ });
+});
 describe("native SQLite ShowPilot memory",()=>{
  it("creates a private offline SQLite database automatically, with conservative export remembering",async()=>{
   const {api,dir}=memory();
