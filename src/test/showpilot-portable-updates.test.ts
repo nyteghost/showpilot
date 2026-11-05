@@ -1,5 +1,7 @@
 import {describe,it,expect} from "vitest";
-import {readFileSync} from "node:fs";
+import {readFileSync,mkdtempSync,rmSync,writeFileSync} from "node:fs";
+import {tmpdir} from "node:os";
+import {join} from "node:path";
 import {createRequire} from "node:module";
 import {fileURLToPath} from "node:url";
 import {runInNewContext} from "node:vm";
@@ -11,6 +13,9 @@ const moduleObj={exports:{} as {
  officialReleaseAssetUrl:(url:string,tag:string,name:string)=>boolean;
  assertDownloadUrl:(url:string)=>URL;
  prepareInstallPaths:(v:string)=>unknown;
+ updateResult:(dir:string,status:string,message:string,version?:string)=>{status:string;message:string;version:string};
+ readUpdateResult:(dir:string)=>{status:string;message:string;version:string}|null;
+ updateLogPath:(dir:string)=>string;
 }};
 runInNewContext(code,{
  module:moduleObj,exports:moduleObj.exports,
@@ -73,6 +78,27 @@ describe("ShowPilot Windows portable one-click updater",()=>{
   expect(ps).toContain("Get-Process -Id $AppProcessId");
   expect(ps).toContain("ZIP entry escapes its staging directory");
   expect(ps).toContain("[System.IO.Directory]::Move($BackupDir,$InstallDir)");
+  expect(ps).toContain("Wait-For-Old-App");
+  expect(ps).toContain("Running-ShowPilotProcesses");
+  expect(ps).toContain("Write-UpdateResult 'failed'");
+  expect(ps).toContain("Restarted previous ShowPilot version");
+  expect(ps).toContain("SmokeTestNoRelaunch");
   expect(ps).toContain("Previous executable folder retained for manual rollback");
  });
+ it("persists a readable install failure report for the next app launch",()=>{
+  const dir=mkdtempSync(join(tmpdir(),"showpilot-update-status-"));
+  try{
+   const saved=updater.updateResult(dir,"failed","Directory was locked by an Electron child process.","0.1.331-beta");
+   expect(saved.status).toBe("failed");
+   expect(updater.readUpdateResult(dir)).toMatchObject({
+    status:"failed",version:"0.1.331-beta",message:"Directory was locked by an Electron child process."
+   });
+   expect(updater.updateLogPath(dir)).toMatch(/last-update\.log$/);
+   const file=join(dir,"ShowPilot Updates","last-update-result.json");
+   writeFileSync(file,JSON.stringify({status:"pending",message:"Close and restart",version:"0.1.331-beta",
+    updated:new Date(Date.now()-10*60*1000).toISOString()}));
+   expect(updater.readUpdateResult(dir)?.status).toBe("failed");
+  }finally{rmSync(dir,{recursive:true,force:true});}
+ });
+
 });
