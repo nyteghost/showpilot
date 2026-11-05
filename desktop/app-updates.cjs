@@ -58,23 +58,52 @@ async function versionOfRun(base,run,ch){
   return m ? m[1]+"."+m[2]+"."+n+(ch==="beta"?"-beta":"") : null;
  }catch{return null}
 }
+/** Match a downloadable artifact to a successfully completed platform job.
+ * The workflow itself can remain in_progress while Linux packages are built;
+ * that does not invalidate a finished Windows portable ZIP.
+ */
+function readyPlatformArtifact(run,jobs,artifacts,platform=process.platform){
+ if(!run||!Number.isSafeInteger(run.run_number)||run.run_number<1)return null;
+ if(!["in_progress","completed"].includes(run.status))return null;
+ if(!Array.isArray(jobs)||!Array.isArray(artifacts))return null;
+ const successful=name=>jobs.some(job=>job.name===name&&job.status==="completed"&&job.conclusion==="success");
+ if(!successful("check"))return null;
+ const jobNames={
+  "showpilot-windows-portable":"windows-portable",
+  "showpilot-linux-appimage":"linux-appimage",
+  "showpilot-linux-portable":"linux-portable",
+ };
+ for(const name of updateArtifacts(platform)){
+  if(!successful(jobNames[name]))continue;
+  const file=artifacts.find(a=>a.name===name&&a.expired===false&&a.size_in_bytes>0);
+  if(file)return file;
+ }
+ return null;
+}
 async function latest(ch){
  for(const source of SOURCES){
   const ref=source.branches[ch];if(!ref)continue;
   const base="https://api.github.com/repos/"+source.repository;
   const q=new URL(base+"/actions/workflows/showpilot.yml/runs");
-  q.searchParams.set("branch",ref);q.searchParams.set("status","success");q.searchParams.set("per_page","5");
+  q.searchParams.set("branch",ref);
+  // Do not require status=success: the Windows build may already be complete
+  // while Linux packaging keeps the overall workflow 'in_progress'.
+  // Newer runs can also cancel older workflows after their Windows job passes.
+  q.searchParams.set("per_page","20");
   const response=await readJson(q.href);
   if(!response)continue;
   for(const run of (response.workflow_runs||[])){
-   if(run.head_branch!==ref||run.conclusion!=="success")continue;
+   if(run.head_branch!==ref||!["completed","in_progress"].includes(run.status))continue;
    const arts=await readJson(base+"/actions/runs/"+run.id+"/artifacts");
-   const art=(arts?.artifacts||[]).find(a=>updateArtifacts().includes(a.name)&&!a.expired);
+   if(!(arts?.artifacts||[]).some(a=>updateArtifacts().includes(a.name)&&a.expired===false&&a.size_in_bytes>0))continue;
+   const jobs=await readJson(base+"/actions/runs/"+run.id+"/jobs?per_page=100");
+   const art=readyPlatformArtifact(run,jobs?.jobs,arts.artifacts);
    if(art)return {
     runId:run.id,buildNumber:run.run_number,sha:run.head_sha,channel:ch,
     created:run.created_at,url:run.html_url,repository:source.repository,
     artifact:art.name,platform:process.platform,
     version:await versionOfRun(base,run,ch),
+    workflowComplete:run.status==="completed"&&run.conclusion==="success",
    };
   }
  }
@@ -97,4 +126,4 @@ function setupUpdates(){
    return {opened:true,runId:found.runId,repository:found.repository};
  });
 }
-module.exports={setupUpdates};
+module.exports={setupUpdates,readyPlatformArtifact,updateArtifacts};
