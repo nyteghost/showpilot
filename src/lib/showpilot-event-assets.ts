@@ -80,7 +80,7 @@ export function extractEocFocus(pages:readonly string[]):EocExcerpt[]{
  }
  return result.slice(0,45);
 }
-export async function extractEocFromPdf(file:File):Promise<EocExcerpt[]>{
+export async function pdfTextPages(file:File,maxPages=80):Promise<string[]>{
  if(!/\.pdf$/i.test(file.name))return [];
  const pdfjs=await import("pdfjs-dist");
  const worker=(await import("pdfjs-dist/build/pdf.worker.min.mjs?url")).default;
@@ -90,7 +90,7 @@ export async function extractEocFromPdf(file:File):Promise<EocExcerpt[]>{
  try{
   const doc=await task.promise;
   const pages:string[]=[];
-  for(let page=1;page<=Math.min(doc.numPages,80);page++){
+  for(let page=1;page<=Math.min(doc.numPages,maxPages);page++){
    const content=await (await doc.getPage(page)).getTextContent();
    const tokens=(content.items as Array<{str?:string;transform?:number[]}>)
     .filter(t=>typeof t.str==="string"&&t.str.trim())
@@ -103,6 +103,9 @@ export async function extractEocFromPdf(file:File):Promise<EocExcerpt[]>{
    }
    pages.push([...rows.entries()].sort((a,b)=>b[0]-a[0]).map(([,line])=>line.join(" ").trim()).join("\n"));
   }
-  return extractEocFocus(pages);
+  return pages;
  }finally{await task.destroy();}
+}
+export async function extractEocFromPdf(file:File):Promise<EocExcerpt[]>{
+ return extractEocFocus(await pdfTextPages(file,80));
 }
