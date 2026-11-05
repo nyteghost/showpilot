@@ -674,7 +674,9 @@ function setupMemoryIpc(){
  wrap("backup-choose-folder",chooseBackupFolder);wrap("backup-open-folder",openBackupFolder);
  wrap("postcon-list",postConList);wrap("postcon-save",postConSave);wrap("postcon-archive",postConArchive);
  wrap("show-catalog-list",showCatalogList);wrap("show-catalog-save",showCatalogSave);
+ wrap("event-file-list",eventFileList);wrap("event-file-save",eventFileSave);wrap("event-file-open",eventFileOpen);
+ wrap("event-file-read",eventFileRead);wrap("event-file-archive",eventFileArchive);
  wrap("open-folder",openFolder);
  startWeeklyBackups();
 }
-module.exports={setupMemoryIpc,status,preferences,list,search,read,save,edit,archive,importPack,exportPack,rememberSchedule,openFolder,ready,backupNow,automaticBackupCheck,setBackupEnabled,chooseBackupFolder,postConList,postConSave,postConArchive,showCatalogList,showCatalogSave,diagnosticsSummary};
+module.exports={setupMemoryIpc,status,preferences,list,search,read,save,edit,archive,importPack,exportPack,rememberSchedule,openFolder,ready,backupNow,automaticBackupCheck,setBackupEnabled,chooseBackupFolder,postConList,postConSave,postConArchive,showCatalogList,showCatalogSave,eventFileList,eventFileSave,eventFileOpen,eventFileRead,eventFileArchive,diagnosticsSummary};
