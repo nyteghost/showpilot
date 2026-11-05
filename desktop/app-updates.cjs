@@ -116,7 +116,7 @@ function setupUpdates(){
    const ch=channel(),found=await latest(ch);
    const upToDate=!!found?.version&&found.version===app.getVersion();
    return {channel:ch,platform:process.platform,latest:found,upToDate,message:found
-    ? upToDate?"You are running the latest "+ch+" build.":"Latest successful "+ch+" build found."
+    ? upToDate?"The newest available "+ch+" package for this computer is installed.":"A newer "+ch+" portable package is ready for this computer."
     : "No successful ShowPilot "+ch+" build for "+(process.platform==="linux"?"Linux":process.platform==="win32"?"Windows":"this platform")+" is available yet."};
  });
  ipcMain.handle("showpilot-update:open",async()=>{
