@@ -18,7 +18,6 @@ const sections: { id: WorkTabId; label: string; desc: string; Icon: typeof Calen
   {id:"events",label:"Event Schedule",desc:"Import Ungerboeck reports, plan engineering coverage and export Excel",Icon:CalendarDays,note:"Reports & staffing"},
   {id:"eventhub",label:"Events",desc:"Show notes, work orders, EOCs, event diagrams and Pre/Post-Con information",Icon:FolderOpen,note:"Central show records"},
   {id:"shifts",label:"My Shifts",desc:"Read, edit and export your personal shifts to Google Calendar",Icon:CalendarClock,note:"Calendar tools"},
-  {id:"deck",label:"Stage & Deck Planner",desc:"Plan stage sizes, configurations, stairs and inventory",Icon:Layers3,note:"Stage operations"},
   {id:"floor",label:"Floor Maps",desc:"Color booth utility locations and resolve work-order questions",Icon:Map,note:"Exhibitor utilities"},
   {id:"vendors",label:"Vendors",desc:"Manage and compare purchase and rental quotes",Icon:Store,note:"Purchasing & rentals"},
 ];
@@ -30,7 +29,7 @@ function saved(key:string,fallback:string) {
 export function App() {
   const [screen,setScreen] = useState<Screen>(()=>{
     const v=saved("showpilot:screen","dashboard");
-    if(v==="precon"||v==="postcon")return "eventhub"; // Older standalone pages now live inside Events.
+    if(v==="precon"||v==="postcon"||v==="deck")return "eventhub"; // Older standalone pages now live inside Events.
     return v==="dashboard"||v==="settings"||sections.some(s=>s.id===v)?v as Screen:"dashboard";
   });
   // Mount the workspace only after its first visit, then keep it alive across
