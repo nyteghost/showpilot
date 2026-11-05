@@ -5,6 +5,7 @@ import type {EventZipInspection} from "@/lib/showpilot-memory-bridge";
 import type {PostConShow} from "@/lib/showpilot-postcon";
 import {extractEocFromPdf,pdfTextPages} from "@/lib/showpilot-event-assets";
 import {discoverEventMetadata,ROOMS,type EventMetadataResult,type EventMetadataSource} from "@/lib/showpilot-event-discovery";
+import {scheduleHintsFromSources,serializeZipSchedule,type ZipScheduleHint} from "@/lib/showpilot-zip-schedule";
 
 const roomsAvailable=ROOMS;
 const validDay=(day:string)=>/^\d{4}-\d{2}-\d{2}$/.test(day)&&!Number.isNaN(Date.parse(day+"T12:00:00Z"));
@@ -28,9 +29,10 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
  const [end,setEnd]=useState("");
  const [rooms,setRooms]=useState<string[]>([]);
  const [metadata,setMetadata]=useState<EventMetadataResult|null>(null);
+ const [scheduleHints,setScheduleHints]=useState<ZipScheduleHint[]>([]);
  const [readWarnings,setReadWarnings]=useState<string[]>([]);
  const [applyExisting,setApplyExisting]=useState(false);
- const reset=()=>{setArchive(null);setInspection(null);setMetadata(null);setReadWarnings([]);setApplyExisting(false);if(picker.current)picker.current.value="";};
+ const reset=()=>{setArchive(null);setInspection(null);setMetadata(null);setScheduleHints([]);setReadWarnings([]);setApplyExisting(false);if(picker.current)picker.current.value="";};
  const stage=useCallback(async(file:File)=>{
   if(!bridge?.eventZipInspect){setStatus("ZIP import requires the current ShowPilot portable desktop build.");return;}
   if(!/\.zip$/i.test(file.name)){setStatus("Choose an event ZIP file.");return;}
@@ -58,7 +60,7 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
     }catch(e){scanWarnings.push("Could not fully scan ZIP documents: "+String(e));}
    }else scanWarnings.push("This build cannot inspect ZIP document contents.");
    const found=discoverEventMetadata(sources,result.manifest,file.name);
-   setArchive(file);setInspection(result);setMetadata(found);setReadWarnings(scanWarnings);
+   setArchive(file);setInspection(result);setMetadata(found);setScheduleHints(scheduleHintsFromSources(sources));setReadWarnings(scanWarnings);
    setName(found.showName);setEventId(found.eventId);setStart(found.startDate);setEnd(found.showDate);
    setRooms(found.rooms);
    setTarget(selectedKey||"");setMode(selectedKey?"existing":"new");setApplyExisting(false);
@@ -130,9 +132,11 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
    }
    if(metadata){
     try{
-     const content="ShowPilot ZIP Schedule Evidence v1\n"+JSON.stringify({
-      eventKey:key,sourceZip:archive.name,reviewed:{eventId,showName:name,startDate:start,showDate:end,rooms},
-      metadata,documents:inspection.files.map(f=>({path:f.path,kind:f.kind})),
+     const content=serializeZipSchedule({
+      version:1,eventKey:key,sourceZip:archive.name,
+      reviewed:{eventId,showName:name,startDate:start,showDate:end,rooms},
+      detected:metadata,hints:scheduleHints,
+      documents:inspection.files.map(f=>({path:f.path,kind:f.kind})),
       created:new Date().toISOString()
      });
      await bridge.save({category:"Recurring Events",title:("ZIP Schedule: "+key+" · "+archive.name).slice(0,140),content:content.slice(0,14500)});
@@ -191,7 +195,9 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
      </div>
     </details>
     {[...metadata.warnings,...readWarnings].map((warning,i)=><p key={i} className="text-amber-600">Review: {warning}</p>)}
-    <p className="text-muted-foreground">The ZIP provides scheduling evidence; it will not overwrite the original engineering Excel template or existing reviewed shifts.</p>
+    <p className="font-semibold">Schedule review hints from documents: {scheduleHints.length}</p>
+    {scheduleHints.slice(0,8).map((hint,i)=><p key={i}>{hint.topic}: {hint.text} — {hint.source}</p>)}
+    <p className="text-muted-foreground">These are review hints, not automatic shift or staffing changes. Importing saves a local schedule evidence note for this event, which you can compare against the engineering schedule.</p>
    </div>}
    <fieldset className="space-y-2">
     <legend className="font-semibold text-sm">Import into</legend>
