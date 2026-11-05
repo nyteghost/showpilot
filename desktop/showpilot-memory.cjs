@@ -574,11 +574,9 @@ function copyEventAssets(folder,records){
   const temp=target+"."+crypto.randomBytes(4).toString("hex")+".tmp";
   try{
    fs.copyFileSync(source,temp);
-   if(!verifiedAssetSource(record,{toString:()=>targetFolder})){
-    const actual=fs.readFileSync(temp);
-    if(actual.length!==record.bytes||digest(actual)!==record.sha256)
-     throw Error("Backup attachment verification failed.");
-   }
+   const actual=fs.readFileSync(temp);
+   if(actual.length!==record.bytes||digest(actual)!==record.sha256)
+    throw Error("Backup attachment verification failed.");
    fs.renameSync(temp,target);copied++;
   }catch(e){try{fs.unlinkSync(temp)}catch{}throw e;}
  }
