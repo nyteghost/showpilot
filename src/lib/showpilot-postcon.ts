@@ -1,13 +1,47 @@
-import {expandSpace,type EventEntry} from "./work-tools";
+import {expandSpace,type EventEntry,type EventRow} from "./work-tools";
 
-/** Only CGC show/activity references are saved as a small, local dropdown catalog.
+/** Only real CGC show names (not function descriptions) are saved locally.
  * The full imported workbooks are NOT copied into this cache or GitHub. */
 export type PostConShow={key:string;eventId:string;showName:string;showDate:string;rooms:string;startDate?:string};
-export const POSTCON_CATALOG_KEY="showpilot:postcon:known-shows:v1";
+// v2 intentionally does not import the old v1 function-description catalog.
+// The old cache stays untouched; loading a source report rebuilds valid show names.
+export const POSTCON_CATALOG_KEY="showpilot:postcon:known-shows:v2";
 const allowed=/^(?:Hall [A-D]|BallRoom [A-G])$/i;
 const excluded=/\b(?:cepac|cobb energy|performing arts)\b/i;
 const phases=new Set(["S","MI","Exmi","MO"]);
 const validDate=(s:string)=>/^\d{4}-\d{2}-\d{2}$/.test(s)&&!Number.isNaN(Date.parse(s+"T12:00:00Z"));
+/** A show comes ONLY from the report's Event field. Function descriptions
+ * are never acceptable fallbacks here (unlike in the engineering editor).
+ * An event ID unifies its setup, show, meal and teardown functions.
+ */
+export function postConShowsFromReportRows(rows:readonly EventRow[]):PostConShow[]{
+ const grouped=new Map<string,{eventId:string;name:string;first:string;last:string;rooms:Set<string>;names:Map<string,number>}>();
+ const functionName=/^(?:(?:client|exhibitor|vendor|decorator|sponsor|av|a\/v|advanced expo services)\s+)?(?:move[ -]?in|move[ -]?out|load[ -]?in|load[ -]?out|set[ -]?up|program|general session|breakout session|registration|tables?\s*(?:&|and)\s*chairs?(?:\s+inc\.)?\s+move[ -]?in|decorator day|rehearsal|meeting)$/i;
+ for(const row of rows){
+  const name=(row.event??"").replace(/\s+/g," ").trim().slice(0,140);
+  if(!name||functionName.test(name)||!validDate(row.date)||excluded.test(row.space+" "+name))continue;
+  const rooms=expandSpace(row.space).filter(room=>allowed.test(room));
+  if(!rooms.length)continue;
+  const eventId=(row.eventId??"").trim();
+  // Avoid merging unrelated shows whose source does not contain an ID.
+  const key=eventId?"id:"+eventId:"name:"+name.toLowerCase();
+  let show=grouped.get(key);
+  if(!show){
+   show={eventId,name,first:row.date,last:row.date,rooms:new Set<string>(),names:new Map<string,number>()};
+   grouped.set(key,show);
+  }
+  show.first=row.date<show.first?row.date:show.first;
+  show.last=row.date>show.last?row.date:show.last;
+  show.names.set(name,(show.names.get(name)??0)+1);
+  for(const room of rooms)show.rooms.add(room);
+ }
+ return [...grouped].map(([key,g])=>{
+  // Prefer the most frequent Event-field name when different rows have
+  // abbreviated or truncated variants. Do not use the Description column.
+  const showName=[...g.names].sort((a,b)=>b[1]-a[1]||b[0].length-a[0].length)[0]?.[0]??g.name;
+  return {key,eventId:g.eventId,showName,showDate:g.last,startDate:g.first,rooms:[...g.rooms].sort().join(", ")};
+ }).sort((a,b)=>b.showDate.localeCompare(a.showDate)).slice(0,400);
+}
 export function postConShows(entries:readonly EventEntry[]):PostConShow[]{
  const grouped=new Map<string,{eventId:string;name:string;date:string;startDate:string;rooms:Set<string>}>();
  for(const entry of entries){
@@ -43,13 +77,18 @@ export function loadPostConShows():PostConShow[]{
  try{const raw=localStorage.getItem(POSTCON_CATALOG_KEY);const all=raw?JSON.parse(raw):[];return Array.isArray(all)?mergePostConShows([],all):[];}
  catch{return [];}
 }
-export function rememberPostConShows(entries:readonly EventEntry[]):void{
+/** Populate both dropdowns from the source report's show column ONLY. */
+export function rememberPostConShowsFromReportRows(rows:readonly EventRow[]):{shows:number;unnamedRows:number}{
+ const unnamedRows=rows.filter(row=>validDate(row.date)&&!row.event?.trim()).length;
  try{
-  const found=postConShows(entries);
-  if(!found.length)return;
-  localStorage.setItem(POSTCON_CATALOG_KEY,JSON.stringify(mergePostConShows(loadPostConShows(),found)));
-  window.dispatchEvent(new Event("showpilot:postcon-catalog"));
- }catch{/* Browser storage may be unavailable. The Post-Con form still supports manual shows. */}
+  const found=postConShowsFromReportRows(rows);
+  if(found.length){
+   localStorage.setItem(POSTCON_CATALOG_KEY,JSON.stringify(mergePostConShows(loadPostConShows(),found)));
+   window.dispatchEvent(new Event("showpilot:postcon-catalog"));
+  }
+  return {shows:found.length,unnamedRows};
+ }catch{/* Storage may be unavailable. Both forms still accept manual shows. */}
+ return {shows:0,unnamedRows};
 }
 
 /** Use local work-PC calendar dates, never UTC time-of-day boundaries, to avoid
