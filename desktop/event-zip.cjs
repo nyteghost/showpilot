@@ -132,4 +132,67 @@ function contents(input){
  });
  return {files,ignored:preview.ignored,manifest:preview.manifest};
 }
-module.exports={inspect,contents,readZip,crc32,MAX_ZIP,MAX_DOCUMENT,MAX_ENTRIES};
+/** Evidence preview is bounded. ZIP bytes never leave the current computer.
+ * PDFs are sent to the renderer for PDF.js text parsing; XLSX/DOCX/CSV/TXT
+ * are summarized here. Unsupported formats remain attachable as originals.
+ */
+function decodeXml(text){
+ return text.replace(/<w:tab\b[^>]*\/>/gi,"\t").replace(/<\/(?:w:p|row|si|c)>/gi,"\n")
+  .replace(/<[^>]*>/g," ").replace(/&(?:amp|lt|gt|quot|apos);|&#(?:x[0-9a-f]+|\d+);/gi,m=>{
+   const dict={"&amp;":"&","&lt;":"<","&gt;":">","&quot;":'"',"&apos;":"'"};
+   if(dict[m])return dict[m];
+   const c=m.startsWith("&#x")?parseInt(m.slice(3,-1),16):parseInt(m.slice(2,-1),10);
+   return Number.isFinite(c)&&c>=9&&c<=65535?String.fromCharCode(c):"";
+  }).replace(/[ \t]+/g," ").slice(0,125000);
+}
+function docxText(bytes){
+ const zip=readZip(bytes);
+ const part=zip.entries.find(e=>e.path==="word/document.xml");
+ if(!part||part.uncompressed>4*1024*1024)return "";
+ return decodeXml(decodeEntry(zip.bytes,part,4*1024*1024).toString("utf8"));
+}
+function workbookText(bytes){
+ try{
+  const XLSX=require("xlsx");
+  const book=XLSX.read(bytes,{type:"buffer",cellFormula:false,cellHTML:false,cellStyles:false,bookVBA:false,bookFiles:false});
+  const lines=[];
+  for(const name of book.SheetNames.slice(0,8)){
+   const sheet=book.Sheets[name];
+   if(!sheet)continue;
+   lines.push("Worksheet: "+name);
+   const rows=XLSX.utils.sheet_to_json(sheet,{header:1,blankrows:false,defval:""});
+   for(const cells of rows.slice(0,250)){
+    lines.push((Array.isArray(cells)?cells:[]).slice(0,25).map(x=>String(x).slice(0,250)).join(" | "));
+    if(lines.join("").length>125000)break;
+   }
+  }
+  return lines.join("\n").slice(0,125000);
+ }catch{return "";}
+}
+function reviewSources(input){
+ const pack=contents(input);
+ const ranked=[...pack.files].sort((a,b)=>{
+  const score=f=>(f.kind==="eoc"?0:f.kind==="work-order"?1:f.kind==="diagram"?2:3);
+  return score(a)-score(b);
+ });
+ const sources=[],skipped=[];
+ let total=0;
+ for(const f of ranked){
+  const extension=f.name.split(".").pop().toLowerCase();
+  if(sources.length>=28||total>48*1024*1024){skipped.push(f.path);continue;}
+  if(["pdf","docx","xlsx","xls","csv","txt"].includes(extension)){
+   if(f.bytes.length>12*1024*1024){skipped.push(f.path);continue;}
+   total+=f.bytes.length;
+   if(extension==="pdf")sources.push({path:f.path,format:"pdf",bytes:new Uint8Array(f.bytes)});
+   else {
+    const text=extension==="docx"?docxText(f.bytes):
+     ["xlsx","xls"].includes(extension)?workbookText(f.bytes):f.bytes.toString("utf8").slice(0,125000);
+    if(text)sources.push({path:f.path,format:"text",text});
+    else skipped.push(f.path);
+   }
+  }else if(f.kind==="diagram")sources.push({path:f.path,format:"text",text:""});
+ }
+ return {sources,skipped,manifest:pack.manifest};
+}
+
+module.exports={inspect,contents,reviewSources,readZip,crc32,MAX_ZIP,MAX_DOCUMENT,MAX_ENTRIES};
