@@ -5,6 +5,7 @@ const {ipcMain,shell,app}=require("electron");
 const fs=require("node:fs");
 const path=require("node:path");
 const https=require("node:https");
+const {semverCompare,releaseAssetsForRun,installWindowsRelease}=require("./portable-updates.cjs");
 // Both channels now live in the independent ShowPilot repository.
 const SOURCES=[{repository:"nyteghost/showpilot",branches:{main:"main",beta:"beta"}}];
 const MAX_JSON=1_500_000;
@@ -98,13 +99,23 @@ async function latest(ch){
    if(!(arts?.artifacts||[]).some(a=>updateArtifacts().includes(a.name)&&a.expired===false&&a.size_in_bytes>0))continue;
    const jobs=await readJson(base+"/actions/runs/"+run.id+"/jobs?per_page=100");
    const art=readyPlatformArtifact(run,jobs?.jobs,arts.artifacts);
-   if(art)return {
-    runId:run.id,buildNumber:run.run_number,sha:run.head_sha,channel:ch,
-    created:run.created_at,url:run.html_url,repository:source.repository,
-    artifact:art.name,platform:process.platform,
-    version:await versionOfRun(base,run,ch),
-    workflowComplete:run.status==="completed"&&run.conclusion==="success",
-   };
+   if(art){
+    const version=await versionOfRun(base,run,ch);
+    let release=null;
+    if(ch==="beta"&&process.platform==="win32"&&version){
+     // Authenticated GitHub Actions artifacts are not suitable for a
+     // zero-admin updater. Only public, checksum-verified Releases are.
+     const candidate=await readJson(base+"/releases/tags/"+encodeURIComponent("showpilot-beta-v"+version));
+     release=releaseAssetsForRun(candidate,run,version);
+    }
+    return {
+     runId:run.id,buildNumber:run.run_number,sha:run.head_sha,channel:ch,
+     created:run.created_at,url:run.html_url,repository:source.repository,
+     artifact:art.name,platform:process.platform,version,
+     installAvailable:!!release,release,
+     workflowComplete:run.status==="completed"&&run.conclusion==="success",
+    };
+   }
   }
  }
  return null;
@@ -114,10 +125,22 @@ function setupUpdates(){
  ipcMain.handle("showpilot-update:channel",(_,value)=>({channel:setChannel(value)}));
  ipcMain.handle("showpilot-update:check",async()=>{
    const ch=channel(),found=await latest(ch);
-   const upToDate=!!found?.version&&found.version===app.getVersion();
-   return {channel:ch,platform:process.platform,latest:found,upToDate,message:found
-    ? upToDate?"The newest available "+ch+" package for this computer is installed.":"A newer "+ch+" portable package is ready for this computer."
-    : "No successful ShowPilot "+ch+" build for "+(process.platform==="linux"?"Linux":process.platform==="win32"?"Windows":"this platform")+" is available yet."};
+   const comparison=found?.version?semverCompare(found.version,app.getVersion()):null;
+   const upToDate=comparison!==null?comparison<=0:!!found?.version&&found.version===app.getVersion();
+   return {channel:ch,platform:process.platform,latest:found,upToDate,
+    message:found
+     ? upToDate?"The newest available "+ch+" package for this computer is installed."
+      : found.installAvailable?"A verified "+ch+" portable update is ready to download and install."
+      : "A newer "+ch+" package is available. Automatic installation will appear after its official GitHub Release is published."
+     : "No completed ShowPilot "+ch+" package for "+(process.platform==="linux"?"Linux":process.platform==="win32"?"Windows":"this platform")+" is available yet."};
+ });
+ ipcMain.handle("showpilot-update:install",async(event)=>{
+   if(process.platform!=="win32"||!app.isPackaged)
+    throw new Error("Automatic installation is only available in the packaged Windows portable app.");
+   const found=await latest(channel());
+   if(!found?.release||!found.version)
+    throw new Error("No verified public Windows portable release is ready. Try Check for Updates again.");
+   return installWindowsRelease(event.sender,{...found.release,version:found.version},app.getVersion());
  });
  ipcMain.handle("showpilot-update:open",async()=>{
    const found=await latest(channel());
