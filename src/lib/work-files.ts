@@ -539,6 +539,20 @@ function weekDates(monday:string):string[]{
  return Array.from({length:7},(_,i)=>{const next=new Date(d);next.setUTCDate(d.getUTCDate()+i);return next.toISOString().slice(0,10);});
 }
 
+/** A reusable master may contain event text from a DIFFERENT week. Clear only
+ * the event grid in the exported copy before writing reviewed CGC events.
+ * Engineer shifts, PTO, titles, borders, fills, formulas and user data in the
+ * original saved XLSX remain untouched. */
+function clearRetargetedEventGrid(ws:XSheet){
+ const allowed=new Set([...HALL_ROWS,...BALLROOM_ROWS].map(s=>s.toLowerCase()));
+ const roots=new Set<string>();
+ ws.eachRow((row,n)=>{
+  if(!allowed.has(String(row.getCell(1).value??"").trim().toLowerCase()))return;
+  for(let c=2;c<=8;c++)roots.add(ws.getCell(n,c).master.address);
+ });
+ for(const address of roots)ws.getCell(address).value=null;
+}
+
 /** Writes event rows into an existing weekly sheet, keeping engineer shifts untouched. Returns false if the week is not on this sheet. */
 /** An engineer's day, as in your sheets: shift on the name row, worked hours (or OFF) on the badge row below it. */
 function engineerCell(plans: Map<string, DayPlan>, name: string, date: string): { top: string; mid: string | number } | null {
@@ -733,6 +747,7 @@ export async function eventsWorkbook(entries: EventEntry[], existing?: File, tas
       const header=scheduleDayHeaderRow(selected);
       if(!header)throw new Error("Template date header is missing.");
       const dates=retarget?weekDates(options.singleWeek):null;
+      if(retarget)clearRetargetedEventGrid(selected);
       // Use explicit dates in the EXPORTED COPY. Week templates can link to
       // Extra via uncached Excel formulas; those cannot survive removing Extra.
       for(let col=2;col<=8;col++){
