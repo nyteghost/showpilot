@@ -1,6 +1,7 @@
+import type {EventFileRecord,EventFileKind,EocExcerpt} from "./showpilot-event-assets";
 /** Private ShowPilot SQLite-backed memory, with portable JSON import and export. */
 export type MemoryCategory="Stage Setups"|"Ballroom Configurations"|"Recurring Events"|"Engineering Procedures"|"Approved Tasks"|"Lessons Learned";
-export type MemoryStatus={configured:boolean;available:boolean;storage:"sqlite";databasePath:string;vault:string;rememberTasks:boolean;rememberStages:boolean;rememberExports:boolean;noteCount:number;historicalCount:number;postConCount:number;showCatalogCount:number;migratedCount:number;archivedCount:number;weeklyBackupEnabled:boolean;backupFolder:string;lastBackupAt:string;backupError:string;error?:string};
+export type MemoryStatus={configured:boolean;available:boolean;storage:"sqlite";databasePath:string;vault:string;rememberTasks:boolean;rememberStages:boolean;rememberExports:boolean;noteCount:number;historicalCount:number;postConCount:number;showCatalogCount:number;eventFileCount:number;migratedCount:number;archivedCount:number;weeklyBackupEnabled:boolean;backupFolder:string;lastBackupAt:string;backupError:string;error?:string};
 export type MemorySummary={id:string;category:MemoryCategory;title:string;excerpt:string;modified:string};
 export type MemoryReference={id:string;category:MemoryCategory;title:string;excerpt:string};
 export type MemoryDraft={category:MemoryCategory;title:string;content:string};
@@ -32,6 +33,11 @@ export type MemoryBridge={
  postConArchive(id:string):Promise<{archived:true}>;
  showCatalogList():Promise<ShowCatalogRecord[]>;
  showCatalogSave(shows:readonly ShowCatalogRecord[]):Promise<{saved:true;added:number;total:number}>;
+ eventFileList(eventKey:string,includeArchived?:boolean):Promise<(EventFileRecord&{available:boolean})[]>;
+ eventFileSave(input:{eventKey:string;kind:EventFileKind;name:string;bytes:ArrayBuffer;eocExcerpts?:EocExcerpt[]}):Promise<EventFileRecord&{available:true}>;
+ eventFileOpen(id:string):Promise<{opened:true}>;
+ eventFileRead(id:string):Promise<{bytes:Uint8Array;extension:string;name:string}>;
+ eventFileArchive(id:string,archived?:boolean):Promise<{archived:boolean}>;
  openFolder():Promise<{opened:true}>;
 };
 declare global{interface Window{showpilotMemory?:MemoryBridge}}
