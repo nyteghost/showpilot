@@ -4,7 +4,7 @@ import {fileURLToPath} from "node:url";
 import {createRequire} from "node:module";
 import {runInNewContext} from "node:vm";
 
-const requireNode=createRequire(import.meta.url);
+const requireNode=createRequire(new URL("../../desktop/app-updates.cjs",import.meta.url));
 const code=readFileSync(fileURLToPath(new URL("../../desktop/app-updates.cjs",import.meta.url)),"utf8");
 const moduleObj={exports:{} as {
  readyPlatformArtifact:(run:unknown,jobs:unknown[],artifacts:unknown[],platform:string)=>{name:string}|null;
