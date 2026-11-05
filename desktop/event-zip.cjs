@@ -38,7 +38,7 @@ function decodeEntry(bytes,entry,max=MAX_DOCUMENT){
  if(flags&1||method!==entry.method)throw Error("ZIP entry header does not match.");
  const start=off+30+bytes.readUInt16LE(off+26)+bytes.readUInt16LE(off+28);
  const end=start+entry.compressed;
- if(end>bytes.length||start<0||start>entry.centralStart)throw Error("ZIP compressed data is out of range.");
+ if(end>bytes.length||start<0||end>entry.centralStart)throw Error("ZIP compressed data is out of range.");
  const payload=bytes.subarray(start,end);
  const out=entry.method===0?Buffer.from(payload):zlib.inflateRawSync(payload,{maxOutputLength:max+1});
  if(out.length!==entry.uncompressed||crc32(out)!==entry.crc)throw Error("ZIP entry integrity check failed: "+entry.path);
