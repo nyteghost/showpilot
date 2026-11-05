@@ -296,7 +296,11 @@ async function exportJson(){
  const selection=await dialog.showSaveDialog({title:"Export ShowPilot Memory JSON",defaultPath:"ShowPilot-Memory-Backup.json",filters:[{name:"JSON",extensions:["json"]}]});
  if(selection.canceled||!selection.filePath)return {cancelled:true};
  const target=selection.filePath,temporary=target+".tmp";
- try{fs.writeFileSync(temporary,JSON.stringify(out,null,2),{mode:0o600});fs.renameSync(temporary,target);}
+ try{
+   copyEventAssets(path.dirname(target),out.eventFiles);
+   fs.writeFileSync(temporary,JSON.stringify(out,null,2),{mode:0o600});
+   fs.renameSync(temporary,target);
+  }
  catch(e){try{fs.unlinkSync(temporary)}catch{}throw e}
  return {saved:true,notes:out.notes.length,history:out.historicalEntries.length};
 }
@@ -317,11 +321,12 @@ function availableBackups(folder){
 async function backupNow(force=false){
  await ready();
  if(!backupEnabled()&&!force)return {created:false,reason:"disabled"};
- if(count("SELECT COUNT(*) n FROM notes")+count("SELECT COUNT(*) n FROM historical_entries")+count("SELECT COUNT(*) n FROM postcon_reports")+count("SELECT COUNT(*) n FROM show_catalog")===0)return {created:false,reason:"empty"};
+ if(count("SELECT COUNT(*) n FROM notes")+count("SELECT COUNT(*) n FROM historical_entries")+count("SELECT COUNT(*) n FROM postcon_reports")+count("SELECT COUNT(*) n FROM show_catalog")+count("SELECT COUNT(*) n FROM event_files")===0)return {created:false,reason:"empty"};
  const since=Date.parse(meta("lastWeeklyBackup",""));
  if(!force&&Number.isFinite(since)&&Date.now()-since<WEEK_MS)return {created:false,reason:"not-due"};
  const folder=safeBackupDirectory();
  const pack=await exportPack();
+ copyEventAssets(folder,pack.eventFiles);
  const serialized=JSON.stringify(pack,null,2);
  if(Buffer.byteLength(serialized,"utf8")>MAX_FILE)throw Error("Memory JSON exceeds the supported backup size.");
  const date=now(),filename="ShowPilot-Memory-"+date.replace(/[:.]/g,"-")+"-"+crypto.randomBytes(4).toString("hex")+".json";
@@ -341,7 +346,7 @@ async function backupNow(force=false){
   const file=path.join(folder,name);
   try{if(fs.lstatSync(file).isFile()&&!fs.lstatSync(file).isSymbolicLink())fs.unlinkSync(file);}catch{}
  }
- return {created:true,path:target,lastBackupAt:date,notes:pack.notes.length,archived:pack.archivedNotes.length,history:pack.historicalEntries.length,postCons:pack.postConReports.length,shows:pack.showCatalog.length};
+ return {created:true,path:target,lastBackupAt:date,notes:pack.notes.length,archived:pack.archivedNotes.length,history:pack.historicalEntries.length,postCons:pack.postConReports.length,shows:pack.showCatalog.length,eventFiles:pack.eventFiles.length};
 }
 async function automaticBackupCheck(){
  try{const result=await backupNow(false);if(result.created)backupError="";return result;}
@@ -703,7 +708,7 @@ async function diagnosticsSummary(){
  await ready();
  const integrity=queryRows("PRAGMA quick_check");
  const integrityOK=integrity.length===1&&integrity[0].quick_check==="ok";
- const expected=["meta","notes","historical_entries","postcon_reports","show_catalog"];
+ const expected=["meta","notes","historical_entries","postcon_reports","show_catalog","event_files"];
  const tablesOK=expected.every(name=>queryRows("SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name=?",[name])[0]?.n===1);
  const exported=await exportPack();
  const roundtrip=JSON.parse(JSON.stringify(exported));
@@ -712,7 +717,8 @@ async function diagnosticsSummary(){
   roundtrip.archivedNotes.length===exported.archivedNotes.length&&
   roundtrip.historicalEntries.length===exported.historicalEntries.length&&
   roundtrip.postConReports.length===exported.postConReports.length&&
-  roundtrip.showCatalog.length===exported.showCatalog.length;
+  roundtrip.showCatalog.length===exported.showCatalog.length&&
+   roundtrip.eventFiles.length===exported.eventFiles.length;
  const folder=backupPath();
  let folderAccessible=false,snapshotCount=0,latestValid=false,latestDays=-1;
  try{
@@ -731,7 +737,8 @@ async function diagnosticsSummary(){
       Array.isArray(backup.notes)&&Array.isArray(backup.archivedNotes)&&
       Array.isArray(backup.historicalEntries)&&Array.isArray(backup.postConReports)&&
        // Backups created before show-catalog support remain valid.
-       (!("showCatalog" in backup)||Array.isArray(backup.showCatalog));
+       (!("showCatalog" in backup)||Array.isArray(backup.showCatalog))&&
+       (!("eventFiles" in backup)||Array.isArray(backup.eventFiles));
      if(latestValid)latestDays=Math.max(0,Math.floor((Date.now()-file.mtimeMs)/(24*60*60*1000)));
     }
    }
@@ -740,7 +747,7 @@ async function diagnosticsSummary(){
  return {
   sqliteIntegrityOK:integrityOK,schemaOK:tablesOK,exportRoundtripOK:exportOK,
   activeNoteCount:exported.notes.length,archivedNoteCount:exported.archivedNotes.length,
-  historicalCount:exported.historicalEntries.length,postConCount:exported.postConReports.length,showCatalogCount:exported.showCatalog.length,
+  historicalCount:exported.historicalEntries.length,postConCount:exported.postConReports.length,showCatalogCount:exported.showCatalog.length,eventFileCount:exported.eventFiles.length,
   weeklyBackupEnabled:backupEnabled(),backupFolderAccessible:folderAccessible,
   backupCount:snapshotCount,latestBackupValid:latestValid,latestBackupAgeDays:latestDays,
   // Settings paths, actual memory records and backup bytes are never returned.
