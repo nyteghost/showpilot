@@ -417,6 +417,122 @@ async function showCatalogSave(items){
  return {saved:true,added:count("SELECT COUNT(*) n FROM show_catalog")-before,total:count("SELECT COUNT(*) n FROM show_catalog")};
 }
 
+/** Durable event attachments. Bytes live in ShowPilot's userData folder,
+ * never inside the application binary, GitHub, or browser localStorage.
+ * Existing bytes and metadata are retained when users install a new build.
+ */
+const EVENT_EXTENSIONS=new Set(["pdf","png","jpg","jpeg","webp","docx","xlsx","xls","csv","txt","dwg","dxf"]);
+const EVENT_KINDS=new Set(["work-order","eoc","diagram","other"]);
+const MAX_EVENT_FILE=25*1024*1024, MAX_EVENT_FILE_COUNT=5000;
+const eventFileDir=()=>path.join(dataDir(),"ShowPilot Event Files");
+function eventStoredName(record){
+ if(!/^[a-f0-9]{64}$/.test(record.sha256)||!EVENT_EXTENSIONS.has(record.extension))throw Error("Invalid saved document hash.");
+ return record.sha256+"."+record.extension;
+}
+function eventStoredPath(record){return path.join(eventFileDir(),eventStoredName(record));}
+function eventFileRows(eventKey,includeArchived=false){
+ return queryRows("SELECT id,event_key AS eventKey,kind,name,extension,byte_size AS bytes,sha256,eoc_json AS eocJson,created,archived "+
+  "FROM event_files WHERE event_key=?"+(includeArchived?"":" AND archived=0")+" ORDER BY created DESC",[eventKey])
+   .map(row=>({id:row.id,eventKey:row.eventKey,kind:row.kind,name:row.name,
+    extension:row.extension,bytes:row.bytes,sha256:row.sha256,created:row.created,
+    archived:row.archived===1,eocExcerpts:JSON.parse(row.eocJson||"[]"),
+    available:fs.existsSync(eventStoredPath(row))}));
+}
+function eventFileById(id){
+ if(typeof id!=="string"||!/^[a-f0-9-]{36}$/i.test(id))throw Error("Invalid event file ID.");
+ const record=queryRows("SELECT id,event_key AS eventKey,kind,name,extension,byte_size AS bytes,sha256,eoc_json AS eocJson,created,archived FROM event_files WHERE id=?",[id])[0];
+ if(!record)throw Error("This event document was not found.");
+ return record;
+}
+function sanitizeEocExcerpts(raw){
+ if(!Array.isArray(raw))return [];
+ return raw.slice(0,45).filter(x=>x&&["Event Notes","Engineering","Utility"].includes(x.section)&&Number.isInteger(x.page)&&x.page>=1&&x.page<=500)
+  .map(x=>({section:x.section,page:x.page,text:safe(x.text,1200)}));
+}
+function safeEventFileName(name){
+ if(typeof name!=="string"||name.length>300)throw Error("Invalid attachment name.");
+ const cleaned=path.basename(name.replace(/\\/g,"/")).replace(/[\u0000-\u001f<>:"|?*]/g,"_").trim();
+ if(!cleaned||cleaned==="."||cleaned==="..")throw Error("Invalid attachment name.");
+ const extension=cleaned.split(".").pop()?.toLowerCase()||"";
+ if(!EVENT_EXTENSIONS.has(extension))throw Error("Unsupported file type for event attachments.");
+ return {name:cleaned.slice(0,180),extension};
+}
+async function eventFileSave(input){
+ await ready();
+ if(!input||typeof input!=="object")throw Error("Select a document to attach.");
+ const eventKey=safe(input.eventKey,180);
+ if(!eventKey||!queryRows("SELECT key FROM show_catalog WHERE key=?",[eventKey]).length)
+  throw Error("Select a saved CGC show before adding documents.");
+ const kind=safe(input.kind,30);
+ if(!EVENT_KINDS.has(kind))throw Error("Choose Work Order, EOC, Diagram or Other document.");
+ const named=safeEventFileName(input.name);
+ const value=input.bytes;
+ if(!(value instanceof ArrayBuffer)&&!ArrayBuffer.isView(value))throw Error("Attachment bytes are missing.");
+ const bytes=Buffer.from(value instanceof ArrayBuffer?new Uint8Array(value):new Uint8Array(value.buffer,value.byteOffset,value.byteLength));
+ if(bytes.length<1||bytes.length>MAX_EVENT_FILE)throw Error("Event attachments must be 1 byte to 25 MB.");
+ if(named.extension==="pdf"&&bytes.subarray(0,5).toString()!=="%PDF-")throw Error("The file does not appear to be a PDF.");
+ if(named.extension==="png"&&bytes.subarray(0,8).toString("hex")!=="89504e470d0a1a0a")throw Error("The file does not appear to be a PNG.");
+ if((named.extension==="jpg"||named.extension==="jpeg")&&bytes.subarray(0,3).toString("hex")!=="ffd8ff")throw Error("The file does not appear to be a JPEG.");
+ if(named.extension==="webp"&&(bytes.subarray(0,4).toString()!=="RIFF"||bytes.subarray(8,12).toString()!=="WEBP"))throw Error("The file does not appear to be a WebP image.");
+ if(["xlsx","docx"].includes(named.extension)&&!["504b0304","504b0506","504b0708"].includes(bytes.subarray(0,4).toString("hex")))
+  throw Error("This Word/Excel attachment does not have a valid Office archive header.");
+ if(count("SELECT COUNT(*) n FROM event_files WHERE event_key=? AND archived=0",[eventKey])>=200||
+   count("SELECT COUNT(*) n FROM event_files")>=MAX_EVENT_FILE_COUNT)throw Error("The local document limit has been reached.");
+ const sha256=digest(bytes),id=crypto.randomUUID(),created=now();
+ const record={sha256,extension:named.extension};
+ const folder=eventFileDir();
+ fs.mkdirSync(folder,{recursive:true,mode:0o700});
+ const target=eventStoredPath(record);
+ if(fs.existsSync(target)){
+  const stat=fs.lstatSync(target);
+  if(!stat.isFile()||stat.isSymbolicLink()||stat.size!==bytes.length||digest(fs.readFileSync(target))!==sha256)
+   throw Error("Existing attachment data does not match its checksum.");
+ }else{
+  const temp=target+"."+crypto.randomBytes(5).toString("hex")+".tmp";
+  try{
+   fs.writeFileSync(temp,bytes,{flag:"wx",mode:0o600});
+   if(digest(fs.readFileSync(temp))!==sha256)throw Error("File verification failed.");
+   fs.renameSync(temp,target);
+  }catch(e){try{fs.unlinkSync(temp)}catch{}throw e;}
+ }
+ const eocExcerpts=kind==="eoc"&&named.extension==="pdf"?sanitizeEocExcerpts(input.eocExcerpts):[];
+ transaction(()=>sqlRun("INSERT INTO event_files(id,event_key,kind,name,extension,byte_size,sha256,eoc_json,created,archived) VALUES(?,?,?,?,?,?,?,?,?,0)",
+  [id,eventKey,kind,named.name,named.extension,bytes.length,sha256,JSON.stringify(eocExcerpts),created]));
+ return {id,eventKey,kind,name:named.name,extension:named.extension,
+  bytes:bytes.length,sha256,created,archived:false,available:true,eocExcerpts};
+}
+async function eventFileList(eventKey,includeArchived=false){
+ await ready();
+ const key=safe(eventKey,180);
+ if(!key||!queryRows("SELECT key FROM show_catalog WHERE key=?",[key]).length)throw Error("Select a valid CGC show.");
+ return eventFileRows(key,includeArchived===true);
+}
+async function eventFileOpen(id){
+ await ready();
+ const record=eventFileById(id);
+ const file=eventStoredPath(record);
+ const stat=fs.lstatSync(file);
+ if(!stat.isFile()||stat.isSymbolicLink()||stat.size!==record.bytes)throw Error("The stored document is missing or damaged.");
+ const message=await shell.openPath(file);
+ if(message)throw Error(message);
+ return {opened:true};
+}
+async function eventFileRead(id){
+ await ready();
+ const record=eventFileById(id);
+ const file=eventStoredPath(record);
+ const stat=fs.lstatSync(file);
+ if(!stat.isFile()||stat.isSymbolicLink()||stat.size>MAX_EVENT_FILE||stat.size!==record.bytes)throw Error("Stored file is missing or damaged.");
+ const content=fs.readFileSync(file);
+ if(digest(content)!==record.sha256)throw Error("Stored file integrity check failed.");
+ return {bytes:new Uint8Array(content),extension:record.extension,name:record.name};
+}
+async function eventFileArchive(id,archived=true){
+ await ready();const record=eventFileById(id);
+ transaction(()=>sqlRun("UPDATE event_files SET archived=? WHERE id=?",[archived===false?0:1,record.id]));
+ return {archived:archived!==false};
+}
+
 function validatePostCon(input){
  if(!input||typeof input!=="object")throw Error("Post-con report is missing.");
  const report={
