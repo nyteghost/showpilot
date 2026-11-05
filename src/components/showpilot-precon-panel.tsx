@@ -57,7 +57,15 @@ export function PreConPanel(){
   const next={...emptyPreCon(showDate),showName:selected.showName,rooms:selected.rooms,eventId:selected.eventId};
   setDraft(next);setEditingId(null);setSelectedShow(key);setDirty(false);setStatus("");
   const old=notes.find(n=>n.title===preConNoteTitle(next));
-  if(old)await openSaved(old.id);
+  if(old&&bridge){
+   setBusy(true);
+   try{
+    const existing=await bridge.read(old.id);
+    setDraft(decodePreCon(existing.content));setEditingId(old.id);
+    setSelectedShow(key);setDirty(false);
+   }catch(e){setStatus("Could not reopen saved notes: "+(e as Error).message)}
+   finally{setBusy(false)}
+  }
  };
  const reset=()=>{
   if(!confirmLeave())return;
