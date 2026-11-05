@@ -561,6 +561,10 @@ async function eventZipInspect(input){
  await ready();
  return eventZip.inspect(input);
 }
+async function eventZipScan(input){
+ await ready();
+ return eventZip.reviewSources(input);
+}
 async function eventZipImport(input){
  await ready();
  if(!input||typeof input!=="object")throw Error("Select a ZIP and an event.");
@@ -807,9 +811,9 @@ function setupMemoryIpc(){
  wrap("show-catalog-list",showCatalogList);wrap("show-catalog-save",showCatalogSave);
  wrap("event-file-list",eventFileList);wrap("event-file-save",eventFileSave);wrap("event-file-open",eventFileOpen);
  wrap("event-file-read",eventFileRead);wrap("event-file-archive",eventFileArchive);
- wrap("event-zip-inspect",eventZipInspect);wrap("event-zip-import",eventZipImport);
+ wrap("event-zip-inspect",eventZipInspect);wrap("event-zip-scan",eventZipScan);wrap("event-zip-import",eventZipImport);
  wrap("event-file-set-eoc",eventFileSetEocExcerpts);
  wrap("open-folder",openFolder);
  startWeeklyBackups();
 }
-module.exports={setupMemoryIpc,status,preferences,list,search,read,save,edit,archive,importPack,exportPack,rememberSchedule,openFolder,ready,backupNow,automaticBackupCheck,setBackupEnabled,chooseBackupFolder,postConList,postConSave,postConArchive,showCatalogList,showCatalogSave,eventFileList,eventFileSave,eventFileOpen,eventFileRead,eventFileArchive,eventZipInspect,eventZipImport,eventFileSetEocExcerpts,diagnosticsSummary};
+module.exports={setupMemoryIpc,status,preferences,list,search,read,save,edit,archive,importPack,exportPack,rememberSchedule,openFolder,ready,backupNow,automaticBackupCheck,setBackupEnabled,chooseBackupFolder,postConList,postConSave,postConArchive,showCatalogList,showCatalogSave,eventFileList,eventFileSave,eventFileOpen,eventFileRead,eventFileArchive,eventZipInspect,eventZipScan,eventZipImport,eventFileSetEocExcerpts,diagnosticsSummary};
