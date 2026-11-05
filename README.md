@@ -175,9 +175,16 @@ ShowPilot uses one optional **WebLLM/WebGPU local language model** across the AI
 - **Save reviewed idea to memory** is an explicit opt-in action in each assistant, saving a labeled **AI planning idea** (not a confirmed historical event) into private Native Memory. This is distinct from actually saving the stage plan or exporting the workbook.
 - **Local only:** Post-Con reports and historical memory excerpts go only to the local GPU model, not to an online AI service. An AI suggestion is not approval and does not automatically become a requirement.
 
+### Pre-Con — next 30 days
+Open **Pre-Con Notes** in the sidebar. ShowPilot displays the CGC shows found in imported Event Schedule reports that overlap **today through the next 29 days** (30 calendar days total), including multi-day shows. The dropdown uses your locally remembered show name, first scheduled date, event ID, and combined CGC room names. Import an Event Schedule covering the next 30 days to populate the list; you can still enter a show manually.
+
+For each show, save separate **pre-show overview and requirements, engineering/staffing notes, stage/deck plans, floor-map and utility notes, and outstanding decisions/follow-ups**. Saved notes can be reopened and edited from the searchable list even after a show leaves the upcoming-date dropdown. No changes are made to existing Event Schedule, shifts, stage plans, or floor maps.
+
+Pre-Con content is saved as structured **Recurring Events** notes in ShowPilot's existing private SQLite memory. This avoids a database migration, works offline in the Windows/Linux portable applications, and is automatically included in the existing ShowPilot weekly JSON backups and manual memory exports. Pre-Con notes are references, not instructions to AI or permission to change shifts. Archived notes remain in backups.
+
 ### Post-Con — completed show review
 
-Open the **Post-Con Reports** tab. After you import Event Schedule entries, past CGC shows appear as a local selection list, or you can enter a CGC show manually. Record **what went well, issues, engineer staffing, stage setup, floor-map/utility lessons, follow-ups, and an optional 1–5 rating**. Save the review explicitly; it becomes a searchable local historical reference for future GPU recommendations. Archived reports remain in automatic JSON backups.
+Open the **Post-Con Reports** tab. After importing an Event Schedule, the dropdown lists CGC shows completed in the **previous 30 days including today**; older saved reports remain searchable. You can also enter a CGC show manually. Record **what went well, issues, engineer staffing, stage setup, floor-map/utility lessons, follow-ups, and an optional 1–5 rating**. Save the review explicitly; it becomes a searchable local historical reference for future GPU recommendations. Archived reports remain in automatic JSON backups.
 
 Native Memory's weekly backups and manual JSON export include Post-Con reports. When restoring, use **Settings & AI → ShowPilot Native Memory → Import JSON memory**. No company schedule documents or Post-Con contents are uploaded to GitHub.
 
