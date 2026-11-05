@@ -62,6 +62,27 @@ jobs:
           & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "desktop/portable-update-helper.ps1" -Mode Stage -InstallDir $oldApp -StageDir $stage -ArchivePath $archive -LogPath (Join-Path $workspace "update-test.log")
           if ($LASTEXITCODE -ne 0) { throw "Windows portable update staging failed." }
           if (-not (Test-Path (Join-Path $stage "ShowPilot.exe"))) { throw "Staged executable is missing." }
+      - name: Test detached update folder swap and rollback retention
+        shell: pwsh
+        run: |
+          $workspace = Join-Path $env:RUNNER_TEMP "showpilot-updater-smoke"
+          $oldApp = Join-Path $workspace "OriginalApp"
+          $stage = Join-Path $workspace ".showpilot-next-smoke"
+          $backup = Join-Path $workspace ".showpilot-previous-smoke"
+          $log = Join-Path $workspace "update-swap-test.log"
+          New-Item -ItemType Directory -Path (Join-Path $oldApp "resources") -Force | Out-Null
+          Copy-Item -LiteralPath (Join-Path $stage "ShowPilot.exe") -Destination (Join-Path $oldApp "ShowPilot.exe")
+          Copy-Item -LiteralPath (Join-Path $stage "resources/app.asar") -Destination (Join-Path $oldApp "resources/app.asar")
+          Set-Content -LiteralPath (Join-Path $oldApp "previous-version-marker.txt") -Value "Old version must remain in backup."
+          $env:SHOWPILOT_UPDATER_SMOKE_TEST = "1"
+          & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "desktop/portable-update-helper.ps1" -Mode Install -InstallDir $oldApp -StageDir $stage -BackupDir $backup -AppProcessId 2147483000 -LogPath $log -SmokeTestNoRelaunch
+          if ($LASTEXITCODE -ne 0) {
+            if (Test-Path $log) { Get-Content -LiteralPath $log -Tail 40 }
+            throw "Windows portable updater failed its isolated post-shutdown folder-swap test."
+          }
+          if (-not (Test-Path (Join-Path $oldApp "ShowPilot.exe"))) { throw "Updated application was not moved into place." }
+          if (-not (Test-Path (Join-Path $backup "previous-version-marker.txt"))) { throw "Original application folder was not retained." }
+          if (Test-Path $stage) { throw "Temporary staged directory was not consumed." }
       - uses: actions/upload-artifact@v4
         with:
           name: showpilot-windows-portable
