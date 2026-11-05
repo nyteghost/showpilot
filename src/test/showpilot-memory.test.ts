@@ -285,3 +285,56 @@ describe("read-only Native Memory support diagnostics",()=>{
   expect(JSON.stringify(summary)).not.toContain("PRIVATE");
  });
 });
+
+
+describe("CGC show catalog survives portable updates through native SQLite",()=>{
+ const front={key:"id:42611",eventId:"42611",showName:"Front Row Card Show",
+   startDate:"2026-11-07",showDate:"2026-11-10",rooms:"Hall A, Hall B"};
+ const other={key:"id:42389",eventId:"42389",showName:"Coldwell Banker Realty Atlanta",
+   startDate:"2026-11-02",showDate:"2026-11-03",rooms:"BallRoom A, BallRoom B, BallRoom E"};
+ it("commits immediately, deduplicates imports and reloads after app process restart",async()=>{
+  const {api,dir}=memory();
+  expect((await api.showCatalogSave([front])).total).toBe(1);
+  expect((await api.status()).showCatalogCount).toBe(1);
+  expect((await memory(dir).api.showCatalogList()).map((x:any)=>x.showName)).toEqual(["Front Row Card Show"]);
+  expect((await memory(dir).api.showCatalogSave([front])).added).toBe(0);
+  await memory(dir).api.showCatalogSave([{...front,startDate:"2026-11-05",showDate:"2026-11-11",rooms:"Hall B, Hall C"}]);
+  expect((await memory(dir).api.showCatalogList())[0]).toMatchObject({
+    startDate:"2026-11-05",showDate:"2026-11-11",rooms:"Hall A, Hall B, Hall C"
+  });
+ });
+ it("backs up and restores the complete show catalog without losing notes",async()=>{
+  const {api,dir}=memory();
+  await api.showCatalogSave([front,other]);
+  await api.save({category:"Recurring Events",title:"Original planning note",content:"Confirm Hall A outlets"});
+  const pack=await api.exportPack();
+  expect(pack.showCatalog).toHaveLength(2);
+  expect(pack.notes).toHaveLength(1);
+  const backup=await api.backupNow(true);
+  expect(backup.created).toBe(true);
+  const payload=JSON.parse(readFileSync(backup.path,"utf8"));
+  expect(payload.showCatalog.map((s:any)=>s.showName)).toContain("Front Row Card Show");
+  const fresh=memory();
+  const imported=await fresh.api.importPack(payload);
+  expect(imported.showsAdded).toBe(2);
+  expect((await fresh.api.showCatalogList())).toHaveLength(2);
+  expect((await fresh.api.list("Original planning note"))).toHaveLength(1);
+  expect((await fresh.api.diagnosticsSummary()).exportRoundtripOK).toBe(true);
+  expect((await memory(dir).api.showCatalogList())).toHaveLength(2);
+ });
+ it("accepts old JSON backups without a catalog and never deletes existing shows",async()=>{
+  const {api}=memory();
+  await api.showCatalogSave([front]);
+  await api.importPack({format:"showpilot-memory",version:1,notes:[],historicalEntries:[]});
+  expect((await api.showCatalogList()).map((s:any)=>s.key)).toEqual(["id:42611"]);
+ });
+ it("rejects individual functions, CEPAC and invalid rooms atomically",async()=>{
+  const {api}=memory();
+  await expect(api.showCatalogSave([front,{...other,showName:"Move In - Exhibitors/Vendors"}]))
+    .rejects.toThrow(/Only named CGC/);
+  expect(await api.showCatalogList()).toHaveLength(0);
+  await expect(api.showCatalogSave([{...front,rooms:"CEPAC Ballroom"}])).rejects.toThrow(/CGC/);
+  await expect(api.showCatalogSave([{...front,startDate:"2026-11-12"}])).rejects.toThrow(/valid dates/);
+  expect(await api.showCatalogList()).toHaveLength(0);
+ });
+});
