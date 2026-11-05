@@ -518,7 +518,25 @@ function cellDate(v: unknown): string | null {
   const x = v && typeof v === "object" && "result" in (v as object) ? (v as { result: unknown }).result : v;
   if (x instanceof Date) return x.toISOString().slice(0, 10);
   if (typeof x === "number") return serialToIso(x);
+  if (typeof x === "string") {
+    const iso=/^(\d{4})-(\d{2})-(\d{2})$/.exec(x.trim());
+    if(iso&&!Number.isNaN(Date.parse(x+"T12:00:00Z")))return x.trim();
+  }
   return null;
+}
+
+/** The approved CGC workbook sometimes stores its Week dates as formulas
+ * referring to Extra, without Excel's cached results. The physical layout
+ * still fixes the day-of-week row at 4 and the dates at row 5. */
+function scheduleDayHeaderRow(ws:XSheet):number {
+ let dayRow=0;
+ ws.eachRow((row,n)=>{if(!dayRow&&String(row.getCell(2).value??"").trim().toUpperCase()==="MON")dayRow=n;});
+ return dayRow|| (isExactCgcEngineeringTemplate(ws)?4:0);
+}
+function weekDates(monday:string):string[]{
+ const d=new Date(monday+"T12:00:00Z");
+ if(Number.isNaN(d.getTime()))throw new Error("Invalid selected week.");
+ return Array.from({length:7},(_,i)=>{const next=new Date(d);next.setUTCDate(d.getUTCDate()+i);return next.toISOString().slice(0,10);});
 }
 
 /** Writes event rows into an existing weekly sheet, keeping engineer shifts untouched. Returns false if the week is not on this sheet. */
@@ -533,8 +551,7 @@ function engineerCell(plans: Map<string, DayPlan>, name: string, date: string): 
 }
 
 function mergeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans: Map<string, DayPlan> = new Map(), preserveTemplateLayout = false): boolean {
-  let dayRow = 0;
-  ws.eachRow((row, n) => { if (!dayRow && String(row.getCell(2).value ?? "").trim().toUpperCase() === "MON") dayRow = n; });
+  const dayRow=scheduleDayHeaderRow(ws);
   if (!dayRow) return false;
   const cols = new Map<string, number>();
   for (let c = 2; c <= 8; c++) { const d = cellDate(ws.getRow(dayRow + 1).getCell(c).value); if (d) cols.set(d, c); }
@@ -645,19 +662,22 @@ function mergeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans
 /** Fail closed when an approved template does not contain every event date.
  * The legacy in-place merger cannot yet re-date historical template sheets.
  */
-export async function validateApprovedTemplate(file: File, entries: EventEntry[]): Promise<void> {
+export async function validateApprovedTemplate(file: File, entries: EventEntry[], options:{retargetWeek?:boolean}={}): Promise<void> {
  const module=await import("exceljs");
  const ExcelJS=module.default??module;
  const wb:XWorkbook=new ExcelJS.Workbook();
  await wb.xlsx.load(await file.arrayBuffer());
  const covered=new Set<string>();
  for(const ws of wb.worksheets.filter(s=>/week/i.test(s.name))){
-  let dayRow=0;
-  ws.eachRow((row,i)=>{if(!dayRow&&String(row.getCell(2).value??"").trim().toUpperCase()==="MON")dayRow=i;});
+  const dayRow=scheduleDayHeaderRow(ws);
   if(!dayRow)continue;
   for(let c=2;c<=8;c++){const d=cellDate(ws.getRow(dayRow+1).getCell(c).value);if(d)covered.add(d);}
  }
- if(!covered.size)throw new Error("The approved workbook has no recognizable weekly date rows.");
+ // A template with formula-only dates is valid as a layout. When exporting
+ // one selected week, make a COPY and stamp date values into its seven cells.
+ // The saved master itself is never edited.
+ if(options.retargetWeek&&wb.worksheets.some(s=>/^Week\s*#\d+$/i.test(s.name)&&isExactCgcEngineeringTemplate(s)))return;
+ if(!covered.size)throw new Error("The approved workbook has no recognizable weekly date rows or compatible CGC layout.");
  const missing=[...new Set(entries.map(e=>e.date))].filter(d=>!covered.has(d));
  if(missing.length)throw new Error("The master workbook does not contain "+missing.length+" schedule dates (first: "+missing[0]+"). Use Fresh Export, or choose a matching approved workbook. Automatic template re-dating is not ready yet.");
 }
@@ -675,7 +695,7 @@ export function isExactCgcEngineeringTemplate(ws:XSheet):boolean {
 }
 
 /** Builds the weekly engineering workbook (Week #1, #2 …) or, given an existing schedule, fills its event rows. */
-export async function eventsWorkbook(entries: EventEntry[], existing?: File, tasks: TaskNote[] = [], options: {singleWeek?:string;preserveTemplateLayout?:boolean} = {}): Promise<Blob> {
+export async function eventsWorkbook(entries: EventEntry[], existing?: File, tasks: TaskNote[] = [], options: {singleWeek?:string;preserveTemplateLayout?:boolean;retargetTemplateWeek?:boolean} = {}): Promise<Blob> {
   const module = await import("exceljs");
   const ExcelJS = module.default ?? module;
   const wb: XWorkbook = new ExcelJS.Workbook();
@@ -698,26 +718,27 @@ export async function eventsWorkbook(entries: EventEntry[], existing?: File, tas
     if(existing){
       const matches=wb.worksheets.filter(ws=>{
         if(!/week/i.test(ws.name))return false;
-        let header=0;
-        ws.eachRow((row,n)=>{if(!header&&String(row.getCell(2).value??"").trim().toUpperCase()==="MON")header=n;});
-        const first=header?cellDate(ws.getRow(header+1).getCell(2).value):null;
-        return first===options.singleWeek;
+        const header=scheduleDayHeaderRow(ws);
+        return header>0&&cellDate(ws.getRow(header+1).getCell(2).value)===options.singleWeek;
       });
-      if(matches.length!==1)throw new Error("The uploaded Excel template must contain exactly one worksheet for the selected week ("+options.singleWeek+"). Choose a matching template or export fresh.");
-      const selected=matches[0]!;
+      if(matches.length>1)throw new Error("Multiple template worksheets use the selected week; select a unique master workbook.");
+      // Only the explicitly chosen APPROVED master can be re-dated. Uploaded
+      // source workbooks remain date-authoritative and are never retargeted.
+      const retarget=!matches.length&&options.retargetTemplateWeek===true;
+      const selected=matches[0]||(retarget?wb.worksheets.find(ws=>
+        /^Week\s*#\d+$/i.test(ws.name)&&isExactCgcEngineeringTemplate(ws)):undefined);
+      if(!selected)throw new Error("The Excel master has no worksheet for "+options.singleWeek+
+        ". Select a matching template or the approved CGC master in Settings & AI.");
       const originalPrintArea=selected.pageSetup.printArea;
-      // Template dates B5:H5 reference the Extra sheet. Convert only these
-      // seven cached dates to literal dates before deleting unused sheets.
-      // This preserves displayed dates and styles without orphaned references.
-      let header=0;
-      selected.eachRow((row,n)=>{
-        if(!header&&String(row.getCell(2).value??"").trim().toUpperCase()==="MON")header=n;
-      });
+      const header=scheduleDayHeaderRow(selected);
       if(!header)throw new Error("Template date header is missing.");
+      const dates=retarget?weekDates(options.singleWeek):null;
+      // Use explicit dates in the EXPORTED COPY. Week templates can link to
+      // Extra via uncached Excel formulas; those cannot survive removing Extra.
       for(let col=2;col<=8;col++){
         const cell=selected.getRow(header+1).getCell(col);
-        const iso=cellDate(cell.value);
-        if(!iso)throw new Error("The template date "+cell.address+" has no cached value. Re-save the original workbook in Excel and retry.");
+        const iso=dates?.[col-2]??cellDate(cell.value);
+        if(!iso)throw new Error("The template date "+cell.address+" has no cached value. Choose the approved master to re-date the selected week.");
         const style={...cell.style};
         cell.value=toDate(iso);
         cell.style=style;
@@ -735,8 +756,7 @@ export async function eventsWorkbook(entries: EventEntry[], existing?: File, tas
   // PTO and shifts you already typed into the engineer rows are read first, so the plan works around them.
   const avail: Record<string, Record<string, Avail>> = {};
   for (const ws of sheets) {
-    let dayRow = 0;
-    ws.eachRow((row, i) => { if (!dayRow && String(row.getCell(2).value ?? "").trim().toUpperCase() === "MON") dayRow = i; });
+    const dayRow=scheduleDayHeaderRow(ws);
     if (!dayRow) continue;
     const cols = new Map<string, number>();
     for (let c = 2; c <= 8; c++) { const d = cellDate(ws.getRow(dayRow + 1).getCell(c).value); if (d) cols.set(d, c); }
