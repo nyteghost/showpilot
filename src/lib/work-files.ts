@@ -741,7 +741,7 @@ export async function eventsWorkbook(entries: EventEntry[], existing?: File, tas
       const retarget=!matches.length&&options.retargetTemplateWeek===true;
       const selected=matches[0]||(retarget?wb.worksheets.find(ws=>
         /^Week\s*#\d+$/i.test(ws.name)&&isExactCgcEngineeringTemplate(ws)):undefined);
-      if(!selected)throw new Error("The Excel master has no worksheet for "+options.singleWeek+
+      if(!selected)throw new Error("The Excel master has no worksheet for the selected week "+options.singleWeek+
         ". Select a matching template or the approved CGC master in Settings & AI.");
       const originalPrintArea=selected.pageSetup.printArea;
       const header=scheduleDayHeaderRow(selected);
