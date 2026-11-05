@@ -1,5 +1,5 @@
-import {useEffect,useMemo,useState} from "react";
-import {BookOpen,CalendarRange,Save,Search,FileArchive,ClipboardCheck,CalendarClock,FolderOpen} from "lucide-react";
+import {useEffect,useMemo,useState,type ReactNode} from "react";
+import {BookOpen,CalendarRange,Save,Search,ClipboardCheck,CalendarClock,FolderOpen,Layers,Map as MapIcon} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import {ShowPilotEventDocuments} from "@/components/showpilot-event-documents";
 import {ShowPilotEventZipImport} from "@/components/showpilot-event-zip-import";
@@ -16,7 +16,8 @@ const matches=(eventId:string,name:string,show:PostConShow)=>
 const preFields=[["overview","Pre-show overview"],["staffing","Staffing and engineering"],["stage","Stage and deck"],["floor","Floor map and utilities"],["followUp","Decisions and follow-ups"]] as const;
 const postFields=[["wentWell","What went well"],["issues","Issues and outcomes"],["staffing","Staffing lessons"],["stage","Stage notes"],["floor","Floor-map improvements"],["followUp","Follow-ups"]] as const;
 
-export function ShowPilotEventsPanel({active=true}:{active?:boolean}){
+type EventSection="overview"|"documents"|"precon"|"postcon"|"stage"|"floor";
+export function ShowPilotEventsPanel({active=true,stagePlanner,floorMaps}:{active?:boolean;stagePlanner?:ReactNode;floorMaps?:ReactNode}){
  const bridge=window.showpilotMemory;
  const [shows,setShows]=useState<PostConShow[]>(()=>loadPostConShows());
  const [selectedKey,setSelectedKey]=useState("");
@@ -28,12 +29,12 @@ export function ShowPilotEventsPanel({active=true}:{active?:boolean}){
  const [precon,setPrecon]=useState<PreConDraft|null>(null);
  const [postcon,setPostcon]=useState<PostConReport|null>(null);
  const [message,setMessage]=useState("");
- const [section,setSection]=useState<"overview"|"documents"|"precon"|"postcon">("overview");
+ const [section,setSection]=useState<EventSection>("overview");
  const [filesRevision,setFilesRevision]=useState(0);
- const [visited,setVisited]=useState<Array<"precon"|"postcon">>([]);
- const selectSection=(next:"overview"|"documents"|"precon"|"postcon")=>{
+ const [visited,setVisited]=useState<EventSection[]>([]);
+ const selectSection=(next:EventSection)=>{
   setSection(next);
-  if(next==="precon"||next==="postcon")setVisited(v=>v.includes(next)?v:[...v,next]);
+  setVisited(v=>v.includes(next)?v:[...v,next]);
  };
  const imported=(key:string)=>{
   setSelectedKey(key);setFilesRevision(v=>v+1);selectSection("documents");
@@ -121,7 +122,9 @@ export function ShowPilotEventsPanel({active=true}:{active?:boolean}){
     ["overview","Overview & notes",BookOpen],
     ["documents","Event documents",FolderOpen],
     ["precon","Pre-Con Notes",CalendarClock],
-    ["postcon","Post-Con Reports",ClipboardCheck]
+    ["postcon","Post-Con Reports",ClipboardCheck],
+    ["stage","Stage & Deck Planner",Layers],
+    ["floor","Floor Maps",MapIcon]
    ] as const).map(([id,title,Icon])=>
     <button key={id} role="tab" aria-selected={section===id} type="button" onClick={()=>selectSection(id)}
      className={"flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-semibold transition-colors "+
@@ -168,11 +171,13 @@ export function ShowPilotEventsPanel({active=true}:{active?:boolean}){
    </div>}
   </div>
   {section==="documents"&&<div className="space-y-3">
-   {show&&bridge?<ShowPilotEventDocuments key={show.key+":"+filesRevision} show={show}/>
+   {show&&bridge?<ShowPilotEventDocuments key={show.key+":"+filesRevision} show={show} onOpenStage={()=>selectSection("stage")} onOpenFloorMaps={()=>selectSection("floor")}/>
     :<div className="rounded-xl border p-4 text-sm text-muted-foreground">Choose a show or import an event ZIP to see its work orders, EOCs and diagrams.</div>}
   </div>}
   <div hidden={section!=="precon"}>{visited.includes("precon")&&<PreConPanel focusShow={show}/>}</div>
   <div hidden={section!=="postcon"}>{visited.includes("postcon")&&<PostConPanel focusShow={show}/>}</div>
+  <div hidden={section!=="stage"}>{visited.includes("stage")&&stagePlanner}</div>
+  <div hidden={section!=="floor"}>{visited.includes("floor")&&floorMaps}</div>
   {message&&<p role="status" className="rounded border p-2 text-xs">{message}</p>}
  </section>;
 }
