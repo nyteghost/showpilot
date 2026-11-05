@@ -16,7 +16,7 @@ export function normalizeEventDate(value:string):string{
 }
 export function cgcRoomsFromText(text:string):string[]{
  const found=new Set<string>();
- const re=/\b(?:exhibit\s*)?(halls?|ball\s*rooms?)\s*(?:[:#-]\s*)?([A-G](?:[A-G]|\s*(?:[,/&+-]|\band\b|\bthrough\b|\bto\b)\s*[A-G])*)/gi;
+ const re=/\b(?:exhibit\s*)?(halls?|ball\s*rooms?)\s*(?:[:#-]\s*)?([A-G](?:[A-G]|\s*(?:[,/&+-]|\band\b|\bthrough\b|\bto\b)\s*[A-G](?![a-z]))*)/gi;
  for(const m of text.matchAll(re)){
   const hall=/hall/i.test(m[1]),letters=hall?"ABCD":"ABCDEFG",value=m[2].toUpperCase();
   const chars=(value.match(/[A-G]/g)||[]).filter(x=>letters.includes(x));
