@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { Briefcase, CalendarClock, CalendarDays, CalendarSync, FolderOpen, Download, ExternalLink, FileUp, GitBranch, Layers, Eye, Map as MapIcon, Store } from "lucide-react";
+import { Briefcase, CalendarClock, CalendarDays, CalendarPlus, CalendarSync, FolderOpen, Download, ExternalLink, FileUp, GitBranch, Layers, Eye, Map as MapIcon, Store } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -88,8 +88,6 @@ export function ShowServicesTools({ page = false, selectedTab, hideTabBar = fals
           {visited.includes("deck") && <KeepAliveTabContent value="deck"><DeckTab /></KeepAliveTabContent>}
           {visited.includes("vendors") && <KeepAliveTabContent value="vendors"><StandaloneVendors /></KeepAliveTabContent>}
           {visited.includes("floor") && <KeepAliveTabContent value="floor"><FloorMapPanel /></KeepAliveTabContent>}
-          {visited.includes("precon") && <KeepAliveTabContent value="precon"><PreConPanel /></KeepAliveTabContent>}
-          {visited.includes("postcon") && <KeepAliveTabContent value="postcon"><PostConPanel /></KeepAliveTabContent>}
         </Tabs>;
 }
 
