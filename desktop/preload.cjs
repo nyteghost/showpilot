@@ -59,6 +59,7 @@ contextBridge.exposeInMainWorld("showpilotMemory",Object.freeze({
  eventFileRead:(id)=>ipcRenderer.invoke("showpilot-memory:event-file-read",id),
  eventFileArchive:(id,archived)=>ipcRenderer.invoke("showpilot-memory:event-file-archive",id,archived),
  eventZipInspect:(bytes)=>ipcRenderer.invoke("showpilot-memory:event-zip-inspect",bytes),
+ eventZipScan:(bytes)=>ipcRenderer.invoke("showpilot-memory:event-zip-scan",bytes),
  eventZipImport:(payload)=>ipcRenderer.invoke("showpilot-memory:event-zip-import",payload),
  eventFileSetEocExcerpts:(id,excerpts)=>ipcRenderer.invoke("showpilot-memory:event-file-set-eoc",id,excerpts),
  openFolder:()=>ipcRenderer.invoke("showpilot-memory:open-folder"),
