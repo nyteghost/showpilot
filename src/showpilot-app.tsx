@@ -51,6 +51,14 @@ export function App() {
   useEffect(()=>{try{localStorage.setItem("showpilot:screen",screen)}catch{}},[screen]);
   useEffect(()=>{try{localStorage.setItem("showpilot:sidebar",String(expanded))}catch{}},[expanded]);
 
+  useEffect(()=>{
+    const open=(event:Event)=>{
+      const tab=(event as CustomEvent<{tab?:string}>).detail?.tab;
+      if(tab==="events"){setLastWorkTab("events");setScreen("events");setMobileOpen(false);}
+    };
+    window.addEventListener("showpilot:navigate",open);
+    return ()=>window.removeEventListener("showpilot:navigate",open);
+  },[]);
   const select=(next:Screen)=>{if(sections.some(s=>s.id===next))setLastWorkTab(next as WorkTabId);setScreen(next);setMobileOpen(false)};
   const current=sections.find(s=>s.id===screen);
   return <div className="sp-shell">
