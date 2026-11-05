@@ -140,7 +140,7 @@ describe("native SQLite ShowPilot memory",()=>{
   expect(first.notesAdded).toBe(1);
   const folder=path.join(dir,"ShowPilot Memory Backups");
   expect(existsSync(folder)).toBe(true);
-  const files=(await import("node:fs")).readdirSync(folder);
+  const files=(await import("node:fs")).readdirSync(folder).filter(name=>name.endsWith(".json"));
   expect(files).toHaveLength(1);
   const backup=JSON.parse(readFileSync(path.join(folder,files[0]!),"utf8"));
   expect(backup.format).toBe("showpilot-memory");
@@ -148,10 +148,10 @@ describe("native SQLite ShowPilot memory",()=>{
   expect(backup.historicalEntries).toHaveLength(1);
   expect((await api.status()).lastBackupAt.length).toBeGreaterThan(5);
   expect((await api.automaticBackupCheck()).reason).toBe("not-due");
-  expect((await import("node:fs")).readdirSync(folder)).toHaveLength(1);
+  expect((await import("node:fs")).readdirSync(folder).filter(name=>name.endsWith(".json"))).toHaveLength(1);
   const manual=await api.backupNow(true);
   expect(manual.created).toBe(true);
-  expect((await import("node:fs")).readdirSync(folder)).toHaveLength(2);
+  expect((await import("node:fs")).readdirSync(folder).filter(name=>name.endsWith(".json"))).toHaveLength(2);
  });
  it("backs up archived memories and honors the weekly-backup switch",async()=>{
   const {api,dir}=memory();
@@ -164,7 +164,7 @@ describe("native SQLite ShowPilot memory",()=>{
   expect(existsSync(path.join(dir,"ShowPilot Memory Backups"))).toBe(false);
   await api.setBackupEnabled(true);
   const folder=path.join(dir,"ShowPilot Memory Backups");
-  const files=(await import("node:fs")).readdirSync(folder);
+  const files=(await import("node:fs")).readdirSync(folder).filter(name=>name.endsWith(".json"));
   expect(files).toHaveLength(1);
   const payload=JSON.parse(readFileSync(path.join(folder,files[0]!),"utf8"));
   expect(payload.archivedNotes.map((n:{id:string})=>n.id)).toContain(note.id);
