@@ -1,5 +1,5 @@
-import {describe,expect,it} from "vitest";
-import {postConShows,postConShowsFromReportRows,POSTCON_CATALOG_KEY,completedShowsLastMonth,upcomingPreConShows,mergePostConShows} from "@/lib/showpilot-postcon";
+import {describe,expect,it,afterEach,vi} from "vitest";
+import {postConShows,postConShowsFromReportRows,rememberPostConShowsFromReportRows,loadDurableShowCatalog,POSTCON_CATALOG_KEY,completedShowsLastMonth,upcomingPreConShows,mergePostConShows} from "@/lib/showpilot-postcon";
 import {encodePreCon,decodePreCon,preConNoteTitle,emptyPreCon} from "@/lib/showpilot-precon";
 import type {EventEntry,EventRow} from "@/lib/work-tools";
 
@@ -99,5 +99,44 @@ describe("Pre-Con and Post-Con group by real Event names, never function descrip
  });
  it("uses a clean v2 persistent catalog, not the old function-level v1 key",()=>{
    expect(POSTCON_CATALOG_KEY).toBe("showpilot:postcon:known-shows:v2");
+ });
+});
+
+describe("Show dropdown hydration across portable app updates",()=>{
+ afterEach(()=>vi.unstubAllGlobals());
+ const real={key:"id:42389",eventId:"42389",showName:"Coldwell Banker Realty Atlanta",
+   startDate:"2026-11-02",showDate:"2026-11-03",rooms:"BallRoom A, BallRoom B, BallRoom E"};
+ const source={date:"2026-11-02",event:real.showName,eventId:real.eventId,
+  description:"Vendor Load-In",space:"Ballroom ABE (BRABE)",usage:"",level:2,start:"05:00 PM",end:"06:00 PM"} satisfies EventRow;
+ const setup=()=>{
+  let saved=Array<typeof real>();
+  const bridge={
+   showCatalogSave:vi.fn(async (items:typeof real[])=>{saved=[...items];return {saved:true,added:items.length,total:saved.length}}),
+   showCatalogList:vi.fn(async ()=>saved),
+  };
+  const local=new Map<string,string>();
+  vi.stubGlobal("localStorage",{getItem:(key:string)=>local.get(key)??null,setItem:(key:string,value:string)=>{local.set(key,value);}});
+  vi.stubGlobal("window",{showpilotMemory:bridge,dispatchEvent:vi.fn()});
+  return {bridge,local};
+ };
+ it("saves true report shows in SQLite and survives a fresh/empty browser cache",async()=>{
+  const {bridge,local}=setup();
+  expect(await rememberPostConShowsFromReportRows([source])).toMatchObject({shows:1,storage:"sqlite"});
+  expect(bridge.showCatalogSave).toHaveBeenCalledOnce();
+  local.clear(); // Simulate portable app update clearing its browser storage.
+  expect((await loadDurableShowCatalog()).map(show=>show.showName)).toEqual([real.showName]);
+  expect(bridge.showCatalogList).toHaveBeenCalledTimes(2);
+ });
+ it("recovers a valid v2 cached catalog into a newly initialized database",async()=>{
+  const {bridge,local}=setup();
+  local.set(POSTCON_CATALOG_KEY,JSON.stringify([real]));
+  expect((await loadDurableShowCatalog()).map(show=>show.key)).toEqual(["id:42389"]);
+  expect(bridge.showCatalogSave).toHaveBeenCalledWith([real]);
+ });
+ it("never revives polluted v1 function labels",async()=>{
+  const {bridge,local}=setup();
+  local.set("showpilot:postcon:known-shows:v1",JSON.stringify([{...real,showName:"Move In"}]));
+  expect(await loadDurableShowCatalog()).toEqual([]);
+  expect(bridge.showCatalogSave).not.toHaveBeenCalled();
  });
 });
