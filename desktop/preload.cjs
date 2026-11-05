@@ -1,5 +1,21 @@
 const { contextBridge, ipcRenderer } = require("electron");
-contextBridge.exposeInMainWorld("showpilotUpdates",Object.freeze({status:()=>ipcRenderer.invoke("showpilot-update:status"),setChannel:(channel)=>ipcRenderer.invoke("showpilot-update:channel",channel),check:()=>ipcRenderer.invoke("showpilot-update:check"),open:()=>ipcRenderer.invoke("showpilot-update:open")}));
+contextBridge.exposeInMainWorld("showpilotUpdates",Object.freeze({
+ status:()=>ipcRenderer.invoke("showpilot-update:status"),
+ setChannel:(channel)=>ipcRenderer.invoke("showpilot-update:channel",channel),
+ check:()=>ipcRenderer.invoke("showpilot-update:check"),
+ open:()=>ipcRenderer.invoke("showpilot-update:open"),
+ install:()=>ipcRenderer.invoke("showpilot-update:install"),
+ onProgress:(callback)=>{
+  if(typeof callback!=="function")return ()=>{};
+  const listener=(_,info)=>{
+   if(!info||typeof info!=="object")return;
+   callback({phase:String(info.phase||""),message:String(info.message||"").slice(0,600),
+    percent:Number.isFinite(info.percent)?Math.max(0,Math.min(100,info.percent)):0});
+  };
+  ipcRenderer.on("showpilot-update:progress",listener);
+  return ()=>ipcRenderer.removeListener("showpilot-update:progress",listener);
+ }
+}));
 contextBridge.exposeInMainWorld("showpilotAI", Object.freeze({
   status: () => ipcRenderer.invoke("showpilot-ai:status"),
   saveKey: (provider, key) => ipcRenderer.invoke("showpilot-ai:save",provider,key),
