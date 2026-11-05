@@ -21,6 +21,66 @@ function Write-UpdateLog([string]$message) {
   if (-not $LogPath) { return }
   try { Add-Content -LiteralPath $LogPath -Value ("$(Get-Date -Format o) "+$message) -Encoding UTF8 } catch {}
 }
+function Write-UpdateResult([string]$status,[string]$message) {
+  if (-not $LogPath) { return }
+  try {
+    $folder=[System.IO.Path]::GetDirectoryName([System.IO.Path]::GetFullPath($LogPath))
+    [System.IO.Directory]::CreateDirectory($folder) | Out-Null
+    $target=Join-Path $folder 'last-update-result.json'
+    $temp=$target+'.tmp'
+    $payload=@{
+      status=$status
+      message=$message
+      updated=(Get-Date -Format o)
+    } | ConvertTo-Json -Compress
+    [System.IO.File]::WriteAllText($temp,$payload,[System.Text.Encoding]::UTF8)
+    [System.IO.File]::Copy($temp,$target,$true)
+    Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
+  } catch { Write-UpdateLog ('Could not persist update result: '+$_.Exception.Message) }
+}
+function Running-ShowPilotProcesses {
+  # Electron has a browser process, GPU process, renderer and utility children.
+  # The previous helper only waited for the original PID, leaving children
+  # holding executable/DLL locks on the old installation directory.
+  $root=(Safe-Root $InstallDir)+[System.IO.Path]::DirectorySeparatorChar
+  $list=@()
+  foreach($proc in @(Get-Process -Name 'ShowPilot' -ErrorAction SilentlyContinue)) {
+    try {
+      $exe=$proc.Path
+      if ($exe -and $exe.StartsWith($root,[StringComparison]::OrdinalIgnoreCase)) {
+        $list+= $proc
+      }
+    } catch {}
+  }
+  return @($list)
+}
+function Wait-For-Old-App {
+  Write-UpdateLog 'Waiting for all ShowPilot browser/GPU/renderer processes to exit.'
+  for ($i=0;$i -lt 180;$i++) {
+    $main=(Get-Process -Id $AppProcessId -ErrorAction SilentlyContinue)
+    $children=@(Running-ShowPilotProcesses)
+    if (-not $main -and $children.Count -eq 0) {
+      Write-UpdateLog 'All original ShowPilot processes have exited.'
+      return
+    }
+    Start-Sleep -Milliseconds 500
+  }
+  throw 'Other ShowPilot processes are still running or holding files open. The original installation was not modified.'
+}
+function Launch-ShowPilot([string]$directory) {
+  $exe=Join-Path $directory 'ShowPilot.exe'
+  if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) {
+    throw ('Cannot find ShowPilot.exe for restart at '+$directory)
+  }
+  $appProcess=Start-Process -FilePath $exe -WorkingDirectory $directory -PassThru
+  Start-Sleep -Seconds 4
+  $appProcess.Refresh()
+  if ($appProcess.HasExited) {
+    throw ('ShowPilot closed immediately after launch (exit code '+$appProcess.ExitCode+').')
+  }
+  return $appProcess
+}
+
 function Safe-Root([string]$folder) {
   return [System.IO.Path]::GetFullPath($folder).TrimEnd([System.IO.Path]::DirectorySeparatorChar)
 }
@@ -104,48 +164,66 @@ function Install-Zip {
   if (-not (Test-Path -LiteralPath $InstallDir -PathType Container)) { throw 'Original installation was not found.' }
   if (Test-Path -LiteralPath $BackupDir) { throw 'Previous-version backup destination already exists.' }
   Require-Executable $StageDir
-  # Wait for the old executable to release Windows file locks. The helper's
-  # working directory is outside the app, so it does not hold the old folder open.
-  $closed=$false
-  for ($i=0;$i -lt 120;$i++) {
-    if (-not (Get-Process -Id $AppProcessId -ErrorAction SilentlyContinue)) { $closed=$true;break }
-    Start-Sleep -Milliseconds 500
-  }
-  if (-not $closed) { throw 'ShowPilot did not exit; no files were replaced.' }
+  Write-UpdateLog 'Install helper started and validated the new executable.'
   $movedOld=$false
   $installedNew=$false
   try {
-    for ($i=0;$i -lt 20;$i++) {
+    Wait-For-Old-App
+    for ($i=0;$i -lt 30;$i++) {
       try {
         [System.IO.Directory]::Move($InstallDir,$BackupDir)
         $movedOld=$true
+        Write-UpdateLog 'Moved original app folder to previous-version backup.'
         break
       } catch {
-        if ($i -eq 19) { throw }
+        if ($i -eq 29) { throw }
         Start-Sleep -Milliseconds 500
       }
     }
     [System.IO.Directory]::Move($StageDir,$InstallDir)
     $installedNew=$true
+    Write-UpdateLog 'Moved staged update into the application folder.'
     Require-Executable $InstallDir
-    $appProcess=Start-Process -FilePath (Join-Path $InstallDir 'ShowPilot.exe') -WorkingDirectory $InstallDir -PassThru
-    Start-Sleep -Seconds 4
-    $appProcess.Refresh()
-    if ($appProcess.HasExited) { throw 'Updated ShowPilot exited immediately after launch.' }
-    Write-UpdateLog 'New version started. Previous executable folder retained for manual rollback.'
+    $appProcess=Launch-ShowPilot $InstallDir
+    Write-UpdateLog ('Updated ShowPilot relaunched as PID '+$appProcess.Id+'. Original app retained for rollback.')
+    Write-UpdateResult 'success' 'ShowPilot update installed and launched successfully.'
   } catch {
-    Write-UpdateLog ('New-version launch/swap failed: '+$_.Exception.Message)
+    $failure=$_.Exception.Message
+    Write-UpdateLog ('Install failed: '+$failure)
+    $recovered=$false
     if ($movedOld) {
+      # Never delete/overwrite a user directory. Restore the old app only
+      # when the destination can be safely made vacant.
       if ($installedNew -and (Test-Path -LiteralPath $InstallDir)) {
         $failedDir=$StageDir+'-failed'
-        try {[System.IO.Directory]::Move($InstallDir,$failedDir)}catch{}
+        try {
+          [System.IO.Directory]::Move($InstallDir,$failedDir)
+          Write-UpdateLog ('Moved failed update to '+$failedDir)
+        } catch {
+          Write-UpdateLog ('Could not isolate failed update: '+$_.Exception.Message)
+        }
       }
       if (-not (Test-Path -LiteralPath $InstallDir) -and (Test-Path -LiteralPath $BackupDir)) {
         try {
           [System.IO.Directory]::Move($BackupDir,$InstallDir)
-          Start-Process -FilePath (Join-Path $InstallDir 'ShowPilot.exe') -WorkingDirectory $InstallDir | Out-Null
-          Write-UpdateLog 'Rolled back and restarted the previous ShowPilot version.'
-        } catch {Write-UpdateLog ('Rollback failed: '+$_.Exception.Message)}
+          $recovered=$true
+          Write-UpdateLog 'Restored original executable folder after install failure.'
+        } catch {
+          Write-UpdateLog ('Could not restore original executable folder: '+$_.Exception.Message)
+        }
+      }
+    } else {
+      # Nothing was replaced. The user's previous version remains usable.
+      $recovered=(Test-Path -LiteralPath $InstallDir -PathType Container)
+    }
+    Write-UpdateResult 'failed' ('Automatic update failed: '+$failure+
+      $(if($recovered){' Original version was preserved.'}else{' Check the update log before restarting manually.'}))
+    if ($recovered -and @(Running-ShowPilotProcesses).Count -eq 0) {
+      try {
+        $old=Launch-ShowPilot $InstallDir
+        Write-UpdateLog ('Restarted previous ShowPilot version as PID '+$old.Id+'.')
+      } catch {
+        Write-UpdateLog ('Unable to relaunch previous ShowPilot: '+$_.Exception.Message)
       }
     }
     throw
@@ -157,6 +235,7 @@ try {
   exit 0
 } catch {
   Write-UpdateLog ('Update '+$Mode+' failed: '+$_.Exception.Message)
+  if ($Mode -eq 'Install') { Write-UpdateResult 'failed' ('Automatic update could not finish: '+$_.Exception.Message) }
   Write-Error $_.Exception.Message
   exit 1
 }
