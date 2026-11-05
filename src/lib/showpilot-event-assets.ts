@@ -3,7 +3,7 @@
  */
 export const EVENT_FILE_KINDS=["work-order","eoc","diagram","other"] as const;
 export type EventFileKind=typeof EVENT_FILE_KINDS[number];
-export type EocSection="Event Notes"|"Engineering"|"Utility";
+export type EocSection="Event Notes"|"Engineering"|"Utility"|"Attendance";
 export type EocExcerpt={section:EocSection;page:number;text:string};
 export type EventFileRecord={
  id:string;eventKey:string;kind:EventFileKind;name:string;extension:string;
@@ -36,13 +36,29 @@ export function extractEocFocus(pages:readonly string[]):EocExcerpt[]{
   {name:"Engineering",re:/^\s*(?:engineering|engineering\s+notes?|engineering\s+requirements?)\s*(?:[:：–-]\s*(.*))?$/i},
   {name:"Utility",re:/^\s*(?:utilities|utility|utility\s+orders?|utility\s+services?)\s*(?:[:：–-]\s*(.*))?$/i}
  ];
+ const attendanceRe=/\b(?:(?:expected|estimated|anticipated|projected|guaranteed|actual|total)\s+)?(?:attendance|attendees|guests\s+expected|expected\s+guests|number\s+of\s+(?:attendees|guests))\b\s*(?:[:：–#-]\s*|\s+)(?:approximately\s*|approx\.?\s*|about\s*)?(\d{1,3}(?:,\d{3})+|\d{1,6})(?:\s*(?:people|guests|attendees|pax))?\b/i;
+ const attendanceOtherRe=/\b(?:attendance|attendees)\s*[:：–-]?\s*(?:expected|estimated|anticipated|projected|guaranteed|actual|total)\s*[:：–-]?\s*(\d{1,3}(?:,\d{3})+|\d{1,6})\b/i;
  const result:EocExcerpt[]=[];
  for(let i=0;i<Math.min(pages.length,80);i++){
   let current:EocSection|null=null;
   const data=new Map<EocSection,string[]>();
-  for(const raw of pages[i]!.split(/\r?\n/)){
+  const attendance=new Set<string>();
+  const lines=pages[i]!.split(/\r?\n/);
+  for(let lineNo=0;lineNo<lines.length;lineNo++){
+   const raw=lines[lineNo]!;
    const line=raw.replace(/\s+/g," ").trim();
    if(!line)continue;
+   const direct=attendanceRe.exec(line)||attendanceOtherRe.exec(line);
+   if(direct){
+    const num=Number(direct[1]!.replace(/,/g,""));
+    if(num>0&&num<=1000000)attendance.add(" "+num.toLocaleString("en-US"));
+   }else if(/^(?:(?:expected|estimated|anticipated|total)\s+)?(?:attendance|attendees)\s*:?\s*$/i.test(line)&&lineNo+1<lines.length){
+    const next=lines[lineNo+1]!.trim();
+    if(/^\d{1,3}(?:,\d{3})*$|^\d{1,6}$/.test(next)){
+     const num=Number(next.replace(/,/g,""));
+     if(num>0&&num<=1000000)attendance.add(" "+num.toLocaleString("en-US"));
+    }
+   }
    const section=headings.find(h=>h.re.test(line));
    if(section){current=section.name; if(!data.has(current))data.set(current,[]);
     const suffix=line.match(section.re)?.[1]?.trim();
@@ -57,6 +73,7 @@ export function extractEocFocus(pages:readonly string[]):EocExcerpt[]{
     if(lines.join(" ").length<1200)lines.push(line.slice(0,360));
    }
   }
+  for(const value of attendance)result.push({section:"Attendance",page:i+1,text:value.trim()});
   for(const [section,lines] of data){
    if(lines.length)result.push({section,page:i+1,text:lines.join("\n").slice(0,1200)});
   }
