@@ -27,6 +27,28 @@ export async function gpuAvailable():Promise<boolean>{
   return Boolean(nav.gpu&&await nav.gpu.requestAdapter());
  }catch{return false}
 }
+/** WebLLM's own cache inspection is authoritative. A saved model selection
+ * in localStorage is NOT proof that the model weights are still available.
+ * Cache availability is scoped to the current ShowPilot app browser profile.
+ */
+export async function localModelCached(model:string):Promise<boolean>{
+ if(!model.trim())return false;
+ if(runtime.status==="ready"&&loadedModel===model&&engine)return true;
+ const webllm=await import("@mlc-ai/web-llm");
+ if(!webllm.prebuiltAppConfig.model_list.some(x=>x.model_id===model))
+  throw new Error("This model is not part of the supported local model list.");
+ return webllm.hasModelInCache(model,webllm.prebuiltAppConfig);
+}
+
+export type LocalModelCacheStatus="checking"|"cached"|"missing"|"unknown";
+/** Keep action labels accurate when model state or selection changes. */
+export function localModelButtonLabel(cache:LocalModelCacheStatus,working:boolean):string{
+ if(working)return "Loading Local AI…";
+ if(cache==="checking")return "Checking local model…";
+ if(cache==="unknown")return "Check Local AI Cache";
+ return cache==="cached"?"Load Local AI":"Download Local AI";
+}
+
 export async function localModelOptions() {
  const webllm=await import("@mlc-ai/web-llm");
  const models=webllm.prebuiltAppConfig.model_list.map(m=>m.model_id);
