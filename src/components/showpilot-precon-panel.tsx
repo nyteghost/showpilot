@@ -13,7 +13,7 @@ const fields=[
  {key:"followUp",label:"Decisions and follow-ups",hint:"Who to contact, approvals needed, and what to check before move-in…"}
 ] as const;
 
-export function PreConPanel(){
+export function PreConPanel({focusShow}:{focusShow?:PostConShow}={}){
  const bridge=window.showpilotMemory;
  const [catalog,setCatalog]=useState<PostConShow[]>(()=>loadPostConShows());
  const [catalogError,setCatalogError]=useState("");
@@ -43,6 +43,28 @@ export function PreConPanel(){
   window.addEventListener("showpilot:postcon-catalog",hydrate);
   return ()=>{active=false;window.removeEventListener("showpilot:postcon-catalog",hydrate)};
  },[bridge]);
+ // Selecting a show in Events opens its own Pre-Con form, even if outside
+ // the next-30-day quick picker. Existing notes remain editable.
+ useEffect(()=>{
+  if(!focusShow)return;
+  let live=true;
+  const draft={
+   ...emptyPreCon(focusShow.startDate??focusShow.showDate),
+   showName:focusShow.showName,eventId:focusShow.eventId,rooms:focusShow.rooms
+  };
+  setDraft(draft);setEditingId(null);setSelectedShow(focusShow.key);setDirty(false);
+  if(bridge)void (async()=>{
+   const candidates=await bridge.list("Pre-Con:");
+   const stored=candidates.find(n=>n.title===preConNoteTitle(draft));
+   if(!stored)return;
+   const note=await bridge.read(stored.id);
+   if(live){
+    setDraft(decodePreCon(note.content));setEditingId(stored.id);
+    setSelectedShow(focusShow.key);setDirty(false);
+   }
+  })().catch(e=>{if(live)setStatus("Unable to open selected Pre-Con: "+String(e))});
+  return ()=>{live=false};
+ },[focusShow?.key,bridge]);
  const change=(key:keyof PreConDraft,value:string)=>{
   setDraft(d=>({...d,[key]:value}));setDirty(true);
  };
@@ -117,6 +139,7 @@ export function PreConPanel(){
        <select id="precon-next" className="mt-1 w-full rounded border bg-background p-2 text-sm font-normal"
         value={selectedShow} onChange={e=>void choose(e.target.value)}>
         <option value="">Choose a scheduled show…</option>
+        {focusShow&&!upcoming.some(s=>s.key===focusShow.key)&&<option value={focusShow.key}>{focusShow.startDate??focusShow.showDate} · {focusShow.showName} (selected event)</option>}
         {upcoming.map(show=><option key={show.key} value={show.key}>
           {show.startDate??show.showDate}{show.startDate&&show.startDate!==show.showDate?" to "+show.showDate:""} · {show.showName} · {show.rooms}
         </option>)}
