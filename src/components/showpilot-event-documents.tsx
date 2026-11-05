@@ -105,7 +105,7 @@ export function ShowPilotEventDocuments({show}:{show:PostConShow}){
     onDragEnter={e=>{e.preventDefault();setDragging(true)}}
     onDragOver={e=>{e.preventDefault();setDragging(true)}}
     onDragLeave={e=>{e.preventDefault();setDragging(false)}}
-    onDrop={e=>{e.preventDefault();setDragging(false);void upload([...e.dataTransfer.files]);}}>
+    onDrop={e=>{e.preventDefault();setDragging(false);const files=[...e.dataTransfer.files];if(files.some(f=>/\.zip$/i.test(f.name)))return;void upload(files);}}>
     <UploadCloud className="mx-auto mb-2 size-8 text-muted-foreground"/>
     <strong>{busy?"Saving files…":"Drag and drop your event documents here"}</strong>
     <p className="mt-1 text-xs text-muted-foreground">Or click to browse · PDF, images, Word, Excel, text, CSV, DWG, DXF · up to 25 MB each.</p>
