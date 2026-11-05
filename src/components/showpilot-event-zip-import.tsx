@@ -3,14 +3,12 @@ import {FileArchive,UploadCloud} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import type {EventZipInspection} from "@/lib/showpilot-memory-bridge";
 import type {PostConShow} from "@/lib/showpilot-postcon";
-import {extractEocFromPdf} from "@/lib/showpilot-event-assets";
+import {extractEocFromPdf,pdfTextPages} from "@/lib/showpilot-event-assets";
+import {discoverEventMetadata,ROOMS,type EventMetadataResult,type EventMetadataSource} from "@/lib/showpilot-event-discovery";
 
-const roomsAvailable=["Hall A","Hall B","Hall C","Hall D",
- "BallRoom A","BallRoom B","BallRoom C","BallRoom D","BallRoom E","BallRoom F","BallRoom G"];
+const roomsAvailable=ROOMS;
 const validDay=(day:string)=>/^\d{4}-\d{2}-\d{2}$/.test(day)&&!Number.isNaN(Date.parse(day+"T12:00:00Z"));
-const suggested=(name:string)=>name.replace(/\.zip$/i,"").replace(/[_-]+/g," ").trim().slice(0,140);
-const fromManifest=(str:string)=>roomsAvailable.filter(room=>
- str.split(",").some(chunk=>chunk.trim().toLowerCase()===room.toLowerCase()));
+
 
 export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=true}:{
  shows:PostConShow[];selectedKey:string;onImported:(key:string)=>void;active?:boolean;
@@ -29,23 +27,42 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
  const [start,setStart]=useState("");
  const [end,setEnd]=useState("");
  const [rooms,setRooms]=useState<string[]>([]);
- const reset=()=>{setArchive(null);setInspection(null);if(picker.current)picker.current.value="";};
+ const [metadata,setMetadata]=useState<EventMetadataResult|null>(null);
+ const [readWarnings,setReadWarnings]=useState<string[]>([]);
+ const [applyExisting,setApplyExisting]=useState(false);
+ const reset=()=>{setArchive(null);setInspection(null);setMetadata(null);setReadWarnings([]);setApplyExisting(false);if(picker.current)picker.current.value="";};
  const stage=useCallback(async(file:File)=>{
   if(!bridge?.eventZipInspect){setStatus("ZIP import requires the current ShowPilot portable desktop build.");return;}
   if(!/\.zip$/i.test(file.name)){setStatus("Choose an event ZIP file.");return;}
   if(file.size>150*1024*1024){setStatus("Event ZIPs must be 150 MB or smaller.");return;}
   setBusy(true);setStatus("");setInspection(null);
   try{
-   const result=await bridge.eventZipInspect(await file.arrayBuffer());
-   const meta=result.manifest;
-   setArchive(file);setInspection(result);
-   setName(meta?.showName||suggested(file.name));
-   setEventId(meta?.eventId||"");
-   setStart(validDay(meta?.startDate??"")?meta!.startDate:"");
-   setEnd(validDay(meta?.showDate??"")?meta!.showDate:"");
-   setRooms(fromManifest(meta?.rooms??""));
-   setTarget(selectedKey||"");setMode(selectedKey?"existing":"new");
-   setStatus("Review the ZIP and confirm its event before anything is saved.");
+   const bytes=await file.arrayBuffer();
+   const result=await bridge.eventZipInspect(bytes);
+   const scanWarnings:string[]=[];
+   const sources:EventMetadataSource[]=[];
+   if(bridge.eventZipScan){
+    try{
+     const scan=await bridge.eventZipScan(bytes);
+     for(const entry of scan.sources){
+      if(entry.format==="text")sources.push({path:entry.path,text:entry.text});
+      else {
+       try{
+        const pdf=new File([new Uint8Array(entry.bytes)],entry.path,{type:"application/pdf"});
+        const pages=await pdfTextPages(pdf,20);
+        sources.push({path:entry.path,text:pages.join("\n")});
+       }catch{scanWarnings.push("Could not read PDF text: "+entry.path);}
+      }
+     }
+     if(scan.skipped.length)scanWarnings.push(scan.skipped.length+" documents could not be scanned. They can still be attached.");
+    }catch(e){scanWarnings.push("Could not fully scan ZIP documents: "+String(e));}
+   }else scanWarnings.push("This build cannot inspect ZIP document contents.");
+   const found=discoverEventMetadata(sources,result.manifest,file.name);
+   setArchive(file);setInspection(result);setMetadata(found);setReadWarnings(scanWarnings);
+   setName(found.showName);setEventId(found.eventId);setStart(found.startDate);setEnd(found.showDate);
+   setRooms(found.rooms);
+   setTarget(selectedKey||"");setMode(selectedKey?"existing":"new");setApplyExisting(false);
+   setStatus("ShowPilot scanned ZIP documents for Event ID, show name, dates and CGC locations. Review them before saving.");
   }catch(e){reset();setStatus("Could not inspect ZIP: "+(e instanceof Error?e.message:String(e)));}
   finally{setBusy(false);}
  },[bridge,selectedKey]);
@@ -82,6 +99,16 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
   }
   setBusy(true);setStatus("Saving event documents locally…");
   try{
+   if(mode==="existing"&&applyExisting){
+    const existing=shows.find(x=>x.key===key);
+    if(!existing)throw Error("Selected event is no longer available.");
+    if(!validDay(start)||!validDay(end)||end<start||!rooms.length)
+     throw Error("Review the scanned start/end dates and rooms before updating the saved show.");
+    // Extends confirmed date range and rooms; never removes prior locations
+    // or touches the protected Excel engineering schedule.
+    await bridge.showCatalogSave([{...existing,startDate:start,showDate:end,rooms:rooms.join(", ")}]);
+    window.dispatchEvent(new Event("showpilot:postcon-catalog"));
+   }
    if(mode==="new"){
     // Recheck SQLite itself: an app upgrade may still be loading the catalog.
     const current=await bridge.showCatalogList();
@@ -100,6 +127,16 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
      const excerpts=await extractEocFromPdf(pdf);
      if(excerpts.length){await bridge.eventFileSetEocExcerpts(file.id,excerpts);indexed++;}
     }catch{unreadable++;}
+   }
+   if(metadata){
+    try{
+     const content="ShowPilot ZIP Schedule Evidence v1\n"+JSON.stringify({
+      eventKey:key,sourceZip:archive.name,reviewed:{eventId,showName:name,startDate:start,showDate:end,rooms},
+      metadata,documents:inspection.files.map(f=>({path:f.path,kind:f.kind})),
+      created:new Date().toISOString()
+     });
+     await bridge.save({category:"Recurring Events",title:("ZIP Schedule: "+key+" · "+archive.name).slice(0,140),content:content.slice(0,14500)});
+    }catch{ /* Imported originals remain safe if optional review-note saving fails. */ }
    }
    onImported(key);reset();
    setStatus(result.imported.length+" document(s) imported. "+result.duplicates.length+
@@ -143,6 +180,19 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
      {inspection.ignored.length>0&&<p>Skipped: {inspection.ignored.slice(0,12).join(", ")}</p>}
     </div>
    </details>
+   {metadata&&<div className="space-y-2 rounded border p-3 text-xs">
+    <p className="font-semibold">Information found in ZIP documents</p>
+    <p>Event ID: <strong>{metadata.eventId||"Not found"}</strong> · Show: <strong>{metadata.showName||"Not found"}</strong></p>
+    <p>Dates: <strong>{metadata.startDate||"Unknown"} to {metadata.showDate||"Unknown"}</strong></p>
+    <p>CGC locations: <strong>{metadata.rooms.join(", ")||"Not found"}</strong></p>
+    <details><summary className="cursor-pointer">View document sources ({metadata.evidence.length})</summary>
+     <div className="mt-1 max-h-40 overflow-auto">
+      {metadata.evidence.slice(0,80).map((item,i)=><p key={i}>{item.field}: {item.value} — {item.source}</p>)}
+     </div>
+    </details>
+    {[...metadata.warnings,...readWarnings].map((warning,i)=><p key={i} className="text-amber-600">Review: {warning}</p>)}
+    <p className="text-muted-foreground">The ZIP provides scheduling evidence; it will not overwrite the original engineering Excel template or existing reviewed shifts.</p>
+   </div>}
    <fieldset className="space-y-2">
     <legend className="font-semibold text-sm">Import into</legend>
     <div className="flex flex-wrap gap-4 text-sm">
@@ -154,6 +204,10 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
       <option value="">Choose show…</option>
       {shows.map(s=><option key={s.key} value={s.key}>{s.showName} · {s.startDate??s.showDate}</option>)}
      </select>
+     <label className="mt-2 flex items-center gap-2 text-xs">
+      <input type="checkbox" checked={applyExisting} onChange={e=>setApplyExisting(e.target.checked)}/>
+      Add reviewed ZIP dates/locations to this show's saved catalog (never overwrite Excel)
+     </label>
     </label>:<div className="space-y-3">
      <p className="text-xs text-muted-foreground">The ZIP filename or event.json may suggest details. Verify them before creating the show.</p>
      <label className="block text-xs font-semibold">Actual show name
