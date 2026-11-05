@@ -2,7 +2,7 @@ import {useEffect,useState} from "react";
 import {ClipboardCheck,Save,Archive,RotateCcw,Search} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import type {PostConReport} from "@/lib/showpilot-memory-bridge";
-import {loadPostConShows,completedShowsLastMonth,localIsoDate,type PostConShow} from "@/lib/showpilot-postcon";
+import {loadPostConShows,loadDurableShowCatalog,completedShowsLastMonth,localIsoDate,type PostConShow} from "@/lib/showpilot-postcon";
 
 const today=localIsoDate;
 const empty=():PostConReport=>({eventId:"",showName:"",showDate:today(),rooms:"",rating:0,
@@ -18,6 +18,7 @@ const fields=[
 export function PostConPanel(){
  const bridge=window.showpilotMemory;
  const [catalog,setCatalog]=useState<PostConShow[]>(()=>loadPostConShows());
+ const [catalogError,setCatalogError]=useState("");
  const [reports,setReports]=useState<(PostConReport&{id:string})[]>([]);
  const [draft,setDraft]=useState<PostConReport>(empty);
  const [message,setMessage]=useState("");
@@ -27,9 +28,16 @@ export function PostConPanel(){
  const refresh=async()=>{if(bridge)setReports(await bridge.postConList());};
  useEffect(()=>{
   if(bridge)void refresh().catch(e=>setMessage("Unable to read Post-Con reports: "+(e as Error).message));
-  const updated=()=>setCatalog(loadPostConShows());
-  window.addEventListener("showpilot:postcon-catalog",updated);
-  return ()=>window.removeEventListener("showpilot:postcon-catalog",updated);
+  let active=true;
+  const hydrate=()=>{
+   void loadDurableShowCatalog().then(shows=>{if(active)setCatalog(shows)})
+    .catch(error=>{
+      if(active){setCatalog(loadPostConShows());setCatalogError("Could not open saved shows: "+(error instanceof Error?error.message:String(error)));}
+    });
+  };
+  hydrate();
+  window.addEventListener("showpilot:postcon-catalog",hydrate);
+  return ()=>{active=false;window.removeEventListener("showpilot:postcon-catalog",hydrate)};
  },[bridge]);
  const change=(key:keyof PostConReport,value:string|number)=>setDraft(d=>({...d,[key]:value}));
  const chooseShow=(key:string)=>{
@@ -76,6 +84,7 @@ export function PostConPanel(){
         <option value="">Choose imported show or enter manually…</option>
         {completed.map(s=><option key={s.key} value={s.key}>{s.showDate} · {s.showName} · {s.rooms}</option>)}
        </select>
+       {catalogError&&<p role="alert" className="text-xs text-red-500">{catalogError}</p>}
        <p className="text-xs text-muted-foreground">Shows completed in the last 30 days (including today) appear after importing an Event Schedule. Older saved reports remain below. You can also enter a show manually.</p>
       </div>
       <div className="space-y-1">
