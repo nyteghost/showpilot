@@ -31,8 +31,11 @@ export function mergePostConShows(previous:readonly PostConShow[],current:readon
  for(const show of [...previous,...current]){
   if(!show||typeof show.key!=="string"||!validDate(show.showDate)||!show.showName||excluded.test(show.rooms))continue;
   const prior=all.get(show.key);
+  const start=validDate(show.startDate??"")?show.startDate!:show.showDate;
+  const earliest=prior?[prior.startDate??prior.showDate,start].sort()[0]!:start;
   if(!prior||show.showDate>=prior.showDate)all.set(show.key,{key:show.key.slice(0,180),eventId:String(show.eventId||"").slice(0,100),
-   showName:show.showName.slice(0,140),showDate:show.showDate,startDate:validDate(show.startDate??"")?show.startDate:show.showDate,rooms:show.rooms.slice(0,300)});
+   showName:show.showName.slice(0,140),showDate:show.showDate,startDate:earliest,rooms:show.rooms.slice(0,300)});
+  else if(earliest!==(prior.startDate??prior.showDate))all.set(show.key,{...prior,startDate:earliest});
  }
  return [...all.values()].sort((a,b)=>b.showDate.localeCompare(a.showDate)).slice(0,400);
 }
