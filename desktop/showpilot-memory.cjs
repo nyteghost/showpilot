@@ -553,6 +553,48 @@ async function eventFileArchive(id,archived=true){
  return {archived:archived!==false};
 }
 
+/** Users review the event association and file list before these ZIP
+ * functions can persist anything. ZIP paths are never used as disk paths.
+ */
+const eventZip=require("./event-zip.cjs");
+async function eventZipInspect(input){
+ await ready();
+ return eventZip.inspect(input);
+}
+async function eventZipImport(input){
+ await ready();
+ if(!input||typeof input!=="object")throw Error("Select a ZIP and an event.");
+ const eventKey=safe(input.eventKey,180);
+ if(!eventKey||!queryRows("SELECT key FROM show_catalog WHERE key=?",[eventKey]).length)
+  throw Error("Select or create a saved CGC event before importing its ZIP.");
+ const {files,ignored}=eventZip.contents(input.bytes);
+ if(count("SELECT COUNT(*) n FROM event_files WHERE event_key=? AND archived=0",[eventKey])+files.length>200)
+  throw Error("The ZIP would exceed the 200-document limit for this event.");
+ const imported=[],duplicates=[],errors=[];
+ for(const file of files){
+  try{
+   const name=file.name;
+   const sha=digest(file.bytes);
+   const existing=queryRows("SELECT id FROM event_files WHERE event_key=? AND sha256=? AND name=? AND kind=? AND archived=0",
+    [eventKey,sha,name,file.kind])[0];
+   if(existing){duplicates.push(name);continue;}
+   const record=await eventFileSave({eventKey,kind:file.kind,name,bytes:file.bytes,eocExcerpts:[]});
+   imported.push({id:record.id,name:record.name,kind:record.kind,extension:record.extension});
+  }catch(error){errors.push({name:file.path,error:error instanceof Error?error.message:String(error)});}
+ }
+ return {eventKey,imported,duplicates,ignored,errors};
+}
+async function eventFileSetEocExcerpts(id,excerpts){
+ await ready();
+ const file=eventFileById(id);
+ if(file.archived===1||file.kind!=="eoc"||file.extension!=="pdf")
+  throw Error("This attachment is not an active EOC PDF.");
+ const safeExcerpts=sanitizeEocExcerpts(excerpts);
+ transaction(()=>sqlRun("UPDATE event_files SET eoc_json=? WHERE id=?",
+  [JSON.stringify(safeExcerpts),file.id]));
+ return {saved:true,count:safeExcerpts.length};
+}
+
 function exportedEventFiles(){
  return queryRows("SELECT id,event_key AS eventKey,kind,name,extension,byte_size AS bytes,sha256,eoc_json AS eocJson,created,archived FROM event_files ORDER BY created")
   .map(record=>({...record,eocExcerpts:JSON.parse(record.eocJson||"[]"),eocJson:undefined}));
@@ -765,7 +807,9 @@ function setupMemoryIpc(){
  wrap("show-catalog-list",showCatalogList);wrap("show-catalog-save",showCatalogSave);
  wrap("event-file-list",eventFileList);wrap("event-file-save",eventFileSave);wrap("event-file-open",eventFileOpen);
  wrap("event-file-read",eventFileRead);wrap("event-file-archive",eventFileArchive);
+ wrap("event-zip-inspect",eventZipInspect);wrap("event-zip-import",eventZipImport);
+ wrap("event-file-set-eoc",eventFileSetEocExcerpts);
  wrap("open-folder",openFolder);
  startWeeklyBackups();
 }
-module.exports={setupMemoryIpc,status,preferences,list,search,read,save,edit,archive,importPack,exportPack,rememberSchedule,openFolder,ready,backupNow,automaticBackupCheck,setBackupEnabled,chooseBackupFolder,postConList,postConSave,postConArchive,showCatalogList,showCatalogSave,eventFileList,eventFileSave,eventFileOpen,eventFileRead,eventFileArchive,diagnosticsSummary};
+module.exports={setupMemoryIpc,status,preferences,list,search,read,save,edit,archive,importPack,exportPack,rememberSchedule,openFolder,ready,backupNow,automaticBackupCheck,setBackupEnabled,chooseBackupFolder,postConList,postConSave,postConArchive,showCatalogList,showCatalogSave,eventFileList,eventFileSave,eventFileOpen,eventFileRead,eventFileArchive,eventZipInspect,eventZipImport,eventFileSetEocExcerpts,diagnosticsSummary};
