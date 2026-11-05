@@ -2,9 +2,9 @@ import {useEffect,useState} from "react";
 import {ClipboardCheck,Save,Archive,RotateCcw,Search} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import type {PostConReport} from "@/lib/showpilot-memory-bridge";
-import {loadPostConShows,type PostConShow} from "@/lib/showpilot-postcon";
+import {loadPostConShows,completedShowsLastMonth,localIsoDate,type PostConShow} from "@/lib/showpilot-postcon";
 
-const today=()=>new Date().toISOString().slice(0,10);
+const today=localIsoDate;
 const empty=():PostConReport=>({eventId:"",showName:"",showDate:today(),rooms:"",rating:0,
  wentWell:"",issues:"",staffing:"",stage:"",floor:"",followUp:""});
 const fields=[
@@ -23,6 +23,7 @@ export function PostConPanel(){
  const [message,setMessage]=useState("");
  const [busy,setBusy]=useState(false);
  const [filter,setFilter]=useState("");
+ const [selectedShow,setSelectedShow]=useState("");
  const refresh=async()=>{if(bridge)setReports(await bridge.postConList());};
  useEffect(()=>{
   if(bridge)void refresh().catch(e=>setMessage("Unable to read Post-Con reports: "+(e as Error).message));
@@ -36,6 +37,7 @@ export function PostConPanel(){
   if(!selected)return;
   const existing=reports.find(r=>r.eventId===selected.eventId&&r.showDate===selected.showDate&&r.showName===selected.showName);
   setDraft(existing?{...existing}:{...empty(),showName:selected.showName,showDate:selected.showDate,rooms:selected.rooms,eventId:selected.eventId});
+  setSelectedShow(key);
   setMessage("");
  };
  const save=async()=>{
@@ -55,11 +57,11 @@ export function PostConPanel(){
  const archive=async()=>{
   if(!bridge||!draft.id||busy||!window.confirm("Archive this Post-Con? It will be hidden from search but retained in backups."))return;
   setBusy(true);
-  try{await bridge.postConArchive(draft.id);setDraft(empty());await refresh();setMessage("Post-Con archived.");}
+  try{await bridge.postConArchive(draft.id);setDraft(empty());setSelectedShow("");await refresh();setMessage("Post-Con archived.");}
   catch(e){setMessage("Archive failed: "+(e as Error).message);}
   finally{setBusy(false);}
  };
- const completed=catalog.filter(s=>s.showDate<=today());
+ const completed=completedShowsLastMonth(catalog);
  const matches=reports.filter(r=>(r.showName+" "+r.showDate+" "+r.rooms).toLowerCase().includes(filter.toLowerCase()));
  return <section className="space-y-4 pt-2" aria-label="Post-Con Reports">
   <div className="rounded-xl border p-4 space-y-3">
@@ -69,24 +71,24 @@ export function PostConPanel(){
     <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
      <div className="space-y-3">
       <div>
-       <label htmlFor="postcon-previous" className="text-sm font-semibold">Choose a completed show</label>
-       <select id="postcon-previous" className="mt-1 w-full rounded border bg-background p-2 text-sm" value="" onChange={e=>chooseShow(e.target.value)}>
+       <label htmlFor="postcon-previous" className="text-sm font-semibold">Completed CGC shows — last 30 days</label>
+       <select id="postcon-previous" className="mt-1 w-full rounded border bg-background p-2 text-sm" value={selectedShow} onChange={e=>chooseShow(e.target.value)}>
         <option value="">Choose imported show or enter manually…</option>
         {completed.map(s=><option key={s.key} value={s.key}>{s.showDate} · {s.showName} · {s.rooms}</option>)}
        </select>
-       <p className="text-xs text-muted-foreground">Completed CGC shows are listed after you import an Event Schedule. You can also enter a show manually.</p>
+       <p className="text-xs text-muted-foreground">Shows completed in the last 30 days (including today) appear after importing an Event Schedule. Older saved reports remain below. You can also enter a show manually.</p>
       </div>
       <div className="space-y-1">
        <label className="text-sm font-semibold" htmlFor="postcon-find"><Search size={14} className="inline"/> Saved Post-Con reports ({reports.length})</label>
        <input id="postcon-find" className="w-full rounded border bg-background p-2 text-sm" placeholder="Search show or date…" value={filter} onChange={e=>setFilter(e.target.value)}/>
        <div className="max-h-72 overflow-auto space-y-1 rounded border p-2">
         {matches.length===0?<p className="text-xs text-muted-foreground">No saved reports yet.</p>:matches.map(r=>
-         <button type="button" key={r.id} onClick={()=>{setDraft({...r});setMessage("");}} className={"block w-full rounded p-2 text-left text-sm hover:bg-muted "+(draft.id===r.id?"bg-accent":"")}>
+         <button type="button" key={r.id} onClick={()=>{setDraft({...r});setSelectedShow("");setMessage("");}} className={"block w-full rounded p-2 text-left text-sm hover:bg-muted "+(draft.id===r.id?"bg-accent":"")}>
           <strong>{r.showName}</strong><span className="block text-xs text-muted-foreground">{r.showDate} · {r.rooms||"Room not specified"} · {r.rating ? (r.rating+"/5") : "Unrated"}</span>
          </button>)}
        </div>
       </div>
-      <Button size="sm" variant="outline" onClick={()=>{setDraft(empty());setMessage("");}}><RotateCcw size={16}/> New Post-Con</Button>
+      <Button size="sm" variant="outline" onClick={()=>{setDraft(empty());setSelectedShow("");setMessage("");}}><RotateCcw size={16}/> New Post-Con</Button>
      </div>
      <div className="space-y-3">
       <div className="grid gap-2 sm:grid-cols-2">
