@@ -16,6 +16,7 @@ export type EventZipInspection={
  files:{path:string;name:string;bytes:number;kind:EventFileKind}[];
  ignored:string[];manifest:null|{showName:string;eventId:string;startDate:string;showDate:string;rooms:string};totalBytes:number;
 };
+export type EventZipScan={sources:({path:string;format:"text";text:string}|{path:string;format:"pdf";bytes:Uint8Array})[];skipped:string[];manifest:EventZipInspection["manifest"]};
 export type EventZipImportResult={
  eventKey:string;imported:{id:string;name:string;kind:EventFileKind;extension:string}[];
  duplicates:string[];ignored:string[];errors:{name:string;error:string}[];
@@ -47,6 +48,7 @@ export type MemoryBridge={
  eventFileRead(id:string):Promise<{bytes:Uint8Array;extension:string;name:string}>;
  eventFileArchive(id:string,archived?:boolean):Promise<{archived:boolean}>;
  eventZipInspect(bytes:ArrayBuffer):Promise<EventZipInspection>;
+ eventZipScan(bytes:ArrayBuffer):Promise<EventZipScan>;
  eventZipImport(input:{eventKey:string;bytes:ArrayBuffer}):Promise<EventZipImportResult>;
  eventFileSetEocExcerpts(id:string,excerpts:EocExcerpt[]):Promise<{saved:true;count:number}>;
  openFolder():Promise<{opened:true}>;
