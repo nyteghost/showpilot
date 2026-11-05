@@ -5,7 +5,7 @@ const {ipcMain,shell,app}=require("electron");
 const fs=require("node:fs");
 const path=require("node:path");
 const https=require("node:https");
-const {semverCompare,releaseAssetsForRun,installWindowsRelease}=require("./portable-updates.cjs");
+const {semverCompare,releaseAssetsForRun,installWindowsRelease,readUpdateResult,updateLogPath}=require("./portable-updates.cjs");
 // Both channels now live in the independent ShowPilot repository.
 const SOURCES=[{repository:"nyteghost/showpilot",branches:{main:"main",beta:"beta"}}];
 const MAX_JSON=1_500_000;
@@ -121,7 +121,14 @@ async function latest(ch){
  return null;
 }
 function setupUpdates(){
- ipcMain.handle("showpilot-update:status",()=>({channel:channel(),installedVersion:app.getVersion(),repository:"nyteghost/showpilot",platform:process.platform,artifactFormats:updateArtifacts()}));
+ ipcMain.handle("showpilot-update:status",()=>({channel:channel(),installedVersion:app.getVersion(),repository:"nyteghost/showpilot",platform:process.platform,artifactFormats:updateArtifacts(),lastUpdate:readUpdateResult(app.getPath("userData"))}));
+ ipcMain.handle("showpilot-update:open-log",async()=>{
+  const logfile=updateLogPath(app.getPath("userData"));
+  if(!require("node:fs").existsSync(logfile))throw new Error("No installation log has been recorded yet.");
+  const message=await shell.openPath(logfile);
+  if(message)throw new Error("Windows could not open the installation log: "+message);
+  return {opened:true};
+ });
  ipcMain.handle("showpilot-update:channel",(_,value)=>({channel:setChannel(value)}));
  ipcMain.handle("showpilot-update:check",async()=>{
    const ch=channel(),found=await latest(ch);
