@@ -1,6 +1,6 @@
 /** Private ShowPilot SQLite-backed memory, with portable JSON import and export. */
 export type MemoryCategory="Stage Setups"|"Ballroom Configurations"|"Recurring Events"|"Engineering Procedures"|"Approved Tasks"|"Lessons Learned";
-export type MemoryStatus={configured:boolean;available:boolean;storage:"sqlite";databasePath:string;vault:string;rememberTasks:boolean;rememberStages:boolean;rememberExports:boolean;noteCount:number;historicalCount:number;postConCount:number;migratedCount:number;archivedCount:number;weeklyBackupEnabled:boolean;backupFolder:string;lastBackupAt:string;backupError:string;error?:string};
+export type MemoryStatus={configured:boolean;available:boolean;storage:"sqlite";databasePath:string;vault:string;rememberTasks:boolean;rememberStages:boolean;rememberExports:boolean;noteCount:number;historicalCount:number;postConCount:number;showCatalogCount:number;migratedCount:number;archivedCount:number;weeklyBackupEnabled:boolean;backupFolder:string;lastBackupAt:string;backupError:string;error?:string};
 export type MemorySummary={id:string;category:MemoryCategory;title:string;excerpt:string;modified:string};
 export type MemoryReference={id:string;category:MemoryCategory;title:string;excerpt:string};
 export type MemoryDraft={category:MemoryCategory;title:string;content:string};
@@ -10,6 +10,7 @@ export type PostConReport={
  rating:number;wentWell:string;issues:string;staffing:string;stage:string;floor:string;followUp:string;
  created?:string;modified?:string;
 };
+export type ShowCatalogRecord={key:string;eventId:string;showName:string;showDate:string;rooms:string;startDate?:string};
 export type MemoryBridge={
  status():Promise<MemoryStatus>;
  preferences(value:{rememberTasks:boolean;rememberStages:boolean;rememberExports:boolean}):Promise<MemoryStatus>;
@@ -29,6 +30,8 @@ export type MemoryBridge={
  postConList():Promise<(PostConReport & {id:string})[]>;
  postConSave(report:PostConReport):Promise<{id:string;saved:true}>;
  postConArchive(id:string):Promise<{archived:true}>;
+ showCatalogList():Promise<ShowCatalogRecord[]>;
+ showCatalogSave(shows:readonly ShowCatalogRecord[]):Promise<{saved:true;added:number;total:number}>;
  openFolder():Promise<{opened:true}>;
 };
 declare global{interface Window{showpilotMemory?:MemoryBridge}}
