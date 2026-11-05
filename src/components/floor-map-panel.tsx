@@ -15,7 +15,7 @@ const save = (k: string, v: Saved) => { try { localStorage.setItem(storeKey(k), 
  * Floor map: drop a floor plan PDF and the "Better Work Order Items" PDF, get the plan colored.
  * Anything it isn't sure of goes in a "Needs your answer" list; answers are remembered for that plan.
  */
-export function FloorMapPanel() {
+export function FloorMapPanel({initialEventDocuments,selectedEventId=""}:{initialEventDocuments?:File[];selectedEventId?:string}={}) {
   const [plan, setPlan] = useState<PlanDoc | null>(null);
   const [name, setName] = useState("");
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -31,6 +31,9 @@ export function FloorMapPanel() {
   const [rows, setRows] = useState(0);
   const [itemized,setItemized]=useState<ShowPilotItem[]>([]);
   const [eventId,setEventId]=useState("");
+  const [eventImage,setEventImage]=useState("");
+  const loadedSeed=useRef("");
+  const eventFileKey=initialEventDocuments?.map(f=>f.name+":"+f.size).join("|")??"";
   const [noteHints,setNoteHints]=useState<ShowPilotItem[]>([]);
   const view = useRef<HTMLCanvasElement>(null);
   const viewport = useRef<HTMLDivElement>(null);
@@ -95,6 +98,21 @@ export function FloorMapPanel() {
         else if (l.some(x => /better work orders/i.test(x)) && l.some(x => /booth number|bill-to account|space - order/i.test(x))) summaryReport = true;
         else planFile = f;
       }
+      if(!lines.length&&planFile){
+        // A hall layout from Events can be displayed before work orders arrive.
+        // Only color booths after the separately verified itemized work order
+        // is supplied — no utility data or booth orders are invented.
+        const doc=await pdf.readPlan(planFile,page);
+        setEntries([]);setRows(0);setItemized([]);setNoteHints([]);
+        setPlan(doc);setName(planFile.name);setFiles(fs);setEventId(selectedEventId);
+        setSaved(load(planKey(planFile.name,doc.prims)));
+        const scale=pdf.pickScale(doc.prims);
+        const canvas=document.createElement("canvas");
+        await doc.render(canvas,scale);
+        base.current=canvas;geom.current={s:scale,band:0};
+        setStatus("Event hall layout loaded. To color utility booths, also import the itemized Better Work Order Items PDF.");
+        return;
+      }
       if (!lines.length) {
         setStatus(summaryReport
           ? "This is the Better Work Orders SUMMARY, not the itemized Better Work Order Items report. It lists booths and order numbers, but not the utility descriptions and quantities needed to color booths. Export Better Work Order Items and select it together with the floor plan."
@@ -104,7 +122,7 @@ export function FloorMapPanel() {
       if (!planFile) { setStatus("Work order items found, but the FLOOR PLAN PDF with booth positions is missing. Select both files together."); setFiles(fs); return; }
       const doc = await pdf.readPlan(planFile, page);
       setItemized(wideItems);
-      if(wideItems.length){const ids=[...new Set(wideItems.filter(x=>x.venue==="CGC").map(x=>x.eventId))];const initial=ids.length===1?ids[0]!:"";chooseEvent(initial,wideItems);}
+      if(wideItems.length){const ids=[...new Set(wideItems.filter(x=>x.venue==="CGC").map(x=>x.eventId))];const initial=selectedEventId&&ids.includes(selectedEventId)?selectedEventId:ids.length===1?ids[0]!:"";chooseEvent(initial,wideItems);}
       else {const parsed=parseWorkOrderLines(lines);setEntries(buildEntries(parsed));setRows(parsed.length);setNoteHints([]);setEventId("");}
       setPlan(doc); setName(planFile.name); setFiles(fs);
       setSaved(load(planKey(planFile.name, doc.prims)));
@@ -116,6 +134,20 @@ export function FloorMapPanel() {
     } catch (e) { setStatus(`Couldn't read those PDFs: ${(e as Error).message}`); }
   }
 
+  useEffect(()=>{
+    if(!initialEventDocuments?.length||!eventFileKey||loadedSeed.current===eventFileKey)return;
+    loadedSeed.current=eventFileKey;
+    const hasPdf=initialEventDocuments.some(f=>/\.pdf$/i.test(f.name));
+    const image=!hasPdf?initialEventDocuments.find(f=>/\.(?:png|jpg|jpeg|webp)$/i.test(f.name)):undefined;
+    if(image){
+      const url=URL.createObjectURL(image);
+      setEventImage(url);
+      setStatus("Event hall image layout loaded. PDF floor plans and itemized utility orders are needed for booth coloring.");
+      return ()=>URL.revokeObjectURL(url);
+    }
+    setEventImage("");
+    void read(initialEventDocuments);
+  },[eventFileKey,selectedEventId]);
   // paint: plan + legend strip + colors (+ the booths being picked)
   useEffect(() => {
     const v = view.current, b = base.current;
@@ -228,6 +260,7 @@ export function FloorMapPanel() {
         </details>}
       </div>}
       {status && <p className={`text-sm ${/^Couldn|^I need/.test(status) ? "text-destructive" : ""}`} role="status">{status}</p>}
+      {eventImage&&<div className="rounded-md border p-3"><p className="mb-2 text-sm font-semibold">Event hall layout</p><img src={eventImage} alt="Attached CGC hall layout" className="max-w-full object-contain"/></div>}
       {!plan && !status && <ol className="list-decimal space-y-0.5 pl-5 text-xs text-muted-foreground"><li>Drop the plan and the work order report.</li><li>Check the colored map — zoom in with the slider.</li><li>Answer anything under “Needs your answer” (pick the booth on the plan, or skip).</li><li>Download the picture or PDF.</li></ol>}
       {plan && resolved && (
         <>
