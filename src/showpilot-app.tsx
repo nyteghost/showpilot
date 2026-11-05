@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   CalendarDays, CalendarClock, Layers3, Store, Map, FolderOpen,
-  LayoutDashboard, Menu, Moon, Sun, ChevronRight, ShieldCheck, PanelLeftClose, PanelLeftOpen, Settings2, ClipboardCheck, ClipboardList
+  LayoutDashboard, Menu, Moon, Sun, ChevronRight, ShieldCheck, PanelLeftClose, PanelLeftOpen, Settings2
 } from "lucide-react";
 import { ShowServicesTools, type WorkTabId } from "@/components/work-tools";
 import { BackupPanel } from "@/components/showpilot-backup";
@@ -20,8 +20,6 @@ const sections: { id: WorkTabId; label: string; desc: string; Icon: typeof Calen
   {id:"shifts",label:"My Shifts",desc:"Read, edit and export your personal shifts to Google Calendar",Icon:CalendarClock,note:"Calendar tools"},
   {id:"deck",label:"Stage & Deck Planner",desc:"Plan stage sizes, configurations, stairs and inventory",Icon:Layers3,note:"Stage operations"},
   {id:"floor",label:"Floor Maps",desc:"Color booth utility locations and resolve work-order questions",Icon:Map,note:"Exhibitor utilities"},
-  {id:"precon",label:"Pre-Con Notes",desc:"Prepare for CGC shows over the next 30 days and save notes for later",Icon:ClipboardList,note:"Upcoming shows & preparation"},
-  {id:"postcon",label:"Post-Con Reports",desc:"Capture show outcomes, staffing lessons, stage notes and floor-map improvements",Icon:ClipboardCheck,note:"Show history & lessons"},
   {id:"vendors",label:"Vendors",desc:"Manage and compare purchase and rental quotes",Icon:Store,note:"Purchasing & rentals"},
 ];
 
@@ -32,6 +30,7 @@ function saved(key:string,fallback:string) {
 export function App() {
   const [screen,setScreen] = useState<Screen>(()=>{
     const v=saved("showpilot:screen","dashboard");
+    if(v==="precon"||v==="postcon")return "eventhub"; // Older standalone pages now live inside Events.
     return v==="dashboard"||v==="settings"||sections.some(s=>s.id===v)?v as Screen:"dashboard";
   });
   // Mount the workspace only after its first visit, then keep it alive across
@@ -39,6 +38,7 @@ export function App() {
   // unsaved reviewer choices in React state, which unmounting would destroy.
   const [lastWorkTab,setLastWorkTab] = useState<WorkTabId|null>(()=>{
     const v=saved("showpilot:screen","dashboard");
+    if(v==="precon"||v==="postcon")return "eventhub";
     return sections.some(s=>s.id===v)?v as WorkTabId:null;
   });
   const [dark,setDark] = useState(()=>saved("showpilot:theme","light")==="dark");
