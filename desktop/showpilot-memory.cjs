@@ -466,7 +466,7 @@ function eventFileById(id){
 }
 function sanitizeEocExcerpts(raw){
  if(!Array.isArray(raw))return [];
- return raw.slice(0,45).filter(x=>x&&["Event Notes","Engineering","Utility"].includes(x.section)&&Number.isInteger(x.page)&&x.page>=1&&x.page<=500)
+ return raw.slice(0,45).filter(x=>x&&["Event Notes","Engineering","Utility","Attendance"].includes(x.section)&&Number.isInteger(x.page)&&x.page>=1&&x.page<=500)
   .map(x=>({section:x.section,page:x.page,text:safe(x.text,1200)}));
 }
 function safeEventFileName(name){
