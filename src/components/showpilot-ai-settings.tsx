@@ -1,9 +1,9 @@
 import {useEffect,useState} from "react";
-import {Download,KeyRound,Monitor,ShieldCheck,ShieldAlert,Trash2} from "lucide-react";
+import {Download,HardDriveDownload,KeyRound,Monitor,ShieldCheck,ShieldAlert,Trash2} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
 import {AI_PROVIDERS,detectAiProvider,type AiProviderId} from "@/lib/showpilot-ai-providers";
-import {gpuAvailable,localModelOptions,loadLocalModel,subscribeLocalAiRuntimeState,getLocalAiRuntimeState,type LocalAiRuntimeState} from "@/lib/showpilot-ai-local";
+import {gpuAvailable,localModelOptions,loadLocalModel,localModelCached,localModelButtonLabel,subscribeLocalAiRuntimeState,getLocalAiRuntimeState,type LocalAiRuntimeState,type LocalModelCacheStatus} from "@/lib/showpilot-ai-local";
 import type {AiStatus} from "@/lib/showpilot-ai-bridge";
 const NAME="showpilot:ai:local-model";
 export function ShowPilotAiSettings(){
@@ -15,6 +15,7 @@ export function ShowPilotAiSettings(){
  const [models,setModels]=useState<string[]>([]);
  const [model,setModel]=useState(()=>{try{return localStorage.getItem(NAME)||""}catch{return ""}});
  const [working,setWorking]=useState(false);
+ const [cache,setCache]=useState<LocalModelCacheStatus>("checking");
  const [runtime,setRuntime]=useState<LocalAiRuntimeState>(()=>getLocalAiRuntimeState());
  useEffect(()=>subscribeLocalAiRuntimeState(setRuntime),[]);
  const [status,setStatus]=useState("");
@@ -24,6 +25,14 @@ export function ShowPilotAiSettings(){
    void localModelOptions().then(list=>{setModels(list);setModel(old=>list.includes(old)?old:list[0]||"")}).catch(()=>setModels([]));
    if(window.showpilotAI)void window.showpilotAI.status().then(setSecrets).catch(()=>setSecrets({available:false,providers:[]}));
  },[]);
+ useEffect(()=>{
+  if(!model){setCache("checking");return;}
+  let active=true;
+  setCache("checking");
+  void localModelCached(model).then(found=>{if(active)setCache(found?"cached":"missing")})
+   .catch(()=>{if(active)setCache("unknown")});
+  return ()=>{active=false};
+ },[model,runtime.status,runtime.model]);
  const selected=provider||detection.provider;
  const save=async()=>{
    if(!window.showpilotAI||!secrets?.available||!selected)return;
@@ -39,8 +48,8 @@ export function ShowPilotAiSettings(){
  const load=async()=>{
   if(!model||working)return;
   setWorking(true);setProgress("Checking GPU and preparing local model...");
-  try{await loadLocalModel(model,setProgress);try{localStorage.setItem(NAME,model)}catch{};setStatus("Local model is ready. You can run task recommendations offline while cached.");}
-  catch(e){setStatus("Could not load local model: "+(e as Error).message)}
+  try{await loadLocalModel(model,setProgress);try{localStorage.setItem(NAME,model)}catch{};setCache("cached");setStatus("Local model is ready. You can run task recommendations offline while cached.");}
+  catch(e){setStatus("Could not load local model: "+(e as Error).message);setCache("unknown")}
   finally{setWorking(false)}
  };
  return <div className="space-y-6">
@@ -52,7 +61,7 @@ export function ShowPilotAiSettings(){
      <select className="w-full max-w-xl rounded-md border bg-background p-2 text-sm" aria-label="Local AI model" value={model} onChange={e=>{setModel(e.target.value);try{localStorage.setItem(NAME,e.target.value)}catch{}}}>
        {models.length?models.map(m=><option value={m} key={m}>{m}</option>):<option value="">No compatible model list loaded</option>}
      </select>
-     <div><Button onClick={()=>void load()} disabled={!gpu||!model||working}><Download size={16}/> {working?"Loading…":"Download / Load Local AI"}</Button></div>
+     <div><Button onClick={()=>void (cache==="unknown"?localModelCached(model).then(found=>setCache(found?"cached":"missing")).catch(e=>setStatus("Could not inspect local model cache: "+String(e))):load())} disabled={!gpu||!model||working||cache==="checking"}>{cache==="cached"?<HardDriveDownload size={16}/>:<Download size={16}/>} {localModelButtonLabel(cache,working)}</Button></div>
      {progress&&<p role="status" className="text-xs text-muted-foreground">{progress}</p>}
      <div className="rounded-lg border border-border bg-background/70 p-3 space-y-2" aria-label="Active local AI">
        <div className="flex flex-wrap items-center justify-between gap-2">
@@ -64,7 +73,7 @@ export function ShowPilotAiSettings(){
          <div><span className="block text-xs text-muted-foreground">Selected model</span><strong className="block text-sm break-all">{model||"Not selected"}</strong></div>
        </div>
        <p className="text-xs text-muted-foreground">{runtime.message}</p>
-       {runtime.status==="ready"&&runtime.model!==model&&<p className="text-xs text-amber-600">The selected model differs from the running model. Click Download / Load Local AI to switch.</p>}
+       {runtime.status==="ready"&&runtime.model!==model&&<p className="text-xs text-amber-600">The selected model differs from the running model. Use the Local AI button to load your selection.</p>}
        <p className="text-xs text-muted-foreground">Inference: local GPU (WebGPU). When you choose Cloud in AI Task Assistant, the selected online provider handles that request instead.</p>
      </div>
      <p className="text-xs text-muted-foreground">Large model downloads may need substantial space and GPU memory. Cached model data is separate from ShowPilot work-data backups. Unsupported computers can continue using offline task rules.</p>
