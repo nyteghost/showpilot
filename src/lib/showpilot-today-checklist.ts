@@ -66,6 +66,11 @@ export function tasksForShow(show:PostConShow,airwalls:AirwallAssessment):Checkl
 export function scheduledAirwallInstruction(section:"HALLS"|"BALLROOM",raw:string):string|null{
  const text=raw.replace(/\s+/g," ").trim().slice(0,150);
  if(!text)return null;
+ // Explicit no-change/negative instructions must never create movement work.
+ if(/^(?:no|none|not|without|do not|don't|never)\b/i.test(text)||
+   /\b(?:air[\s-]?walls?|partitions?)\b.{0,65}\b(?:stay|remain|unchanged|as[\s-]?is|no\s+change|not\s+required)\b/i.test(text)||
+   /\bno\s+(?:air[\s-]?wall\s+)?(?:movements?|changes?)\s+(?:required|needed|scheduled)\b/i.test(text))
+  return null;
  if(/^[A-G]{1,7}$/i.test(text))return "Make "+(section==="HALLS"?"Hall ":"")+text.toUpperCase();
  if(/^make\s+(?:hall\s+)?(?:full\s+ballroom|[A-G]{1,7})(?:\/(?:full\s+ballroom|[A-G]{1,7}))*$/i.test(text))
   return text;
