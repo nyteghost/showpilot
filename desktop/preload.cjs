@@ -20,7 +20,9 @@ contextBridge.exposeInMainWorld("showpilotUpdates",Object.freeze({
 contextBridge.exposeInMainWorld("showpilotScheduleSession",Object.freeze({
  load:()=>ipcRenderer.invoke("showpilot-schedule-session:load"),
  save:(project)=>ipcRenderer.invoke("showpilot-schedule-session:save",project),
- saveTemplate:(bytes)=>ipcRenderer.invoke("showpilot-schedule-session:save-template",bytes)
+ saveTemplate:(bytes)=>ipcRenderer.invoke("showpilot-schedule-session:save-template",bytes),
+ saveOverviewWorkbook:(bytes)=>ipcRenderer.invoke("showpilot-schedule-session:save-overview-workbook",bytes),
+ readOverviewWorkbook:()=>ipcRenderer.invoke("showpilot-schedule-session:read-overview-workbook")
 }));
 contextBridge.exposeInMainWorld("showpilotAI", Object.freeze({
   status: () => ipcRenderer.invoke("showpilot-ai:status"),
