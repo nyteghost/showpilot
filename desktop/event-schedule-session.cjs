@@ -11,6 +11,7 @@ const MAX_PROJECT_BYTES=16_000_000,MAX_WORKBOOK_BYTES=30*1024*1024;
 const folder=()=>path.join(app.getPath("userData"),"Event Schedule");
 const session=()=>path.join(folder(),"current-review.json");
 const workbook=()=>path.join(folder(),"uploaded-template.xlsx");
+const overviewWorkbook=()=>path.join(folder(),"today-weekly-overview.xlsx");
 function atomic(file,content){
  fs.mkdirSync(folder(),{recursive:true,mode:0o700});
  const tmp=path.join(folder(),".showpilot-session-"+crypto.randomBytes(8).toString("hex")+".tmp");
@@ -47,6 +48,21 @@ function saveTemplate(bytes){
  atomic(workbook(),value);
  return {saved:true,bytes:value.length};
 }
+function saveOverviewWorkbook(bytes){
+ if(!(bytes instanceof ArrayBuffer)&&!ArrayBuffer.isView(bytes))throw Error("Missing engineering workbook.");
+ const value=Buffer.from(bytes instanceof ArrayBuffer?new Uint8Array(bytes):new Uint8Array(bytes.buffer,bytes.byteOffset,bytes.byteLength));
+ if(value.length<100||value.length>MAX_WORKBOOK_BYTES||value[0]!==0x50||value[1]!==0x4b)
+  throw Error("The weekly engineering workbook must be an XLSX under 30 MB.");
+ atomic(overviewWorkbook(),value);
+ return {saved:true,bytes:value.length};
+}
+function readOverviewWorkbook(){
+ const file=overviewWorkbook();
+ if(!fs.existsSync(file))return null;
+ const stat=fs.lstatSync(file);
+ if(!stat.isFile()||stat.isSymbolicLink()||stat.size>MAX_WORKBOOK_BYTES)throw Error("Stored weekly engineering workbook is not a regular XLSX.");
+ return new Uint8Array(fs.readFileSync(file));
+}
 function load(){
  if(!fs.existsSync(session()))return null;
  const file=fs.lstatSync(session());
@@ -68,5 +84,7 @@ function setupEventScheduleSessionIpc(){
  ipcMain.handle("showpilot-schedule-session:load",()=>load());
  ipcMain.handle("showpilot-schedule-session:save",(_,project)=>saveProject(project));
  ipcMain.handle("showpilot-schedule-session:save-template",(_,bytes)=>saveTemplate(bytes));
+ ipcMain.handle("showpilot-schedule-session:save-overview-workbook",(_,bytes)=>saveOverviewWorkbook(bytes));
+ ipcMain.handle("showpilot-schedule-session:read-overview-workbook",()=>readOverviewWorkbook());
 }
-module.exports={setupEventScheduleSessionIpc,validProject,saveProject,saveTemplate,load};
+module.exports={setupEventScheduleSessionIpc,validProject,saveProject,saveTemplate,saveOverviewWorkbook,readOverviewWorkbook,load};
