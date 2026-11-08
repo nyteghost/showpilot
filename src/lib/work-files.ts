@@ -170,6 +170,7 @@ export async function readEventSheet(file: File): Promise<EventRow[] | null> {
   if(!legacy&&!grouped)return null;
   if(!cStart||!cEnd||!cDesc||!cSpace)return null;
   const rows:EventRow[]=[];
+  const parentById=new Map<string,string>();
   let day="",eventName="";
   ws.eachRow((row,n)=>{
     if(n<=headerRow+1)return;
@@ -188,11 +189,16 @@ export async function readEventSheet(file: File): Promise<EventRow[] | null> {
     if(!day)return;
     const id=cId?text(row.getCell(cId).value).match(/\b\d{4,7}\b/)?.[0]:undefined;
     const status=cStatus?text(row.getCell(cStatus).value):"";
+    const parent=((cEvent?text(row.getCell(cEvent).value):"")||eventName).trim();
+    if(id&&parent)parentById.set(id,parent);
     rows.push({level:2,usage:"",start,end:clock(row.getCell(cEnd).value),
       description:text(row.getCell(cDesc).value),space:text(row.getCell(cSpace).value),
-      event:(cEvent?text(row.getCell(cEvent).value):"")||eventName,
+      event:parent,
       ...(id?{eventId:id}:{}),...(status?{status}:{}),date:day});
   });
+  // Recover a missing group heading from another function with the same Event ID.
+  for(const row of rows)if(!row.event.trim()&&row.eventId)
+   row.event=parentById.get(row.eventId)??"";
   return rows;
 }
 
