@@ -29,6 +29,38 @@ export function cgcRoomsFromText(text:string):string[]{
  return ROOMS.filter(x=>found.has(x));
 }
 const stage=/^(?:program|move in|move out|general session|breakout session|eoc|event order confirmation|work order)$/i;
+/** The actual show is the SECOND line of an Ungerboeck EOC cover. */
+export function parseEocCoverHeader(text:string):{
+ showName:string;eventId:string;startDate:string;showDate:string;
+}|null{
+ const lines=text.slice(0,18000).split(/\r?\n/).map(x=>x.replace(/\s+/g," ").trim()).filter(Boolean);
+ const heading=lines.findIndex((line,i)=>i<32&&/^event\s+order\s+confirmation\s*$/i.test(line));
+ if(heading<0)return null;
+ const second=lines[heading+1]??"";
+ const match=/^(.{3,140}?)\s*\(\s*(\d{3,12})\s*\)\s*$/.exec(second);
+ if(!match||/^(?:event order confirmation|supporting documents|work order|program|move in|move out)$/i.test(match[1]!.trim()))return null;
+ const third=(lines[heading+2]??"");
+ const raw=third.match(/\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}/g)??[];
+ const first=raw.length?normalizeEventDate(raw[0]!):"";
+ const last=raw.length>=2?normalizeEventDate(raw[raw.length-1]!):first;
+ return {showName:match[1]!.trim(),eventId:match[2]!,startDate:first,showDate:last};
+}
+/** EOC ZIP names contain mail attachment prefixes: never save those
+ * prefixes as the show name. The filename is fallback evidence ONLY. */
+export function parseEventZipFilename(filename:string):{
+ showName:string;eventId:string;date:string;
+}{
+ const raw=filename.replace(/\.zip$/i,"").replace(/[_]+/g," ").replace(/\s+/g," ").trim();
+ const withoutPrefix=raw.replace(/^(?:(?:event\s+order\s+confirmation|eoc)(?:\s*\+\s*supporting\s+documents?)?\s*[-–:+]?\s*)+/i,"").trim();
+ const idMatch=/\bevent\s*id\s*#?\s*[:\-]?\s*(\d{3,12})\b/i.exec(withoutPrefix);
+ const eventId=idMatch?.[1]??"";
+ const name=idMatch?withoutPrefix.slice(0,idMatch.index).replace(/[\s\-–:+]+$/g,"").trim():"";
+ const trailing=idMatch?withoutPrefix.slice(idMatch.index+idMatch[0].length).trim():"";
+ const dateParts=/^(\d{1,2})[\s_-]+(\d{1,2})[\s_-]+(\d{4})$/.exec(trailing);
+ const date=dateParts?normalizeEventDate(dateParts[1]+"/"+dateParts[2]+"/"+dateParts[3]):"";
+ return {showName:name.length>=3&&name.length<=140?name:"",eventId,date};
+}
+
 export function discoverEventMetadata(sources:readonly EventMetadataSource[],manifest?:{showName?:string;eventId?:string;startDate?:string;showDate?:string;rooms?:string}|null,filename=""):EventMetadataResult{
  const evidence:Evidence[]=[],warnings:string[]=[];
  const add=(field:Evidence["field"],value:string,source:string)=>{
@@ -43,6 +75,13 @@ export function discoverEventMetadata(sources:readonly EventMetadataSource[],man
  }
  for(const source of sources.slice(0,50)){
   if(/cobb energy|cepac|performing arts/i.test(source.path))continue;
+  const cover=parseEocCoverHeader(source.text);
+  if(cover){
+   add("showName",cover.showName,"EOC cover page: "+source.path);
+   add("eventId",cover.eventId,"EOC cover page: "+source.path);
+   add("startDate",cover.startDate,"EOC cover page: "+source.path);
+   add("showDate",cover.showDate,"EOC cover page: "+source.path);
+  }
   const rows=source.text.slice(0,120000).split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
   for(let i=0;i<rows.length;i++){
    const line=rows[i];
@@ -69,14 +108,30 @@ export function discoverEventMetadata(sources:readonly EventMetadataSource[],man
  const choose=(field:"eventId"|"showName"|"startDate"|"showDate")=>{
   const vals=evidence.filter(x=>x.field===field);
   if(!vals.length)return "";
-  return vals.find(x=>x.source==="ZIP manifest")?.value||vals[0].value;
+  return vals.find(x=>x.source.startsWith("EOC cover page:"))?.value||vals.find(x=>x.source==="ZIP manifest")?.value||vals[0].value;
  };
  const data={eventId:choose("eventId"),showName:choose("showName"),
   startDate:choose("startDate"),showDate:choose("showDate"),rooms:ROOMS.filter(r=>evidence.some(x=>x.field==="room"&&x.value===r)),
   evidence,warnings};
- if(!data.showName&&filename){
-  data.showName=filename.replace(/\.zip$/i,"").replace(/[_-]+/g," ").trim().slice(0,140);
-  warnings.push("Name suggested from ZIP filename only. Verify before saving.");
+ if(filename){
+  const parsed=parseEventZipFilename(filename);
+  if(parsed.eventId){
+   add("eventId",parsed.eventId,"ZIP filename (fallback)");
+   if(!data.eventId)data.eventId=parsed.eventId;
+  }
+  if(parsed.showName){
+   add("showName",parsed.showName,"ZIP filename (fallback)");
+   if(!data.showName){
+    data.showName=parsed.showName;
+    warnings.push("Show name suggested from ZIP filename only. Verify against the EOC before saving.");
+   }
+  }
+  if(parsed.date&&!data.startDate&&!data.showDate){
+   data.startDate=parsed.date;data.showDate=parsed.date;
+   add("startDate",parsed.date,"ZIP filename (fallback)");
+   add("showDate",parsed.date,"ZIP filename (fallback)");
+   warnings.push("Date suggested from ZIP filename only. Verify against the EOC before saving.");
+  }
  }
  for(const field of ["eventId","showName","startDate","showDate"] as const){
   const values=new Set(evidence.filter(x=>x.field===field).map(x=>x.value));
