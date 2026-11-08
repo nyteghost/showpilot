@@ -191,7 +191,7 @@ export async function runLocalPlanningAI(
 export async function probeLoadedLocalAi():Promise<{generated:boolean;durationMs:number}>{
  if(runtime.status!=="ready"||!engine||!loadedModel)throw Error("Local AI model is not loaded.");
  const start=performance.now();
- const completion=await serialInference(()=>engine.chat.completions.create({
+ const completion=await serialInference(()=>engine!.chat.completions.create({
   messages:[
    {role:"system",content:"You are a hardware diagnostic. Reply only with READY."},
    {role:"user",content:"Synthetic test: are you ready?"}
@@ -223,12 +223,12 @@ export async function explainBallroomWarningsLocally(
  onProgress("Local AI reviewing operational rule findings…");
  let completion;
  try{
-  completion=await serialInference(()=>engine.chat.completions.create({
+  completion=await serialInference(()=>engine!.chat.completions.create({
    messages,response_format:{type:"json_object",schema},temperature:0.1,max_tokens:700
   }));
  }catch(e){
   if(!isGrammarInitFailure(e))throw e;
-  completion=await serialInference(()=>engine.chat.completions.create({messages,temperature:0.1,max_tokens:700}));
+  completion=await serialInference(()=>engine!.chat.completions.create({messages,temperature:0.1,max_tokens:700}));
  }
  const parsed=parseTaskJson(String(completion.choices[0]?.message?.content??""));
  if(!parsed||typeof parsed!=="object"||!("notes" in parsed)||!Array.isArray(parsed.notes))
