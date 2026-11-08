@@ -3,11 +3,15 @@ import type {AirwallAssessment} from "./showpilot-today";
 import type {TaskNote} from "./work-tools";
 import type {WorkbookWallTask} from "./showpilot-today-sources";
 import {wallTaskLabel} from "./showpilot-today";
+import type {BallroomTransition} from "./showpilot-ballroom-inference";
 
 /** Checkboxes are human acknowledgements, never automated EOC decisions. */
 export type ChecklistTask={
  id:string;text:string;detail?:string;
- source:"standard"|"eoc"|"schedule"|"manual";
+ /** Transition checkoffs are anchored to the previous layout date, so marking
+  * them complete on Friday still counts on Saturday. */
+ storageDay?:string;
+ source:"standard"|"eoc"|"schedule"|"inferred"|"manual";
 };
 export type ManualChecklistTask={
  id:string;scope:string;text:string;createdAt:string;
@@ -89,7 +93,8 @@ function wallInstructionKey(instruction:string):string{
   .replace(/\s+/g," ").trim();
 }
 export function buildingChecklistTasks(
- day:string,excel:readonly WorkbookWallTask[],suggestions:readonly TaskNote[]
+ day:string,excel:readonly WorkbookWallTask[],suggestions:readonly TaskNote[],
+ inferred:readonly BallroomTransition[]=[]
 ):ChecklistTask[]{
  const result=[...STANDARD_BUILDING_TASKS];
  const changes=new Map<string,{section:"HALLS"|"BALLROOM";instruction:string;source:"workbook"|"event-schedule"}>();
@@ -103,7 +108,15 @@ export function buildingChecklistTasks(
  };
  for(const task of excel)if(task.date===day)collect(task.section,task.text,"workbook");
  for(const task of suggestions)if(task.date===day)collect(task.section,task.text,"event-schedule");
+ // An inferred before/after change is one job spanning several eligible days.
+ // If a dated workbook directive specifies the same target, keep the single
+ // inferred job (with the handoff window) rather than two checkboxes for it.
+ const eligible=inferred.filter(t=>day>=t.afterDate&&day<=t.needByDate);
+ const inferredTargets=new Set(eligible.map(t=>t.toGroups.length===1?
+  t.toGroups[0]==="ABCDEFG"?"full ballroom":t.toGroups[0]:t.toGroups.join("/")));
  for(const [key,task] of changes){
+  if(task.section==="BALLROOM"&&inferredTargets.has(wallInstructionKey(task.instruction)))
+   continue;
   const target=(task.section==="HALLS"?"Halls":"Ballrooms")+" — "+task.instruction;
   const id="wall-"+hash(key);
   const sourceDetail=task.source==="workbook"?
@@ -117,6 +130,23 @@ export function buildingChecklistTasks(
    text:"Verify lighting settings after airwall setup: "+target,
    source:"schedule",
    detail:"After the wall move, check lighting zones, scenes and controls match the final layout. "+sourceDetail+"."
+  });
+ }
+ for(const transition of eligible){
+  const base="wall-infer-"+hash(transition.id);
+  const target=transition.target;
+  const details="Inferred from saved room bookings. "+transition.explanation+
+   " Complete only after confirming the EOC and actual room occupancy.";
+  result.push({
+   id:base,storageDay:transition.afterDate,
+   text:"Make "+target+" — after "+transition.afterDate+", before "+transition.needByDate,
+   source:"inferred",detail:details
+  });
+  result.push({
+   id:base+"-lighting",storageDay:transition.afterDate,
+   text:"Verify lighting zones for "+target+" after the airwall change",
+   source:"inferred",
+   detail:"Complete after the airwalls are set. Verify lighting zones, scenes and controls against the final layout. "+transition.explanation
   });
  }
  return result;
