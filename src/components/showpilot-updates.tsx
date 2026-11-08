@@ -82,7 +82,7 @@ export function ShowPilotUpdates(){
   try{
    const response=await api.install();
    if(response.cancelled){setProgress(null);return}
-   if(response.started)setProgress({phase:"restarting",message:"Verified update prepared. ShowPilot is closing and restarting…",percent:100});
+   if(response.started)setProgress({phase:"restarting",message:"Update verified. Installer handoff requested; restart is not yet confirmed.",percent:100});
   }catch(e){setError(e instanceof Error?e.message:String(e))}
   finally{setInstalling(false)}
  };
@@ -111,13 +111,13 @@ export function ShowPilotUpdates(){
    {lastUpdate&&<div className="space-y-2 rounded-md border border-border p-3" role="status">
      <p className="text-sm font-semibold">
       {lastUpdate.status==="failed"?"Previous automatic update did not finish":
-       lastUpdate.status==="pending"?"Automatic installation started":
+       lastUpdate.status==="pending"?"Update prepared — installation not confirmed":
        "Previous automatic update completed"}
      </p>
      <p className="text-xs">{lastUpdate.message}</p>
-     {lastUpdate.status==="failed"&&<div className="flex flex-wrap gap-2 items-center">
+     {(lastUpdate.status==="failed"||lastUpdate.status==="pending")&&<div className="flex flex-wrap gap-2 items-center">
       <button type="button" className="rounded border border-border px-3 py-2 text-xs font-semibold" onClick={()=>void openLog()}>View installation log</button>
-      <span className="text-xs text-muted-foreground">Your saved notes, documents and schedules are not deleted when an update fails.</span>
+      <span className="text-xs text-muted-foreground">{lastUpdate.status==="pending"?"The download is staged, but folder replacement and relaunch are unconfirmed. If ShowPilot remains open, copy the diagnostics and check the log.":"Your saved notes, documents and schedules are not deleted when an update fails."}</span>
      </div>}
     </div>}
    {check&&<div className="space-y-1 rounded-md border border-border bg-muted/40 p-3" role="status">
