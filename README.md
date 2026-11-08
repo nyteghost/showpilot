@@ -74,6 +74,15 @@ To start a new release series, update the major/minor parts of the source `packa
 
 ## Features
 
+### Today — current CGC events and week at a glance
+
+- The **Today** sidebar tab reads saved CGC shows from the same offline SQLite event catalog used by **Events** (or its browser-only cache when the desktop bridge is unavailable). A show appears for each day within its saved start/end date range; this is **not** a claim that a specific function or staffing shift is scheduled that day.
+- Each of today's shows displays its Event ID, CGC rooms, dates, and **Open EOC** actions for actual attached originals. The link opens the local saved document via the existing protected Electron event-file bridge. Missing/unavailable EOCs are explicitly marked; there are no invented URLs.
+- Airwall notes are extracted from saved indexed EOC sections and reviewed ZIP schedule evidence. Movement instructions, mentions, and explicit no-change statements are distinguished and attributed to the source document and PDF page where known. Undated event-document notes must be verified for the specific day; absence of notes **does not** establish that no airwall needs moving.
+- If a previously imported Event Schedule is locally saved, the Today tab also shows **dated airwall configuration suggestions** calculated by the existing scheduling logic, labeled as unapproved suggestions rather than work orders. Excluded CEPAC events and unconfirmed/ cancelled source rows are not used.
+- A straightforward **Monday–Sunday week view** appears underneath Today, with Previous, Next and This Week buttons, daily show cards, EOC availability, airwall flags and any dated schedule suggestions. Dates are local day-only values and the weekly view supports horizontal scrolling on smaller screens.
+- **View in Events** opens that specific show's documents section, with its correct Event ID rather than the last-selected show. Refresh reads the latest imported catalog and attachments without changing notes, approved Excel templates, staffing schedules or event files. All records remain on the device; no network account is required for the Today tab.
+
 ### 1. Event Schedule
 
 - Import **Ungerboeck For Scheduling** reports in PDF or Excel, including multiple reports for the same review.
