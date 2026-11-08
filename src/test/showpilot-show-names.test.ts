@@ -38,5 +38,6 @@ describe("every engineering schedule cell has the parent show name",()=>{
   const unknown:EventEntry={date:"2026-11-20",space:"Hall D",code:"MI",
    start:480,end:960,title:"Move In Exhibitors",eventId:"99999"};
   expect(()=>assertNamedScheduleEntries([unknown])).toThrow(/Event ID 99999/);
+  expect(()=>assertNamedScheduleEntries([{...unknown,title:"Booth Order Break"}])).toThrow(/parent show/);
  });
 });
