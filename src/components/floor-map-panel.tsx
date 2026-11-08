@@ -35,6 +35,7 @@ export function FloorMapPanel({initialEventDocuments,selectedEventId=""}:{initia
   const [eventId,setEventId]=useState(selectedEventId);
   const [eventIdInput,setEventIdInput]=useState(selectedEventId);
   const [knownShows,setKnownShows]=useState<PostConShow[]>([]);
+  const [savedEventMaps,setSavedEventMaps]=useState<{eventKey:string;eventId:string;showName:string;planCount:number}[]>([]);
   const [pendingLayout,setPendingLayout]=useState<File|null>(null);
   const [linkStatus,setLinkStatus]=useState("");
   const [linking,setLinking]=useState(false);
@@ -44,11 +45,20 @@ export function FloorMapPanel({initialEventDocuments,selectedEventId=""}:{initia
   const selectedShow=useMemo(()=>findFloorMapShowById(eventIdInput,knownShows),[eventIdInput,knownShows]);
   useEffect(()=>{
     let alive=true;
-    const refresh=()=>{void bridge?.showCatalogList().then(shows=>{if(alive)setKnownShows(shows)})
-       .catch(()=>{if(alive)setLinkStatus("Could not read saved Events. Event ID matching is unavailable.")});};
+    const refresh=()=>{
+      void bridge?.showCatalogList().then(shows=>{if(alive)setKnownShows(shows)})
+       .catch(()=>{if(alive)setLinkStatus("Could not read saved Events. Event ID matching is unavailable.")});
+      void bridge?.eventFloorMapEvents?.().then(entries=>{if(alive)setSavedEventMaps(entries)})
+       .catch(()=>{if(alive)setSavedEventMaps([])});
+    };
     refresh();
     window.addEventListener("showpilot:postcon-catalog",refresh);
-    return ()=>{alive=false;window.removeEventListener("showpilot:postcon-catalog",refresh)};
+    window.addEventListener("showpilot:event-files-updated",refresh);
+    return ()=>{
+      alive=false;
+      window.removeEventListener("showpilot:postcon-catalog",refresh);
+      window.removeEventListener("showpilot:event-files-updated",refresh);
+    };
   },[bridge]);
   const eventFileKey=initialEventDocuments?.map(f=>f.name+":"+f.size).join("|")??"";
   const [noteHints,setNoteHints]=useState<ShowPilotItem[]>([]);
@@ -352,7 +362,19 @@ export function FloorMapPanel({initialEventDocuments,selectedEventId=""}:{initia
            selectedShow.status==="ambiguous"?"More than one Events record has this ID; resolve the duplicate first.":
            eventIdInput?"No unique saved CGC event matches this ID. Import it in Events before linking.":"Enter an existing Event ID, or choose a saved event from the suggestions."}
         </p>
-        <p className="text-xs text-muted-foreground">Layouts uploaded separately from an EOC ZIP are saved under the confirmed Events record. Existing itemized Better Work Order Items PDFs in Exhibitor Orders automatically supply booth utility information; unclear booth locations still require review.</p>
+        {savedEventMaps.length>0&&<label className="block text-xs font-medium">
+          Floor maps already found in Events ({savedEventMaps.length} events)
+          <select className="mt-1 w-full rounded border bg-background p-2 font-normal"
+            value={savedEventMaps.some(entry=>entry.eventId===eventIdInput)?eventIdInput:""}
+            onChange={e=>{setEventIdInput(e.target.value);setPendingLayout(null);setLinkStatus("");}}>
+            <option value="">Choose an event with a saved floor map…</option>
+            {savedEventMaps.map(entry=>
+              <option key={entry.eventKey} value={entry.eventId}>
+                {entry.showName} · #{entry.eventId} · {entry.planCount} plan{entry.planCount===1?"":"s"}
+              </option>)}
+          </select>
+        </label>}
+        <p className="text-xs text-muted-foreground">Floor plans detected in an Event ZIP are listed above automatically, including layouts named Floorplan.pdf. Select the saved event and click Load saved layout & orders; no separate upload is needed. Existing itemized Better Work Order Items PDFs in Exhibitor Orders provide booth utility information when available. Unclear booth locations still require review.</p>
         {linkStatus&&<p role="status" className="text-xs">{linkStatus}</p>}
       </div>
       <label
