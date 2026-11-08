@@ -56,6 +56,36 @@ describe("event ZIP metadata and scheduling evidence",()=>{
   expect(found.showName).not.toContain("Event Order Confirmation +");
   expect(found.warnings.some(x=>/Conflicting eventId/.test(x))).toBe(false);
  });
+ it("ignores a #tes placeholder and uses Event ID 42389 from the EOC cover and ZIP name",()=>{
+  const filename="Event Order Confirmation + Supporting Documents Example Event ID#42389 11 08 2026.zip";
+  const eoc=[
+   "Event Order Confirmation",
+   "Example Event (42389)",
+   "Sun 11/8/2026 - Sun 11/8/2026",
+   "Event ID: tes",
+   "Event ID: #tes",
+   "Event Number: 42389",
+   "Hall A"
+  ].join("\n");
+  const result=discoverEventMetadata([
+   {path:"Event Order Confirmation - Internal (2).pdf",text:eoc}
+  ],null,filename);
+  expect(result.eventId).toBe("42389");
+  expect(result.evidence.filter(x=>x.field==="eventId").map(x=>x.value))
+   .toEqual(["42389","42389","42389"]);
+  expect(result.evidence.some(x=>x.value.toLowerCase()==="tes")).toBe(false);
+  expect(result.warnings.some(x=>x.includes("Conflicting eventId"))).toBe(false);
+ });
+ it("rejects nonnumeric manifest IDs rather than overriding a numeric EOC cover",()=>{
+  const result=discoverEventMetadata([{
+   path:"EOC.pdf",
+   text:"Event Order Confirmation\nExample Event (42389)\nSun 11/8/2026 - Sun 11/8/2026"
+  }],{eventId:"tes"},"Example Event ID#42389 11 08 2026.zip");
+  expect(result.eventId).toBe("42389");
+  expect(result.evidence.filter(x=>x.field==="eventId").map(x=>x.value))
+   .toEqual(["42389","42389"]);
+  expect(result.warnings.some(x=>x.includes("Conflicting eventId"))).toBe(false);
+ });
  it("uses EOC cover fields ahead of ZIP filename or manifest and highlights conflicts for review",()=>{
   const cover="Event Order Confirmation\nHospitality Industry Ministries (41622)\nFri 11/6/2026 - Sat 11/7/2026";
   const found=discoverEventMetadata([{path:"Documents/EOC.pdf",text:cover}],
