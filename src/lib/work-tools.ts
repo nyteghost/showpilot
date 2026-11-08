@@ -45,7 +45,7 @@ export function parseReportTime(t: string): number {
 // ---------- Ungerboeck event functions ----------
 export type EventRow = { level: number; usage: string; start: string; end: string; description: string; space: string; date: string; event?: string; eventId?: string; status?: string };
 export type EventCode = "S" | "Exmi" | "MI" | "MO" | "MO?" | "Food" | "Dinner" | "MTG" | "Arr" | "Breakfast" | "Lunch";
-export type EventEntry = { date: string; space: string; code: EventCode; start: number; end: number; title: string; eventId?: string };
+export type EventEntry = { date: string; space: string; code: EventCode; start: number; end: number; title: string; showName?: string; eventId?: string };
 
 /** Applies Mark's rules: skip Level 1 date headers; S = show events; Exmi = exhibitor move in; MI = other move in; MO = move out. */
 const FOOD_RE = /reception|dinner|lunch|breakfast|buffet|hosted bar|cash bar|wine service|food|concession|coffee|snack|banquet|luncheon|plated|boxed|brunch/;
@@ -89,6 +89,33 @@ export function classifyEvent(row: EventRow): EventCode | null {
     return "S";
   }
   return null;
+}
+
+
+/** Prevent a function label from substituting for the event's booked show name. */
+export function isFunctionOnlyTitle(title:string):boolean {
+ return /^(?:(?:exhibitor|client|vendor)\s+)?(?:move[\s-]*in|move[\s-]*out|move in exhibitors|exhibitor move|move in continue|move out continue|registration|program|meeting|setup|breakout sessions?|reception|after.party|client arrival|doors open|expo open|general session|exhibitor service desk|lunch|breakfast|dinner)(?:\s*[-–:].*)?$/i.test(title.trim());
+}
+/** Reattach parent bookings to older reviewed entries using their Event IDs. */
+export function attachShowNames(entries:readonly EventEntry[],rows:readonly EventRow[]):EventEntry[]{
+ const names=new Map<string,string>();
+ for(const r of rows)if(r.eventId&&r.event?.trim()&&!isFunctionOnlyTitle(r.event))
+  names.set(r.eventId,r.event.trim());
+ return entries.map(entry=>{
+  const parent=(entry.eventId?names.get(entry.eventId):undefined)||
+   (entry.showName&&!isFunctionOnlyTitle(entry.showName)?entry.showName:"");
+  return parent?{...entry,title:parent,showName:parent}:{...entry};
+ });
+}
+/** Do not export an anonymous function as if its description were a show. */
+export function assertNamedScheduleEntries(entries:readonly EventEntry[]):void{
+ const bad=entries.filter(e=>!(e.showName||e.title).trim()||isFunctionOnlyTitle(e.showName||e.title));
+ if(bad.length){
+  const examples=bad.slice(0,3).map(e=>e.date+" "+e.space+
+   (e.eventId?" (Event ID "+e.eventId+")":"")+" — "+e.title).join("; ");
+  throw new Error("Cannot export unnamed event activities. Verify the parent show in Event Schedule: "+
+   examples+(bad.length>3?" (+"+(bad.length-3)+" more)":""));
+ }
 }
 
 /** Merges rows per date + space + show + code (earliest start, latest end). */
