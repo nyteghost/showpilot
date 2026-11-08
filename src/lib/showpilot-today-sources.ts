@@ -58,7 +58,7 @@ function aggregate(items:readonly DailyActivity[]):DailyActivity[]{
  }
  return [...merged.values()].sort((a,b)=>a.date.localeCompare(b.date)||a.showName.localeCompare(b.showName));
 }
-export function activitiesFromReviewProject(project:ReviewProject):{activities:DailyActivity[];airwalls:TaskNote[]}{
+export function activitiesFromReviewProject(project:ReviewProject):{activities:DailyActivity[];airwalls:TaskNote[];acceptedRows:ReviewProject["originalRows"]}{
  const parsed=parseReviewProject(JSON.stringify(project));
  const accepted=scopeShowPilotRows(parsed.originalRows.filter(r=>!isCancelledRow(r)),parsed.approvedSpaces).accepted
   .filter(r=>parsed.includePending||!isPendingRow(r));
@@ -79,7 +79,7 @@ export function activitiesFromReviewProject(project:ReviewProject):{activities:D
  }
  // Include only actionable dated schedule-generated airwall suggestions.
  const airwalls=airwallTasks(accepted);
- return {activities:aggregate(items),airwalls};
+ return {activities:aggregate(items),airwalls,acceptedRows:accepted};
 }
 
 /** Ungerboeck / engineering workbook operation names are NOT show names.
