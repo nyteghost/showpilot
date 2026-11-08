@@ -20,7 +20,20 @@ export function ShowPilotRuleReview({evidence}:{evidence:RuleEvidence}){
   let alive=true;
   const delay=window.setTimeout(()=>{
    previous.current=fingerprint;setResult(null);setStatus("Reviewing with on-device AI…");
-   void reviewRuleEvidenceLocally(safe).then(answer=>{
+   void (async()=>{
+    let verifiedNotes:string[]=[];
+    if(window.showpilotMemory){
+     try{
+      const memory=window.showpilotMemory;
+      if((await memory.status()).configured){
+       const matches=await memory.search((safe.label+" "+safe.domain).slice(0,130));
+       verifiedNotes=matches.filter(x=>x.title.startsWith("User-verified ShowPilot correction:"))
+        .slice(0,4).map(x=>x.title+": "+x.excerpt);
+      }
+     }catch{/* Native memory is optional and never blocks rule review. */}
+    }
+    return reviewRuleEvidenceLocally(safe,verifiedNotes);
+   })().then(answer=>{
     if(alive){setResult(answer);setStatus("AI second opinion — advisory only");}
    }).catch(error=>{
     if(alive)setStatus("AI review unavailable: "+(error instanceof Error?error.message:String(error)));
