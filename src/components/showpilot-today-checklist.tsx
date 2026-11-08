@@ -1,13 +1,14 @@
 import {useEffect,useMemo,useState,type FormEvent} from "react";
 import {CheckCircle2,ClipboardList,Plus,Trash2} from "lucide-react";
 import {Button} from "@/components/ui/button";
+import {ShowPilotWhy} from "@/components/showpilot-why";
 import type {PostConShow} from "@/lib/showpilot-postcon";
 import type {AirwallAssessment} from "@/lib/showpilot-today";
 import type {TaskNote} from "@/lib/work-tools";
 import type {WorkbookWallTask} from "@/lib/showpilot-today-sources";
 import type {BallroomTransition} from "@/lib/showpilot-ballroom-inference";
 import {
- addTodayTask,buildingChecklistTasks,checkTodayTask,checklistKey,
+ addTodayTask,buildingChecklistTasks,reconcileAirwallDay,checkTodayTask,checklistKey,
  loadTodayChecklist,removeTodayTask,tasksForShow,
  type ChecklistTask,type TodayChecklistState
 } from "@/lib/showpilot-today-checklist";
@@ -41,6 +42,7 @@ export function ShowPilotTodayChecklist({day,shows,airwalls,workbookWalls,sugges
   });
   return ()=>{alive=false};
  },[day,transitions]);
+ const airwallPlan=useMemo(()=>reconcileAirwallDay(day,workbookWalls,suggestions,transitions),[day,workbookWalls,suggestions,transitions]);
  const groups=useMemo(()=>{
   const building={
    scope:"building",title:"Building-wide setup",subtitle:"",
@@ -130,7 +132,26 @@ export function ShowPilotTodayChecklist({day,shows,airwalls,workbookWalls,sugges
       </div>
       <span className="shrink-0 text-xs text-muted-foreground">{done}/{g.tasks.length}</span>
      </div>
-     {g.scope==="building"&&!g.tasks.some(task=>task.id.startsWith("wall-"))&&
+     {g.scope==="building"&&airwallPlan.review.length>0&&
+      <details className="rounded-md border border-amber-500/60 p-2 text-xs">
+       <summary className="cursor-pointer font-semibold">
+        {airwallPlan.review.some(x=>x.kind==="conflict")?"Conflicting ballroom setups — verify before moving":"Other proposed setups — not additional moves for today"}
+        {" · "+airwallPlan.review.length+" source suggestion(s)"}
+       </summary>
+       <p className="mt-2 text-muted-foreground">ShowPilot compares the engineering workbook, Event Schedule and inferred event-to-event room changes. A contradictory or later arrangement is not automatically another task for today.</p>
+       {airwallPlan.review.map(item=>
+        <div key={item.id} className="mt-2 border-t pt-2 space-y-1">
+         <div className="flex items-center gap-1">
+          <strong>{item.kind==="conflict"?"Needs review":"Plan ahead"}: {item.target}</strong>
+          <ShowPilotWhy label={item.target}>
+           <p>{item.reason}</p>
+           {item.sources.map((source,i)=><p key={i} className="border-t pt-1">{source}</p>)}
+          </ShowPilotWhy>
+         </div>
+         <p className="text-muted-foreground">{item.reason}</p>
+        </div>)}
+      </details>}
+     {g.scope==="building"&&!g.tasks.some(task=>task.id.startsWith("wall-"))&&!airwallPlan.review.length&&
       <p className="text-xs text-muted-foreground">No dated airwall movement was found in the saved engineering schedules for today. Verify the EOC before concluding no changes are required.</p>}
      <div className="space-y-2">
       {visible.map(task=>{
@@ -145,6 +166,11 @@ export function ShowPilotTodayChecklist({day,shows,airwalls,workbookWalls,sugges
          {task.detail&&<p className="mt-0.5 text-xs text-muted-foreground">{task.detail}</p>}
          {task.source==="schedule"&&<p className="text-xs text-amber-600">Dated engineering schedule — verify EOC and room availability</p>}
          {task.source==="inferred"&&<p className="text-xs text-amber-600">Inferred layout transition — confirm timing and EOC before moving walls</p>}
+         {(task.source==="inferred"||task.source==="schedule")&&
+          <ShowPilotWhy label={task.text}>
+           <p>{task.detail||"This task was found in the saved schedule."}</p>
+           <p>Completion is a manual acknowledgment. ShowPilot has not controlled the physical airwalls or verified their present position.</p>
+          </ShowPilotWhy>
          {task.source==="eoc"&&<p className="text-xs text-amber-600">Document note — confirm date and timing</p>}
         </div>
         {task.source==="manual"&&<button type="button" disabled={saving||loading}
