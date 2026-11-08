@@ -229,8 +229,8 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
   </div>
   {warning&&<p role="alert" className="rounded-lg border border-amber-500 p-3 text-sm">{warning}</p>}
   {message&&<p role="status" className="rounded-lg border p-3 text-sm">{message}</p>}
-  {sourceWarnings.length>0&&<div className="rounded-lg border border-amber-500 p-3 text-xs" role="status">
-   {sourceWarnings.map((warning,i)=><p key={i}>{warning}</p>)}
+  {(sourceWarnings.length>0||inferredLayouts.warnings.length>0)&&<div className="rounded-lg border border-amber-500 p-3 text-xs" role="status">
+   {[...sourceWarnings,...inferredLayouts.warnings].map((warning,i)=><p key={i}>{warning}</p>)}
   </div>}
   <div className="grid gap-3 sm:grid-cols-3">
    <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Actual shows on today's date</p>
@@ -310,7 +310,10 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
   </details>}
   <section className="space-y-3" aria-label="Scheduled airwall changes today">
    <h3 className="flex items-center gap-2 font-semibold"><AlertTriangle size={18}/> Airwall changes suggested for today</h3>
-   {(todayChanges.length>0||todayWorkbookWalls.length>0)?<div className="rounded-lg border border-amber-500 p-3 space-y-1">
+   {(todayChanges.length>0||todayWorkbookWalls.length>0||inferredLayouts.transitions.some(t=>today>=t.afterDate&&today<=t.needByDate))?<div className="rounded-lg border border-amber-500 p-3 space-y-1">
+    {inferredLayouts.transitions.filter(t=>today>=t.afterDate&&today<=t.needByDate).map(t=><p key={t.id} className="text-sm">
+     <strong>Inferred airwall handoff:</strong> Make {t.target} and verify lighting — after {t.afterDate}, before {t.needByDate}. Confirm the source EOC and access window.
+    </p>)}
     {todayWorkbookWalls.map((task,i)=><p key={"workbook-"+i} className="text-sm">
      <strong>Engineering workbook:</strong> {task.text} ({task.section==="HALLS"?"Halls":"Ballrooms"}) — verify before moving
     </p>)}
@@ -339,6 +342,7 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
       const wallChanges=scheduledWallChanges(suggestions,date);
       const unmatched=joined.unlinkedFunctions.filter(f=>f.date===date);
       const sheetWalls=workbookWalls.filter(t=>t.date===date);
+      const plannedMoves=inferredLayouts.transitions.filter(t=>date>=t.afterDate&&date<=t.needByDate);
       const isToday=date===today;
       return <div key={date} className={"min-h-52 p-2 space-y-2 "+(isToday?"bg-primary/5":"")}>
        <div className="border-b pb-2">
@@ -370,13 +374,18 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
          <p className="text-muted-foreground">No event assigned; verify the EOC or Event Schedule ID before linking.</p>
         </div>
        </details>}
+       {plannedMoves.map(t=><div key={t.id} className="rounded-md border border-amber-500 px-2 py-1 text-xs">
+        <strong>Airwall setup window</strong>
+        <p>Make {t.target}</p><p>Then verify lighting</p>
+        <p className="text-muted-foreground">After {t.afterDate}, before {t.needByDate}; verify EOC and room availability.</p>
+       </div>)}
        {sheetWalls.map((task,i)=><div key={"sheet-wall-"+i} className="rounded-md border border-amber-500 px-2 py-1 text-xs">
         <strong>Engineering task</strong><p>{task.text}</p>
        </div>)}
        {wallChanges.map((task,i)=><div key={"wall-"+i} className="rounded-md border border-amber-500 px-2 py-1 text-xs">
         <strong>Airwall suggestion</strong><p>{wallTaskLabel(task)}</p>
        </div>)}
-       {!dayShows.length&&!wallChanges.length&&!sheetWalls.length&&<p className="text-xs text-muted-foreground">No saved events</p>}
+       {!dayShows.length&&!wallChanges.length&&!sheetWalls.length&&!plannedMoves.length&&<p className="text-xs text-muted-foreground">No saved events</p>}
       </div>;
      })}
     </div>
