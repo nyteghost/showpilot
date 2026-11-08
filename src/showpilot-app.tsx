@@ -54,7 +54,7 @@ export function App() {
     if(localAiBusy)return;
     setLocalAiBusy(true);setLocalAiError("");
     try{
-      if(localAiOn){
+      if(localAiOn&&localAiRuntime.status==="ready"){
         await disableLocalAi();
         setLocalAiOn(false);
       }else{
@@ -81,6 +81,7 @@ export function App() {
   useEffect(()=>{try{localStorage.setItem("showpilot:screen",screen)}catch{}},[screen]);
   useEffect(()=>{try{localStorage.setItem("showpilot:sidebar",String(expanded))}catch{}},[expanded]);
   useEffect(()=>subscribeLocalAiRuntimeState(setLocalAiRuntime),[]);
+  useEffect(()=>{if(localAiRuntime.status==="ready")setLocalAiOn(true);},[localAiRuntime.status]);
 
   useEffect(()=>{
     const open=(event:Event)=>{
@@ -137,7 +138,7 @@ export function App() {
             className="rounded-md border px-2.5 py-1 text-xs font-semibold disabled:opacity-50"
             aria-label={localAiOn?"Turn local AI off":"Turn local AI on"}
             aria-pressed={localAiOn} title={localAiOn?"Unload the local AI model":"Load a previously cached local model"}>
-            {localAiBusy?"Working…":localAiOn?"AI On":"AI Off"}
+            {localAiBusy?"Working…":localAiRuntime.status==="ready"?"AI On":localAiOn?"Load AI":"AI Off"}
           </button>
           {localAiError&&<span role="alert" className="max-w-48 text-xs text-amber-600" title={localAiError}>{localAiError}</span>}
           <button className="sp-icon-button" onClick={()=>setDark(v=>!v)} aria-label={dark?"Use light theme":"Use dark theme"}>{dark?<Sun size={19}/>:<Moon size={19}/>}</button>
