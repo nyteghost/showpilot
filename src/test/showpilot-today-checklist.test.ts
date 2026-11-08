@@ -90,6 +90,8 @@ describe("Today operations checklist templates",()=>{
   ],[{date:day,section:"BALLROOM",text:"Make full ballroom"}])).toHaveLength(2);
   expect(scheduledAirwallInstruction("BALLROOM","Airwalls listed in EOC")).toBeNull();
   expect(scheduledAirwallInstruction("BALLROOM","No airwall changes")).toBeNull();
+  expect(scheduledAirwallInstruction("BALLROOM","Do not move airwalls")).toBeNull();
+  expect(scheduledAirwallInstruction("BALLROOM","Airwalls remain unchanged")).toBeNull();
   expect(scheduledAirwallInstruction("BALLROOM","Move airwall between B and C")).toBeTruthy();
  });
  it("does not consider anything completed without an explicit checkoff",()=>{
