@@ -317,7 +317,7 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
    {aiReviewState&&<p className="mt-2 font-medium" role="status">{aiReviewState}</p>}
    <p className="mt-2 text-muted-foreground">Independent AI review covers currently detected rule findings. It does not change approved bookings, physical setup work or EOC records. Other tools have separate review paths.</p>
    </>}
-  </div>
+  </div>}
   <div className="grid gap-3 sm:grid-cols-3">
    <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Actual shows on today's date</p>
     <strong className="text-2xl tabular-nums">{currentShows.length}</strong></div>
