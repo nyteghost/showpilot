@@ -11,6 +11,7 @@ import {loadDurableShowCatalog,loadPostConShows,type PostConShow} from "@/lib/sh
 import type {PostConReport} from "@/lib/showpilot-memory-bridge";
 import {parseZipSchedule,type ZipScheduleEvidence} from "@/lib/showpilot-zip-schedule";
 import {linkedMapDocuments} from "@/lib/showpilot-floor-map-events";
+import {ShowPilotWhy} from "@/components/showpilot-why";
 
 const noteTitle=(show:PostConShow)=>"Event Notes: "+show.key.slice(0,110);
 const matches=(eventId:string,name:string,show:PostConShow)=>
@@ -191,7 +192,21 @@ export function ShowPilotEventsPanel({active=true,stagePlanner,floorMaps,openEve
    <div className="mt-2 grid gap-2 text-sm sm:grid-cols-3">
     <p><strong>Event ID:</strong> {show.eventId||"Not provided"}</p>
     <p><strong>Dates:</strong> {show.startDate??show.showDate}{(show.startDate??show.showDate)!==show.showDate?" – "+show.showDate:""}</p>
-    <p><strong>CGC rooms:</strong> {show.rooms}</p>
+    <div className="flex items-start gap-1">
+     <p><strong>CGC rooms:</strong> {show.rooms}</p>
+     <ShowPilotWhy label="saved CGC rooms">
+      <p>This shows the existing Events catalog room list. It can come from an Event Schedule import, your reviewed ZIP, or a manual correction; the catalog does not preserve an original source for every room.</p>
+      {show.rooms.split(",").map(room=>room.trim()).filter(Boolean).map(room=>{
+       const matched=(zipSchedule?.detected?.evidence??[]).filter(x=>x.field==="room"&&x.value===room);
+       return <div key={room} className="border-t pt-1">
+        <strong>{room}</strong>
+        {matched.length?matched.slice(0,4).map((item,i)=>
+         <p key={i}><strong>{item.confidence==="assigned"?"Direct ZIP room assignment":item.confidence==="mentioned"?"Unconfirmed mention":"Legacy ZIP evidence"}:</strong> {item.source}{item.context?" — "+item.context:" (exact text not retained)"}</p>
+        ):<p>No room-specific source was retained in this event's latest ZIP review. To verify, open <strong>Event documents → EOC quick reference → Room assignment check</strong>.</p>}
+       </div>;
+      })}
+     </ShowPilotWhy>
+    </div>
    </div>
   </div>}
   <div hidden={section!=="overview"}>
@@ -245,7 +260,7 @@ export function ShowPilotEventsPanel({active=true,stagePlanner,floorMaps,openEve
    </div>}
   </div>
   {section==="documents"&&<div className="space-y-3">
-   {show&&bridge?<ShowPilotEventDocuments key={show.key+":"+filesRevision} show={show} onOpenStage={()=>selectSection("stage")} onOpenFloorMaps={()=>void openFloorMaps()}/>
+   {show&&bridge?<ShowPilotEventDocuments key={show.key+":"+filesRevision} show={show} zipSchedule={zipSchedule} onOpenStage={()=>selectSection("stage")} onOpenFloorMaps={()=>void openFloorMaps()}/>
     :<div className="rounded-xl border p-4 text-sm text-muted-foreground">Choose a show or import Exhibitor Orders / an event ZIP to see its orders, EOCs and diagrams.</div>}
   </div>}
   <div hidden={section!=="precon"}>{visited.includes("precon")&&<PreConPanel focusShow={show}/>}</div>
