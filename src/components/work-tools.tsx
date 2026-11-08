@@ -7,7 +7,7 @@ import {shiftRuleEvidence,calendarRuleEvidence,eventScheduleRuleEvidence,exportR
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { KeepAliveTabContent } from "@/components/showpilot-keep-alive-tab";
-import { buildIcs, DEFAULT_SCHEDULE_NAME, editShift, entryLabel, formatMinutes, googleCalendarLink, isIsoDate, minutesToTime, newShiftId, nextMondayIso, parsePastedShifts, shiftLabel, airwallTasks, isCancelledRow, isPendingRow, sharedSpaces, expandSpace, summarizeEvents, taskSuggestions, timeToMinutes, withShiftIds, type EventEntry, type EventRow, type Shift, type TaskNote } from "@/lib/work-tools";
+import { buildIcs, DEFAULT_SCHEDULE_NAME, editShift, entryLabel, formatMinutes, googleCalendarLink, isIsoDate, minutesToTime, newShiftId, nextMondayIso, parsePastedShifts, shiftLabel, airwallTasks, isCancelledRow, isPendingRow, sharedSpaces, expandSpace, summarizeEvents, attachShowNames, taskSuggestions, timeToMinutes, withShiftIds, type EventEntry, type EventRow, type Shift, type TaskNote } from "@/lib/work-tools";
 import { StandaloneVendors } from "@/components/showpilot-vendors";
 import { FloorMapPanel } from "@/components/floor-map-panel";
 import { scopeShowPilotRows } from "@/lib/showpilot-venue";
@@ -184,13 +184,14 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
       draftRef.current = next; setDraft(next); return next;
     }
   }
-  function compileReview(proposals: EventEntry[],notes: TaskNote[],nextDraft: ReviewDraft) {
+  function compileReview(proposals: EventEntry[],notes: TaskNote[],nextDraft: ReviewDraft,originalRows:EventRow[]=source?.rows??[]) {
     // Never prebuild a differently formatted workbook during editing.
     // The user-provided Excel template is read only for preview or download.
     const approved=applyReview(proposals,notes,nextDraft);
-    setEntries(approved.entries);
+    const named=attachShowNames(approved.entries,originalRows);
+    setEntries(named);
     setTasks(approved.tasks);
-    setShared(sharedSpaces(approved.entries));
+    setShared(sharedSpaces(named));
   }
   async function build(src: { rows: EventRow[]; existing?: File; sources: number }, includePending: boolean, approved: string[] = [], overrideDraft?: ReviewDraft) {
     const nextDraft = draftFor(src.rows, overrideDraft);
@@ -230,7 +231,7 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
       + (showCatalog.shows===0 && !("error" in showCatalog) ? " No named shows were identified for Pre-Con/Post-Con. Re-export a report with Event and Event ID columns; function descriptions won't be listed as shows." : "")
       + (showCatalog.storage==="sqlite" ? " "+showCatalog.shows+" shows saved to persistent SQLite for future app updates." : "")
       + (showCatalog.storage==="browser" ? " Show list cached for this browser only; open the desktop app for durable saving." : ""));
-    compileReview(proposals, notes, nextDraft);
+    compileReview(proposals, notes, nextDraft, src.rows);
   }
 
   // Recover the source Ungerboeck rows and every reviewer choice on next
