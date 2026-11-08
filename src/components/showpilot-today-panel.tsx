@@ -1,6 +1,7 @@
 import {useEffect,useMemo,useRef,useState} from "react";
 import {CalendarDays,ChevronLeft,ChevronRight,FileText,FolderOpen,RefreshCw,AlertTriangle,Layers3} from "lucide-react";
 import {Button} from "@/components/ui/button";
+import {ShowPilotTodayChecklist} from "@/components/showpilot-today-checklist";
 import {loadDurableShowCatalog,type PostConShow} from "@/lib/showpilot-postcon";
 import type {TaskNote} from "@/lib/work-tools";
 import {parseZipSchedule,type ZipScheduleHint} from "@/lib/showpilot-zip-schedule";
@@ -56,6 +57,9 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
  const todayChanges=useMemo(()=>scheduledWallChanges(suggestions,today),[suggestions,today]);
  const todayWorkbookWalls=useMemo(()=>workbookWalls.filter(t=>t.date===today),[workbookWalls,today]);
  const todayUnmatched=useMemo(()=>joined.unlinkedFunctions.filter(f=>f.date===today),[joined,today]);
+ const todayAirwalls=useMemo(()=>Object.fromEntries(currentShows.map(show=>[
+   show.key,details[show.key]?.airwalls??emptyAirwalls
+ ])),[currentShows,details]);
 
  useEffect(()=>{
   if(!active)return;
@@ -231,6 +235,8 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
     <strong className="text-2xl tabular-nums">{wallEvidenceCount}</strong></div>
   </div>
   {loading&&<p role="status" className="text-sm text-muted-foreground">Loading the local event catalog and EOC notes…</p>}
+  {!loading&&<ShowPilotTodayChecklist key={today} day={today} shows={currentShows}
+   airwalls={todayAirwalls} workbookWalls={todayWorkbookWalls} suggestions={todayChanges}/>}
   {!loading&&!warning&&currentShows.length===0&&<div className="rounded-xl border p-5">
    <strong>No saved CGC activity is available for today's date.</strong>
    <p className="mt-1 text-sm text-muted-foreground">Use engineering workbook above to import the dated Excel schedule, or import an Ungerboeck Event Schedule. No saved activity does not mean the building is inactive.</p>
