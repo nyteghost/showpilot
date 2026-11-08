@@ -10,6 +10,7 @@ import {decodePreCon,type PreConDraft} from "@/lib/showpilot-precon";
 import {loadDurableShowCatalog,loadPostConShows,type PostConShow} from "@/lib/showpilot-postcon";
 import type {PostConReport} from "@/lib/showpilot-memory-bridge";
 import {parseZipSchedule,type ZipScheduleEvidence} from "@/lib/showpilot-zip-schedule";
+import {linkedMapDocuments} from "@/lib/showpilot-floor-map-events";
 
 const noteTitle=(show:PostConShow)=>"Event Notes: "+show.key.slice(0,110);
 const matches=(eventId:string,name:string,show:PostConShow)=>
@@ -67,11 +68,10 @@ export function ShowPilotEventsPanel({active=true,stagePlanner,floorMaps,openEve
   if(!show||!bridge||!floorMaps)return;
   try{
    const files=await bridge.eventFileList(show.key);
-   const layouts=files.filter(x=>x.kind==="diagram"&&x.available&&
-    ["pdf","png","jpg","jpeg","webp"].includes(x.extension)&&
-    /hall|exhibit|floor[\s_-]*(?:plan|map)|event[\s_-]*layout/i.test(x.name));
-   const orders=files.filter(x=>(x.kind==="work-order"||x.kind==="exhibitor-order")&&x.available&&x.extension==="pdf");
-   const selected=[...layouts.sort((a,b)=>Number(b.extension==="pdf")-Number(a.extension==="pdf")).slice(0,1),...orders.slice(0,2)];
+   const {layouts,reports}=linkedMapDocuments(files);
+   // The ZIP is already saved in the Events vault. Pass its real layout and
+   // itemized report PDFs to Floor Maps without requiring another upload.
+   const selected=[...layouts.slice(0,1),...reports.slice(0,6)];
    const inputs=await Promise.all(selected.map(async item=>{
     const data=await bridge.eventFileRead(item.id);
     return new File([new Uint8Array(data.bytes)],data.name,{type:item.extension==="pdf"?"application/pdf":"image/"+item.extension});
