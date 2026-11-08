@@ -68,7 +68,8 @@ describe("Airwall intelligence compares actual ballroom layouts across event day
    row("2026-10-04","Next","Ballroom ABE")
   ];
   const result=inferBallroomTransitions([],rows);
-  expect(result.warnings.some(w=>w.includes("overlapping"))).toBe(true);
+  expect(result.warnings.some(w=>w.includes("Split")&&w.includes("Later")&&w.includes("Ballroom ABCDEFG"))).toBe(true);
+  expect(result.warnings.some(w=>w.includes("ballroom section")&&w.includes("room refresh"))).toBe(true);
   expect(result.transitions).toHaveLength(0);
  });
 });
