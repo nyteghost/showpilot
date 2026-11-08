@@ -8,6 +8,20 @@ let loading:Promise<Engine>|null=null;
 let worker:Worker|null=null;
 let loadedModel="";
 let localAiEnabled=true;
+let inferenceTail:Promise<void>=Promise.resolve();
+/** The same WebGPU model services all tools; serialize simultaneous review
+ * requests to avoid racing one worker with several chat completions. */
+async function serialInference<T>(invoke:()=>Promise<T>):Promise<T>{
+ const previous=inferenceTail;
+ let release:()=>void=()=>{};
+ inferenceTail=new Promise<void>(resolve=>{release=resolve;});
+ await previous;
+ try{
+  if(!localAiEnabled)throw new Error("Local AI was switched off.");
+  return await invoke();
+ }finally{release();}
+}
+
 /** Disabling local AI prevents assistants silently reloading the model. */
 export function isLocalAiEnabled(){return localAiEnabled;}
 export async function disableLocalAi():Promise<void>{
@@ -102,18 +116,18 @@ export async function runLocalTaskAI(input:AiTaskInput,model:string,onProgress:(
  // without constrained decoding; apply the exact same strict validation.
  let completion;
  try{
-   completion=await engine!.chat.completions.create({
+   completion=await serialInference(()=>engine!.chat.completions.create({
      messages,
      response_format:{type:"json_object",schema:TASK_JSON_SCHEMA},
      temperature:0.2,max_tokens:900
-   });
+   }));
  }catch(err){
    if(!isGrammarInitFailure(err))throw err;
    onProgress("This GPU runtime cannot start JSON grammar mode; retrying with safe text output...");
    try{
-     completion=await engine!.chat.completions.create({
+     completion=await serialInference(()=>engine!.chat.completions.create({
        messages,temperature:0.1,max_tokens:900
-     });
+     }));
    }catch(retryError){
      throw new Error("Local AI could not generate suggestions after the JSON grammar fallback: "+
        (retryError instanceof Error?retryError.message:String(retryError)));
@@ -153,14 +167,14 @@ export async function runLocalPlanningAI(
  onProgress("Generating "+kind+" recommendations on the local GPU…");
  let completion;
  try{
-  completion=await engine!.chat.completions.create({
+  completion=await serialInference(()=>engine!.chat.completions.create({
    messages,response_format:{type:"json_object",schema:PLANNING_JSON_SCHEMA},
    temperature:0.15,max_tokens:1000
-  });
+  }));
  }catch(e){
   if(!isGrammarInitFailure(e))throw e;
   onProgress("Retrying with text JSON compatibility mode on the local GPU…");
-  completion=await engine!.chat.completions.create({messages,temperature:0.1,max_tokens:1000});
+  completion=await serialInference(()=>engine!.chat.completions.create({messages,temperature:0.1,max_tokens:1000}));
  }
  const result=completion.choices[0]?.message?.content??"";
  if(typeof result!=="string")throw Error("Local AI returned an invalid response.");
@@ -175,13 +189,13 @@ export async function runLocalPlanningAI(
 export async function probeLoadedLocalAi():Promise<{generated:boolean;durationMs:number}>{
  if(runtime.status!=="ready"||!engine||!loadedModel)throw Error("Local AI model is not loaded.");
  const start=performance.now();
- const completion=await engine.chat.completions.create({
+ const completion=await serialInference(()=>engine.chat.completions.create({
   messages:[
    {role:"system",content:"You are a hardware diagnostic. Reply only with READY."},
    {role:"user",content:"Synthetic test: are you ready?"}
   ],
   temperature:0,max_tokens:24
- });
+ }));
  const content=completion.choices[0]?.message?.content;
  return {generated:typeof content==="string"&&content.trim().length>0,durationMs:Math.round(performance.now()-start)};
 }
@@ -207,12 +221,12 @@ export async function explainBallroomWarningsLocally(
  onProgress("Local AI reviewing operational rule findings…");
  let completion;
  try{
-  completion=await engine.chat.completions.create({
+  completion=await serialInference(()=>engine.chat.completions.create({
    messages,response_format:{type:"json_object",schema},temperature:0.1,max_tokens:700
-  });
+  }));
  }catch(e){
   if(!isGrammarInitFailure(e))throw e;
-  completion=await engine.chat.completions.create({messages,temperature:0.1,max_tokens:700});
+  completion=await serialInference(()=>engine.chat.completions.create({messages,temperature:0.1,max_tokens:700}));
  }
  const parsed=parseTaskJson(String(completion.choices[0]?.message?.content??""));
  if(!parsed||typeof parsed!=="object"||!("notes" in parsed)||!Array.isArray(parsed.notes))
