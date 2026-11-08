@@ -49,6 +49,13 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
  const [aiRuntime,setAiRuntime]=useState(getLocalAiRuntimeState);
  const [aiNotes,setAiNotes]=useState<BallroomAiNote[]>([]);
  const [aiReviewState,setAiReviewState]=useState("");
+ const [feedbackRevision,setFeedbackRevision]=useState(0);
+ useEffect(()=>{
+  const refresh=()=>setFeedbackRevision(v=>v+1);
+  window.addEventListener("showpilot:rule-feedback-saved",refresh);
+  return ()=>window.removeEventListener("showpilot:rule-feedback-saved",refresh);
+ },[]);
+
  useEffect(()=>subscribeLocalAiRuntimeState(setAiRuntime),[]);
 
  const [uploadBusy,setUploadBusy]=useState(false);
@@ -78,13 +85,25 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
   }
   let alive=true;
   setAiNotes([]);setAiReviewState("Local AI analyzing booking warnings…");
-  void explainBallroomWarningsLocally(ruleFindings).then(notes=>{
+  void (async()=>{
+   let verified:string[]=[];
+   if(window.showpilotMemory){
+    try{
+     const memory=window.showpilotMemory;
+     if((await memory.status()).configured){
+      const notes=await memory.list("User-verified ShowPilot correction");
+      verified=notes.slice(0,4).map(n=>n.title+": "+n.excerpt);
+     }
+    }catch{/* Keep deterministic rule warnings visible without Native Memory. */}
+   }
+   return explainBallroomWarningsLocally(ruleFindings,()=>{},verified);
+  })().then(notes=>{
    if(alive){setAiNotes(notes);setAiReviewState(notes.length?"Local AI review — advisory only":"Local AI found no validated notes.");}
   }).catch(e=>{
    if(alive){setAiReviewState("Local AI could not interpret these warnings: "+(e instanceof Error?e.message:String(e)));}
   });
   return ()=>{alive=false;};
- },[active,aiRuntime.status,inferenceWarnings]);
+ },[active,aiRuntime.status,inferenceWarnings,feedbackRevision]);
 
  const currentShows=useMemo(()=>joined.shows.filter(show=>showHasActivityOnDay(show,today,joined))
   .sort((a,b)=>a.showName.localeCompare(b.showName)),[joined,today]);
