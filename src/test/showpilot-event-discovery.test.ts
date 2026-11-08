@@ -34,6 +34,45 @@ describe("event ZIP metadata and scheduling evidence",()=>{
   expect(meta.evidence.some(v=>v.field==="eventId"&&v.value==="41622")).toBe(true);
   expect(meta.warnings.some(w=>w.startsWith("Conflicting eventId"))).toBe(true);
  });
+ it("autofills Hospitality Industry Ministries directly from its three-line EOC cover",()=>{
+  const eoc="Event Order Confirmation\nHospitality Industry Ministries (41622)\nFri 11/6/2026 - Fri 11/6/2026\nBallroom ABE";
+  const filename="Event Order Confirmation + Supporting Documents Hospitality Industry Ministries Event ID#41622 11 06 2026.zip";
+  expect(parseEocCoverHeader(eoc)).toEqual({
+   showName:"Hospitality Industry Ministries",eventId:"41622",
+   startDate:"2026-11-06",showDate:"2026-11-06"
+  });
+  const found=discoverEventMetadata([
+   {path:"EOC/Event Order Confirmation.pdf",text:eoc},
+   {path:"Work Orders/Utilities.txt",text:"Engineering orders for event 41622\nBallroom ABE"}
+  ],null,filename);
+  expect(found).toMatchObject({
+   showName:"Hospitality Industry Ministries",eventId:"41622",
+   startDate:"2026-11-06",showDate:"2026-11-06",
+   rooms:["BallRoom A","BallRoom B","BallRoom E"]
+  });
+  for(const field of ["showName","eventId","startDate","showDate"]){
+   expect(found.evidence.some(x=>x.field===field&&x.source.startsWith("EOC cover page:"))).toBe(true);
+  }
+  expect(found.showName).not.toContain("Event Order Confirmation +");
+  expect(found.warnings.some(x=>/Conflicting eventId/.test(x))).toBe(false);
+ });
+ it("uses EOC cover fields ahead of ZIP filename or manifest and highlights conflicts for review",()=>{
+  const cover="Event Order Confirmation\nHospitality Industry Ministries (41622)\nFri 11/6/2026 - Sat 11/7/2026";
+  const found=discoverEventMetadata([{path:"Documents/EOC.pdf",text:cover}],
+   {showName:"Outdated Show Name",eventId:"55555",startDate:"2026-11-09",showDate:"2026-11-10",rooms:"Ballroom A"},
+   "Event Order Confirmation + Supporting Documents Hospitality Industry Ministries Event ID#41622 11 06 2026.zip");
+  expect(found).toMatchObject({showName:"Hospitality Industry Ministries",eventId:"41622",
+   startDate:"2026-11-06",showDate:"2026-11-07"});
+  expect(found.warnings).toContain("Conflicting eventId values in documents; review before saving.");
+ });
+ it("recognizes wrapped and same-row PDF header text without reading unrelated body dates",()=>{
+  expect(parseEocCoverHeader("Event Order Confirmation  Hospitality Industry Ministries (41622)\nFri 11/6/2026 - Fri 11/6/2026\nInvoice date: 12/1/2026"))
+   .toEqual({showName:"Hospitality Industry Ministries",eventId:"41622",
+    startDate:"2026-11-06",showDate:"2026-11-06"});
+  expect(parseEocCoverHeader("Event Order Confirmation\nHospitality Industry Ministries\n(41622)\nFri 11/6/2026 - Fri 11/6/2026"))
+   .toMatchObject({showName:"Hospitality Industry Ministries",eventId:"41622"});
+  expect(parseEocCoverHeader("Invoice Number: 41622\nEvent Date: 11/6/2026")).toBeNull();
+ });
  it("uses filename Event ID and cleaned title when no readable EOC cover exists",()=>{
   const file="Event Order Confirmation + Supporting Documents Hospitality Industry Ministries Event ID#41622 11 06 2026.zip";
   const m=discoverEventMetadata([],null,file);
