@@ -39,7 +39,15 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
  const [matchResult,setMatchResult]=useState<EventZipMatch|null>(null);
  const [availableShows,setAvailableShows]=useState<PostConShow[]|null>(null);
  const candidates=availableShows??shows;
- const reset=()=>{setArchive(null);setInspection(null);setMetadata(null);setScheduleHints([]);setReadWarnings([]);setApplyExisting(false);setMatchResult(null);setAvailableShows(null);if(picker.current)picker.current.value="";};
+ // Always reset every field that can be populated by a previous ZIP.
+ // Preserve the remaining queue so batch imports can advance independently.
+ const reset=()=>{
+  setArchive(null);setInspection(null);setMetadata(null);
+  setScheduleHints([]);setReadWarnings([]);setMatchResult(null);setAvailableShows(null);
+  setMode("new");setTarget("");setName("");setEventId("");setStart("");setEnd("");
+  setRooms([]);setApplyExisting(false);setDragging(false);
+  if(picker.current)picker.current.value="";
+ };
  const stage=useCallback(async(file:File)=>{
   if(!bridge?.eventZipInspect){setStatus("ZIP import requires the current ShowPilot portable desktop build.");return;}
   if(!/\.zip$/i.test(file.name)){setStatus("Choose an event ZIP file.");return;}
@@ -119,7 +127,10 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
   setQueue(old=>old.slice(1));
   reset();
   if(next)void stage(next);
-  else setStatus("All selected ZIP files have been reviewed.");
+  else{
+   setQueueTotal(0);setQueueReviewed(0);
+   setStatus("ZIP review cleared. Ready for the next upload.");
+  }
  };
  useEffect(()=>{
   if(!active)return;
@@ -222,12 +233,17 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
    const next=queue[0];
    setQueue(old=>old.slice(1));reset();
    if(next)await stage(next);
-   else setStatus(result.imported.length+" document(s) imported. "+result.duplicates.length+
+   else{
+    // Nothing should remain prefilled after saving the last ZIP.
+    setQueueTotal(0);setQueueReviewed(0);
+    setStatus("Saved. Ready for the next ZIP upload. "+result.imported.length+
+     " document(s) imported. "+result.duplicates.length+
     " duplicates skipped; "+result.ignored.length+" unsupported entries ignored."+
     (result.errors.length?" "+result.errors.length+" file(s) failed: "+
      result.errors.map(e=>e.name+" ("+e.error+")").join("; ").slice(0,350):"")+
     (indexed?" EOC focus sections indexed: "+indexed+".":"")+
     (unreadable?" EOC PDFs needing manual review: "+unreadable+".":""));
+   }
   }catch(e){setStatus("ZIP import failed: "+(e instanceof Error?e.message:String(e)));}
   finally{setBusy(false);}
  };
