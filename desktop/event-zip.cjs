@@ -90,9 +90,17 @@ function readZip(input){
 }
 function classify(path){
  const s=path.toLowerCase();
- if(/\beoc\b|event[\s_-]*order[\s_-]*confirmation/.test(s))return "eoc";
- if(/\bwo\b|work[\s_-]*order|exhibitor[\s_-]*orders?|utility[\s_-]*order/.test(s))return "exhibitor-order";
- if(/diagram|layout|floor[\s_-]*plan|floor[\s_-]*map|drawing|seating|room[\s_-]*plan/.test(s)||/\.(?:dwg|dxf)$/.test(s))return "diagram";
+ const name=s.split("/").pop();
+ // An archive folder called "Event Order Confirmation + Diagrams" must NOT
+ // turn a child named "Floorplan.pdf" into an EOC. File name wins.
+ if(/diagram|layout|floor[\s_-]*plan|floor[\s_-]*map|drawing|seating|room[\s_-]*plan/.test(name)||
+   /\.(?:dwg|dxf)$/.test(name))return "diagram";
+ if(/\beoc\b|event[\s_-]*order[\s_-]*confirmation/.test(name))return "eoc";
+ if(/\bwo\b|work[\s_-]*order|exhibitor[\s_-]*orders?|utility[\s_-]*order/.test(name))return "exhibitor-order";
+ // For otherwise anonymous documents, respect specific directory labels.
+ if(/(?:^|\/)(?:floor[\s_-]*plans?|diagrams?|layouts?)(?:\/|$)/.test(s))return "diagram";
+ if(/(?:^|\/)(?:eocs?|event[\s_-]*order[\s_-]*confirmations?)(?:\/|$)/.test(s))return "eoc";
+ if(/(?:^|\/)(?:work[\s_-]*orders?|exhibitor[\s_-]*orders?)(?:\/|$)/.test(s))return "exhibitor-order";
  return "other";
 }
 function inspect(input){
