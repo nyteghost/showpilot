@@ -2,6 +2,13 @@ export type EventMetadataSource={path:string;text:string};
 export type Evidence={field:"eventId"|"showName"|"startDate"|"showDate"|"room";value:string;source:string};
 export type EventMetadataResult={eventId:string;showName:string;startDate:string;showDate:string;rooms:string[];evidence:Evidence[];warnings:string[]};
 export const ROOMS=["Hall A","Hall B","Hall C","Hall D","BallRoom A","BallRoom B","BallRoom C","BallRoom D","BallRoom E","BallRoom F","BallRoom G"];
+/** Ungerboeck EOC Event IDs are numeric. A free-text field such as
+ * "Event ID: tes" is not an event ID and must never cause a false conflict.
+ * Preserve leading zeros so matching remains exact. */
+export function validCgcEventId(value:string):string{
+ const cleaned=value.trim().replace(/^#\s*/,"").trim();
+ return /^\d{3,12}$/.test(cleaned)?cleaned:"";
+}
 export function normalizeEventDate(value:string):string{
  const v=value.trim().replace(/,/g,"");
  const m=/^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(v),u=/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})$/.exec(v);
@@ -92,7 +99,12 @@ export function parseEventZipFilename(filename:string):{
 export function discoverEventMetadata(sources:readonly EventMetadataSource[],manifest?:{showName?:string;eventId?:string;startDate?:string;showDate?:string;rooms?:string}|null,filename=""):EventMetadataResult{
  const evidence:Evidence[]=[],warnings:string[]=[];
  const add=(field:Evidence["field"],value:string,source:string)=>{
-  if(value&&!evidence.some(x=>x.field===field&&x.value===value&&x.source===source))evidence.push({field,value,source});
+  // A nonnumeric placeholder from an EOC body or test field must not be
+  // displayed as an event ID, selected as the destination, or counted as
+  // conflicting evidence against the numeric EOC cover.
+  const normalized=field==="eventId"?validCgcEventId(value):value;
+  if(normalized&&!evidence.some(x=>x.field===field&&x.value===normalized&&x.source===source))
+   evidence.push({field,value:normalized,source});
  };
  if(manifest){
   add("showName",manifest.showName?.trim()||"","ZIP manifest");
