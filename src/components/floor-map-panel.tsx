@@ -5,6 +5,8 @@ import { Input } from "@/components/ui/input";
 import { buildEntries, cellAround, locate, mergeTexts, parseBooth, parseWorkOrderLines, parseShowPilotItemLines, type ShowPilotItem, placedCsv, planKey, questionsCsv, resolve, type Answers, type Box, type Entry, type Question } from "@/lib/floor-map";
 import type { PlanDoc } from "@/lib/floor-map-pdf";
 import { LocalPlanningAssistant } from "@/components/showpilot-planning-assistant";
+import {findFloorMapShowById,linkedMapDocuments,isBetterWorkOrderItems} from "@/lib/showpilot-floor-map-events";
+import type {PostConShow} from "@/lib/showpilot-postcon";
 
 type Saved = { answers: Answers; ok: Record<string, true> };
 const storeKey = (k: string) => `pixelpals:floormap:${k}`;
@@ -30,9 +32,24 @@ export function FloorMapPanel({initialEventDocuments,selectedEventId=""}:{initia
   const [over, setOver] = useState(false);
   const [rows, setRows] = useState(0);
   const [itemized,setItemized]=useState<ShowPilotItem[]>([]);
-  const [eventId,setEventId]=useState("");
+  const [eventId,setEventId]=useState(selectedEventId);
+  const [eventIdInput,setEventIdInput]=useState(selectedEventId);
+  const [knownShows,setKnownShows]=useState<PostConShow[]>([]);
+  const [pendingLayout,setPendingLayout]=useState<File|null>(null);
+  const [linkStatus,setLinkStatus]=useState("");
+  const [linking,setLinking]=useState(false);
   const [eventImage,setEventImage]=useState("");
   const loadedSeed=useRef("");
+  const bridge=window.showpilotMemory;
+  const selectedShow=useMemo(()=>findFloorMapShowById(eventIdInput,knownShows),[eventIdInput,knownShows]);
+  useEffect(()=>{
+    let alive=true;
+    const refresh=()=>{void bridge?.showCatalogList().then(shows=>{if(alive)setKnownShows(shows)})
+       .catch(()=>{if(alive)setLinkStatus("Could not read saved Events. Event ID matching is unavailable.")});};
+    refresh();
+    window.addEventListener("showpilot:postcon-catalog",refresh);
+    return ()=>{alive=false;window.removeEventListener("showpilot:postcon-catalog",refresh)};
+  },[bridge]);
   const eventFileKey=initialEventDocuments?.map(f=>f.name+":"+f.size).join("|")??"";
   const [noteHints,setNoteHints]=useState<ShowPilotItem[]>([]);
   const view = useRef<HTMLCanvasElement>(null);
@@ -70,7 +87,7 @@ export function FloorMapPanel({initialEventDocuments,selectedEventId=""}:{initia
   const base = useRef<HTMLCanvasElement | null>(null);
   const geom = useRef({ s: 1, band: 0 });
 
-  const key = plan ? planKey(name, plan.prims) : "";
+  const key = plan ? planKey(name+(eventId?" · #"+eventId:""), plan.prims) : "";
   const resolved = useMemo(() => (plan ? resolve(plan.prims, entries, saved.answers) : null), [plan, entries, saved.answers]);
   const open = (resolved?.questions ?? []).filter((q) => !saved.ok[q.id]);
   const blocking = open.filter((q) => q.kind !== "check");
@@ -83,17 +100,17 @@ export function FloorMapPanel({initialEventDocuments,selectedEventId=""}:{initia
     setRows(selected.length);
     setNoteHints(selected.filter(x=>x.noteBooth));
   }
-  async function read(fs: File[], page = pageNo) {
+  async function read(fs: File[], page = pageNo, targetEventId=eventIdInput||selectedEventId) {
     setStatus("Reading…"); setPlan(null); setSel(null); setPicks([]);
     try {
       const pdf = await import("@/lib/floor-map-pdf");
       let lines: string[] = []; let planFile: File | null = null;
       let summaryReport = false;
-      let wideItems:ShowPilotItem[]=[];
+      const wideItems:ShowPilotItem[]=[];
       for (const f of fs.filter(x => /\.pdf$/i.test(x.name))) {
         const l = await pdf.readWorkOrder(f);
         const parsedWide=parseShowPilotItemLines(l);
-        if(parsedWide.length>=3){wideItems=parsedWide;lines=l;}
+        if(parsedWide.length&&isBetterWorkOrderItems(f.name)){wideItems.push(...parsedWide);lines.push(...l);}
         else if (parseWorkOrderLines(l).length >= 3) lines = l;
         else if (l.some(x => /better work orders/i.test(x)) && l.some(x => /booth number|bill-to account|space - order/i.test(x))) summaryReport = true;
         else planFile = f;
@@ -104,13 +121,13 @@ export function FloorMapPanel({initialEventDocuments,selectedEventId=""}:{initia
         // is supplied — no utility data or booth orders are invented.
         const doc=await pdf.readPlan(planFile,page);
         setEntries([]);setRows(0);setItemized([]);setNoteHints([]);
-        setPlan(doc);setName(planFile.name);setFiles(fs);setEventId(selectedEventId);
-        setSaved(load(planKey(planFile.name,doc.prims)));
+        setPlan(doc);setName(planFile.name);setFiles(fs);setEventId(targetEventId);
+        setSaved(load(planKey(planFile.name+(targetEventId?" · #"+targetEventId:""),doc.prims)));
         const scale=pdf.pickScale(doc.prims);
         const canvas=document.createElement("canvas");
         await doc.render(canvas,scale);
         base.current=canvas;geom.current={s:scale,band:0};
-        setStatus("Event hall layout loaded. To color utility booths, also import the itemized Better Work Order Items PDF.");
+        setStatus("Event hall layout loaded. If this event has saved Better Work Order Items, choose its Event ID and load its documents to color matching booths.");
         return;
       }
       if (!lines.length) {
@@ -122,10 +139,10 @@ export function FloorMapPanel({initialEventDocuments,selectedEventId=""}:{initia
       if (!planFile) { setStatus("Work order items found, but the FLOOR PLAN PDF with booth positions is missing. Select both files together."); setFiles(fs); return; }
       const doc = await pdf.readPlan(planFile, page);
       setItemized(wideItems);
-      if(wideItems.length){const ids=[...new Set(wideItems.filter(x=>x.venue==="CGC").map(x=>x.eventId))];const initial=selectedEventId&&ids.includes(selectedEventId)?selectedEventId:ids.length===1?ids[0]!:"";chooseEvent(initial,wideItems);}
-      else {const parsed=parseWorkOrderLines(lines);setEntries(buildEntries(parsed));setRows(parsed.length);setNoteHints([]);setEventId("");}
+      if(wideItems.length){const ids=[...new Set(wideItems.filter(x=>x.venue==="CGC").map(x=>x.eventId))];const initial=targetEventId&&ids.includes(targetEventId)?targetEventId:ids.length===1?ids[0]!:"";chooseEvent(initial,wideItems);if(targetEventId&&!ids.includes(targetEventId))setStatus("The linked itemized report does not contain Event ID "+targetEventId+". No unrelated booths were placed.");}
+      else {const parsed=parseWorkOrderLines(lines);setEntries(buildEntries(parsed));setRows(parsed.length);setNoteHints([]);setEventId(targetEventId);}
       setPlan(doc); setName(planFile.name); setFiles(fs);
-      setSaved(load(planKey(planFile.name, doc.prims)));
+      setSaved(load(planKey(planFile.name+(targetEventId?" · #"+targetEventId:""), doc.prims)));
       const s = pdf.pickScale(doc.prims);
       const c = document.createElement("canvas");
       await doc.render(c, s);
