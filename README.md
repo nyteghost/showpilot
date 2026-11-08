@@ -281,10 +281,15 @@ ShowPilot's deterministic rule calculations remain authoritative. When a cached 
 - **Today:** ballroom and Hall A–D configuration overlap warnings, unresolved event/function ownership, and lower-confidence inferred ballroom changes.
 - **Event Schedule:** date-scoped task suggestions. AI-proposed tasks remain unapproved until the user reviews them.
 - **Stage/deck, Floor Maps, and engineering staffing:** existing planning assistants now review their current rule-derived context automatically while Local AI is ready. Their domain validators still reject infeasible or unsupported proposals.
+- **My Shifts and calendar:** read-only audits of imported/edited shift durations, stable calendar IDs, .ics/Google sync assumptions and deletion/duplicate risks.
+- **Vendors:** reviews landed-cost rankings and missing quote context without changing prices or purchasing decisions.
+- **Event import/export:** reviews the current schedule snapshot, approved task hints, export scope and workbook template safeguards. This is an advisory snapshot, not an independent Excel parser or exhaustive cell-by-cell validator.
+
+**Correct ShowPilot:** Expand the small chat above the venue name at the bottom of the sidebar. Send a message to the **loaded** local WebGPU model. User messages and model replies stay in this computer's browser-profile chat cache (last 12 messages); the chat does not send data to a cloud AI. To make a correction available to later rule reviews, use **Save verified correction** on your own message. This requires desktop Native Memory, stores an operator-labeled lesson in the local note database and refreshes active rule-review panels. AI responses are not automatically assumed correct or committed to code. Chat has no direct power to change event records, schedules, backups or physical room instructions.
 
 Review requests to the same GPU model are serialized and debounced when inputs change. Local AI off stops new inference and unloads the model after active requests finish. The model is **not** a general EOC vision parser or a substitute for confirmed event identities and timed occupancy. AI cannot automatically rewrite scheduling algorithms, alter approved workbooks, commit code, or issue physical wall movements.
 
-**Coverage is not yet universal.** Shift editing, vendor pricing and comparison, every import validator, workbook export and calendar sync are not all wired into independent AI review yet. Do not interpret the presence of the green dot as proof that every workflow has been checked. Deterministic rules remain functional with Local AI disabled.
+**Coverage is still not exhaustive.** Not every underlying import/export validator, workbook cell or calendar network response is independently audited. Vendor live pricing is not connected, and the local model does not automatically parse full EOC PDFs. AI reviews bounded rule outputs, not every line of application code. The green dot confirms the model is loaded, not that a particular result was checked. Deterministic operations remain usable when Local AI is off.
 
 ## Project scope
 
