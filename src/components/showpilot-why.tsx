@@ -1,17 +1,23 @@
 import type {ReactNode} from "react";
 import {CircleHelp} from "lucide-react";
+import {Dialog,DialogContent,DialogDescription,DialogHeader,DialogTitle,DialogTrigger} from "@/components/ui/dialog";
 
-/** Small keyboard-accessible disclosure: explain the source and inference
- * behind a field rather than silently claiming an AI-selected answer. */
+/** Accessible explanation dialog. A centered, scrollable overlay avoids the
+ * tiny calendar cells clipping or covering adjacent operational information. */
 export function ShowPilotWhy({label,children}:{label:string;children:ReactNode}){
- return <details className="group relative inline-block align-middle">
-  <summary aria-label={"Why? "+label} title={"Why was "+label+" selected?"}
-   className="inline-flex size-5 cursor-pointer list-none items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary [&::-webkit-details-marker]:hidden">
-   <CircleHelp size={15} aria-hidden="true"/>
-  </summary>
-  <div className="absolute right-0 z-30 mt-1 w-[min(24rem,calc(100vw-4rem))] max-h-72 overflow-y-auto rounded-lg border bg-popover p-3 text-xs text-popover-foreground shadow-xl">
-   <p className="mb-2 font-semibold">Why? {label}</p>
-   <div className="space-y-2 break-words">{children}</div>
-  </div>
- </details>;
+ return <Dialog>
+  <DialogTrigger asChild>
+   <button type="button" aria-label={"Why? "+label} title={"Why was "+label+" selected?"}
+    className="inline-flex size-5 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
+    <CircleHelp size={15} aria-hidden="true"/>
+   </button>
+  </DialogTrigger>
+  <DialogContent className="max-h-[min(80vh,40rem)] overflow-y-auto sm:max-w-lg">
+   <DialogHeader>
+    <DialogTitle className="break-words text-base">Why? {label}</DialogTitle>
+    <DialogDescription>Source information and reasoning to verify against your event documents.</DialogDescription>
+   </DialogHeader>
+   <div className="space-y-2 break-words text-sm">{children}</div>
+  </DialogContent>
+ </Dialog>;
 }
