@@ -1,7 +1,7 @@
-import {useEffect,useState} from "react";
+import {useEffect,useRef,useState} from "react";
 import {BrainCircuit,ShieldCheck} from "lucide-react";
 import {Button} from "@/components/ui/button";
-import {runLocalPlanningAI} from "@/lib/showpilot-ai-local";
+import {runLocalPlanningAI,getLocalAiRuntimeState,subscribeLocalAiRuntimeState} from "@/lib/showpilot-ai-local";
 import {type PlanningKind,type PlanningContext,type PlanningSuggestion} from "@/lib/showpilot-planning";
 import type {MemoryReference} from "@/lib/showpilot-memory-bridge";
 
@@ -22,6 +22,10 @@ export function LocalPlanningAssistant({
  const [suggestions,setSuggestions]=useState<PlanningSuggestion[]>([]);
  const [references,setReferences]=useState<MemoryReference[]>([]);
  const [approved,setApproved]=useState<string[]>([]);
+ const [runtime,setRuntime]=useState(getLocalAiRuntimeState);
+ const lastAutoReviewed=useRef("");
+ useEffect(()=>subscribeLocalAiRuntimeState(setRuntime),[]);
+
  const key=JSON.stringify(context);
  useEffect(()=>{setSuggestions([]);setReferences([]);setApproved([]);},[key]);
  const run=async()=>{
@@ -43,6 +47,16 @@ export function LocalPlanningAssistant({
   }catch(e){setStatus("Local AI planning could not run: "+(e instanceof Error?e.message:String(e)));}
   finally{setBusy(false);}
  };
+
+ // When enabled, examine the rules-derived stage, floor and staffing context
+ // automatically once per distinct input. No generated recommendation is applied.
+ useEffect(()=>{
+  if(runtime.status!=="ready"||!key||key==="{}"||busy)return;
+  const identity=kind+"|"+key;
+  if(lastAutoReviewed.current===identity)return;
+  lastAutoReviewed.current=identity;
+  void run();
+ },[runtime.status,key,kind,busy]);
  const remember=async(item:PlanningSuggestion)=>{
   if(!window.showpilotMemory)return setStatus("Native Memory requires the Windows/Linux portable app.");
   try{
@@ -67,7 +81,7 @@ export function LocalPlanningAssistant({
  const meta=copy[kind];
  return <section className="no-print rounded-xl border border-border bg-card p-3 space-y-3" aria-label={meta.title}>
   <div className="flex items-start gap-2"><BrainCircuit size={19}/><div><h3 className="font-semibold text-sm">{meta.title}</h3>
-   <p className="text-xs text-muted-foreground">Uses the same optional on-device WebGPU model as the AI Task Assistant, plus relevant private Native Memory references.</p></div></div>
+   <p className="text-xs text-muted-foreground">Automatically reviews current rule-generated results when Local AI is ready; you can also request a fresh review. Suggestions never overwrite saved work.</p></div></div>
   <Button type="button" size="sm" variant="outline" disabled={busy} onClick={()=>void run()}><BrainCircuit size={16}/>{busy?"Thinking locally…":meta.button}</Button>
   <p className="text-xs text-muted-foreground"><ShieldCheck size={13} className="inline mr-1"/>{meta.disclaimer}</p>
   {status&&<p className="rounded border border-border p-2 text-xs" role="status">{status}</p>}
