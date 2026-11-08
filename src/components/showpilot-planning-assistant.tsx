@@ -54,8 +54,10 @@ export function LocalPlanningAssistant({
   if(runtime.status!=="ready"||!key||key==="{}"||busy)return;
   const identity=kind+"|"+key;
   if(lastAutoReviewed.current===identity)return;
-  lastAutoReviewed.current=identity;
-  void run();
+  const timer=window.setTimeout(()=>{
+   if(lastAutoReviewed.current!==identity){lastAutoReviewed.current=identity;void run();}
+  },800);
+  return ()=>window.clearTimeout(timer);
  },[runtime.status,key,kind,busy]);
  const remember=async(item:PlanningSuggestion)=>{
   if(!window.showpilotMemory)return setStatus("Native Memory requires the Windows/Linux portable app.");
