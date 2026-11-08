@@ -90,7 +90,7 @@ function readZip(input){
 function classify(path){
  const s=path.toLowerCase();
  if(/\beoc\b|event[\s_-]*order[\s_-]*confirmation/.test(s))return "eoc";
- if(/\bwo\b|work[\s_-]*order|utility[\s_-]*order/.test(s))return "work-order";
+ if(/\bwo\b|work[\s_-]*order|exhibitor[\s_-]*orders?|utility[\s_-]*order/.test(s))return "exhibitor-order";
  if(/diagram|layout|floor[\s_-]*plan|floor[\s_-]*map|drawing|seating|room[\s_-]*plan/.test(s)||/\.(?:dwg|dxf)$/.test(s))return "diagram";
  return "other";
 }
