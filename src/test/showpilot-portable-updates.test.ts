@@ -83,6 +83,9 @@ describe("ShowPilot Windows portable one-click updater",()=>{
   expect(ps).toContain("Write-UpdateResult 'failed'");
   expect(ps).toContain("Restarted previous ShowPilot version");
   expect(ps).toContain("SmokeTestNoRelaunch");
+  expect(ps).toContain("[string]$ExpectedVersion");
+  expect(ps).toContain("version=$ExpectedVersion");
+  expect(ps).toContain("Launcher handed off");
   expect(ps).toContain("Original app retained for rollback");
  });
  it("persists a readable install failure report for the next app launch",()=>{
@@ -94,6 +97,12 @@ describe("ShowPilot Windows portable one-click updater",()=>{
     status:"failed",version:"0.1.331-beta",message:"Directory was locked by an Electron child process."
    });
    expect(updater.updateLogPath(dir)).toMatch(/last-update\.log$/);
+   updater.updateResult(dir,"success","Relaunched replacement.","0.1.378-beta");
+   expect(updater.readUpdateResult(dir,"0.1.378-beta")?.status).toBe("success");
+   expect(updater.readUpdateResult(dir,"0.1.368-beta")).toMatchObject({
+    status:"failed",version:"0.1.378-beta"
+   });
+   expect(updater.readUpdateResult(dir,"0.1.368-beta")?.message).toContain("still version 0.1.368-beta");
    const file=join(dir,"ShowPilot Updates","last-update-result.json");
    writeFileSync(file,JSON.stringify({status:"pending",message:"Close and restart",version:"0.1.331-beta",
     updated:new Date(Date.now()-10*60*1000).toISOString()}));
