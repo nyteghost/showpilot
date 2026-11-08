@@ -6,6 +6,7 @@ export type ZipScheduleEvidence={
  detected:EventMetadataResult;
  reviewed:{showName:string;eventId:string;startDate:string;showDate:string;rooms:string[]};
  documents:{path:string;kind:string}[];hints:ZipScheduleHint[];
+ reviewedConflict?:{eventId:string;confirmedAt:string}; // Human reviewed secondary ID conflicts; no automated override.
 };
 /** Evidence for a human to reconcile with the approved engineering schedule.
  * No calendar entries or shifts are generated from unverified ZIP text.
