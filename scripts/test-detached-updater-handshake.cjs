@@ -30,7 +30,12 @@ async function main(){
   const result=await spawnInstall(paths,"0.1.999-beta");
   if(!result.started||fs.readFileSync(paths.readyPath,"utf8").trim()!=="SHOWPILOT_INSTALL_READY")
    throw Error("Detached installer never reported ready.");
-  process.stdout.write("Detached Windows installer signaled READY; simulated old app shutting down.\n");
+  // GitHub Windows runners clean up orphan descendants when a CI step ends.
+  // Terminate the smoke helper while it waits for this Node test process,
+  // then run the existing isolated folder-swap test separately in the same
+  // workflow step. This verifies real startup without racing two installers.
+  try{process.kill(result.pid);}catch(e){throw Error("Could not terminate isolated smoke helper: "+String(e));}
+  process.stdout.write("Windows installer signaled READY; isolated helper stopped before folder swap.\\n");
   process.exit(0);
  }catch(e){
   process.stderr.write(String(e)+"\n");
