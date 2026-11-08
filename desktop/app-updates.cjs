@@ -1,7 +1,7 @@
 "use strict";
 // ShowPilot update channel discovery. GitHub Actions artifacts require a signed-in
 // GitHub session; the application never stores a GitHub token or silently runs downloads.
-const {ipcMain,shell,app}=require("electron");
+const {ipcMain,shell,app,clipboard}=require("electron");
 const fs=require("node:fs");
 const path=require("node:path");
 const https=require("node:https");
@@ -121,7 +121,33 @@ async function latest(ch){
  return null;
 }
 function setupUpdates(){
- ipcMain.handle("showpilot-update:status",()=>({channel:channel(),installedVersion:app.getVersion(),repository:"nyteghost/showpilot",platform:process.platform,artifactFormats:updateArtifacts(),lastUpdate:readUpdateResult(app.getPath("userData"))}));
+ ipcMain.handle("showpilot-update:status",()=>({channel:channel(),installedVersion:app.getVersion(),repository:"nyteghost/showpilot",platform:process.platform,artifactFormats:updateArtifacts(),lastUpdate:readUpdateResult(app.getPath("userData"),app.getVersion())}));
+ ipcMain.handle("showpilot-update:copy-report",()=>{
+  const file=updateLogPath(app.getPath("userData"));
+  let lines=[];
+  if(fs.existsSync(file)){
+   const stat=fs.lstatSync(file);
+   if(!stat.isFile()||stat.isSymbolicLink()||stat.size>1024*1024)
+    throw new Error("Update log cannot be copied because it is not a small, regular text file.");
+   lines=fs.readFileSync(file,"utf8").split(/\r?\n/).slice(-55);
+  }
+  // Copy is a user-initiated LOCAL action, never sent over the network.
+  // Remove local filesystem paths before placing the report on the clipboard.
+  const redact=line=>line
+   .replace(/(?:[A-Za-z]:\\|\\\\)[^\r\n\t;]+/g,"[local path]")
+   .replace(/(?:https?:\/\/)[^\s)]+/g,"[URL]");
+  const result=readUpdateResult(app.getPath("userData"),app.getVersion());
+  const report=["SHOWPILOT WINDOWS UPDATE DIAGNOSTICS",
+   "Installed version: "+app.getVersion(),
+   "Platform: "+process.platform,
+   "Last status: "+(result?.status??"none"),
+   "Expected version: "+(result?.version??"unknown"),
+   "Last message: "+redact(result?.message??"none"),
+   "Installer log (last 55 lines, local paths redacted):",
+   ...lines.map(redact)].join("\n");
+  clipboard.writeText(report.slice(0,14000));
+  return {copied:true,hasLog:lines.length>0};
+ });
  ipcMain.handle("showpilot-update:open-log",async()=>{
   const logfile=updateLogPath(app.getPath("userData"));
   if(!require("node:fs").existsSync(logfile))throw new Error("No installation log has been recorded yet.");
