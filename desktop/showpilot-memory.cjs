@@ -600,6 +600,10 @@ async function eventZipScan(input){
  await ready();
  return eventZip.reviewSources(input);
 }
+async function eventZipPdfCandidates(input){
+ await ready();
+ return eventZip.pdfCandidates(input);
+}
 async function eventZipImport(input){
  await ready();
  if(!input||typeof input!=="object")throw Error("Select a ZIP and an event.");
@@ -607,6 +611,21 @@ async function eventZipImport(input){
  if(!eventKey||!queryRows("SELECT key FROM show_catalog WHERE key=?",[eventKey]).length)
   throw Error("Select or create a saved CGC event before importing its ZIP.");
  const {files,ignored}=eventZip.contents(input.bytes);
+ // UI-confirmed content detections must be exact ZIP paths, not local paths.
+ // Only previously unclassified PDFs may be reclassified. Filename-identified
+ // EOCs and Work Orders are protected against an accidental image-like page.
+ const overrides=input.diagramOverrides??[];
+ if(!Array.isArray(overrides)||overrides.length>60||
+    overrides.some(p=>typeof p!=="string"||p.length>512))
+  throw Error("Invalid reviewed diagram selections.");
+ const unique=new Set(overrides);
+ if(unique.size!==overrides.length)throw Error("Duplicate reviewed diagram selection.");
+ for(const selected of unique){
+  const file=files.find(f=>f.path===selected);
+  if(!file||file.kind!=="other"||!/\.pdf$/i.test(file.name))
+   throw Error("A reviewed diagram does not match an unclassified PDF in this ZIP.");
+  file.kind="diagram";
+ }
  if(count("SELECT COUNT(*) n FROM event_files WHERE event_key=? AND archived=0",[eventKey])+files.length>200)
   throw Error("The ZIP would exceed the 200-document limit for this event.");
  const imported=[],duplicates=[],errors=[];
@@ -850,10 +869,10 @@ function setupMemoryIpc(){
  wrap("event-floor-map-events",eventFloorMapEvents);
  wrap("event-file-list",eventFileList);wrap("event-file-save",eventFileSave);wrap("event-file-open",eventFileOpen);
  wrap("event-file-read",eventFileRead);wrap("event-file-archive",eventFileArchive);
- wrap("event-zip-inspect",eventZipInspect);wrap("event-zip-scan",eventZipScan);wrap("event-zip-import",eventZipImport);
+ wrap("event-zip-inspect",eventZipInspect);wrap("event-zip-scan",eventZipScan);wrap("event-zip-pdf-candidates",eventZipPdfCandidates);wrap("event-zip-import",eventZipImport);
  wrap("event-zip-read-orders",eventZipReadOrders);
  wrap("event-file-set-eoc",eventFileSetEocExcerpts);
  wrap("open-folder",openFolder);
  startWeeklyBackups();
 }
-module.exports={setupMemoryIpc,status,preferences,list,search,read,save,edit,archive,importPack,exportPack,rememberSchedule,openFolder,ready,backupNow,automaticBackupCheck,setBackupEnabled,chooseBackupFolder,postConList,postConSave,postConArchive,showCatalogList,showCatalogSave,eventFloorMapEvents,eventFileList,eventFileSave,eventFileOpen,eventFileRead,eventFileArchive,eventZipInspect,eventZipScan,eventZipImport,eventZipReadOrders,eventFileSetEocExcerpts,diagnosticsSummary};
+module.exports={setupMemoryIpc,status,preferences,list,search,read,save,edit,archive,importPack,exportPack,rememberSchedule,openFolder,ready,backupNow,automaticBackupCheck,setBackupEnabled,chooseBackupFolder,postConList,postConSave,postConArchive,showCatalogList,showCatalogSave,eventFloorMapEvents,eventFileList,eventFileSave,eventFileOpen,eventFileRead,eventFileArchive,eventZipInspect,eventZipScan,eventZipPdfCandidates,eventZipImport,eventZipReadOrders,eventFileSetEocExcerpts,diagnosticsSummary};
