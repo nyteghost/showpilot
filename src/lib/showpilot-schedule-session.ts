@@ -10,6 +10,8 @@ export type ScheduleSessionApi={
  load:()=>Promise<ScheduleSessionSnapshot|null>;
  save:(project:ReviewProject)=>Promise<{saved:true;savedAt:string}>;
  saveTemplate:(bytes:ArrayBuffer)=>Promise<{saved:true;bytes:number}>;
+ saveOverviewWorkbook:(bytes:ArrayBuffer)=>Promise<{saved:true;bytes:number}>;
+ readOverviewWorkbook:()=>Promise<Uint8Array|null>;
 };
 declare global{interface Window{showpilotScheduleSession?:ScheduleSessionApi}}
 export {};
