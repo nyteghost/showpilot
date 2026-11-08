@@ -90,11 +90,18 @@ export function airwallsForEvent(
   findings
  };
 }
+/** Reviewed Event Schedule recommendations use "Make ABE" and
+ * "Make full ballroom", not just bare letter codes. Include these dated
+ * recommendations without treating an undated EOC mention as a work order. */
 export function scheduledWallChanges(tasks:readonly TaskNote[],day:string):TaskNote[]{
- return tasks.filter(t=>t.date===day&&/^[A-G]{1,7}$/.test(t.text.trim())&&
-  (t.section==="BALLROOM"||t.section==="HALLS"));
+ const instruction=/^(?:[A-G]{1,7}|Make (?:Hall )?(?:full ballroom|[A-G]{1,7})(?:\/(?:full ballroom|[A-G]{1,7}))*)$/i;
+ return tasks.filter(t=>t.date===day&&
+  (t.section==="BALLROOM"||t.section==="HALLS")&&instruction.test(t.text.trim()));
 }
 export function wallTaskLabel(task:TaskNote):string{
- const code=task.text.trim();
- return (task.section==="HALLS"?"Halls ":"Ballrooms ")+code.split("").join(" + ");
+ const instruction=task.text.trim();
+ const section=task.section==="HALLS"?"Halls":"Ballrooms";
+ if(/^Make\s+/i.test(instruction))return section+" — "+instruction;
+ if(/^[A-G]{1,7}$/i.test(instruction))return section+" "+instruction.toUpperCase().split("").join(" + ");
+ return section+" — "+instruction;
 }
