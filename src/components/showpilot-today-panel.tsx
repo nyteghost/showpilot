@@ -12,7 +12,7 @@ import {parseZipSchedule,type ZipScheduleHint} from "@/lib/showpilot-zip-schedul
 import type {EventFileRecord} from "@/lib/showpilot-event-assets";
 import {
  todayIso,addIsoDays,mondayFor,daysOfWeek,
- airwallsForEvent,scheduledWallChanges,wallTaskLabel,type AirwallAssessment
+ airwallsForEvent,scheduledWallChanges,type AirwallAssessment
 } from "@/lib/showpilot-today";
 import {
  activitiesFromReviewProject,combineTodaySources,showHasActivityOnDay,isUnlinkedTodayShow,
