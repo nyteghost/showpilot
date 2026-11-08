@@ -5,7 +5,7 @@ const {ipcMain,shell,app,clipboard}=require("electron");
 const fs=require("node:fs");
 const path=require("node:path");
 const https=require("node:https");
-const {semverCompare,releaseAssetsForRun,installWindowsRelease,readUpdateResult,updateLogPath}=require("./portable-updates.cjs");
+const {semverCompare,releaseAssetsForRun,installWindowsRelease,downloadWindowsReleaseToDownloads,readUpdateResult,updateLogPath}=require("./portable-updates.cjs");
 // Both channels now live in the independent ShowPilot repository.
 const SOURCES=[{repository:"nyteghost/showpilot",branches:{main:"main",beta:"beta"}}];
 const MAX_JSON=1_500_000;
@@ -166,6 +166,14 @@ function setupUpdates(){
       : found.installAvailable?"A verified "+ch+" portable update is ready to download and install."
       : "A newer "+ch+" package is available. Automatic installation will appear after its official GitHub Release is published."
      : "No completed ShowPilot "+ch+" package for "+(process.platform==="linux"?"Linux":process.platform==="win32"?"Windows":"this platform")+" is available yet."};
+ });
+ ipcMain.handle("showpilot-update:download",async(event)=>{
+   if(process.platform!=="win32"||!app.isPackaged)
+    throw new Error("Download to Downloads is available in the packaged Windows app.");
+   const found=await latest(channel());
+   if(!found?.release||!found.version)
+    throw new Error("No verified public Windows release is ready to download. Check for Updates again or open GitHub.");
+   return downloadWindowsReleaseToDownloads(event.sender,{...found.release,version:found.version},app.getVersion());
  });
  ipcMain.handle("showpilot-update:install",async(event)=>{
    if(process.platform!=="win32"||!app.isPackaged)
