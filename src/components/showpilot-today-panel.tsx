@@ -1,15 +1,18 @@
-import {useEffect,useMemo,useState} from "react";
+import {useEffect,useMemo,useRef,useState} from "react";
 import {CalendarDays,ChevronLeft,ChevronRight,FileText,FolderOpen,RefreshCw,AlertTriangle,Layers3} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import {loadDurableShowCatalog,type PostConShow} from "@/lib/showpilot-postcon";
-import {isCancelledRow,isPendingRow,airwallTasks,type TaskNote} from "@/lib/work-tools";
-import {scopeShowPilotRows} from "@/lib/showpilot-venue";
+import type {TaskNote} from "@/lib/work-tools";
 import {parseZipSchedule,type ZipScheduleHint} from "@/lib/showpilot-zip-schedule";
 import type {EventFileRecord} from "@/lib/showpilot-event-assets";
 import {
- todayIso,addIsoDays,mondayFor,daysOfWeek,cgcShowOnDay,cgcShowsForWeek,
+ todayIso,addIsoDays,mondayFor,daysOfWeek,
  airwallsForEvent,scheduledWallChanges,wallTaskLabel,type AirwallAssessment
 } from "@/lib/showpilot-today";
+import {
+ activitiesFromReviewProject,combineTodaySources,showHasActivityOnDay,isUnlinkedTodayShow,
+ readEngineeringWeekWorkbook,type DailyActivity,type WorkbookWallTask
+} from "@/lib/showpilot-today-sources";
 
 type Attached=EventFileRecord&{available:boolean};
 type Details={eocs:Attached[];airwalls:AirwallAssessment;error?:string};
@@ -32,6 +35,11 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
  const [today,setToday]=useState(todayIso);
  const [week,setWeek]=useState(()=>mondayFor(todayIso()));
  const [shows,setShows]=useState<PostConShow[]>([]);
+ const [scheduleActivities,setScheduleActivities]=useState<DailyActivity[]>([]);
+ const [workbookWalls,setWorkbookWalls]=useState<WorkbookWallTask[]>([]);
+ const [sourceWarnings,setSourceWarnings]=useState<string[]>([]);
+ const [uploadBusy,setUploadBusy]=useState(false);
+ const uploadPicker=useRef<HTMLInputElement>(null);
  const [details,setDetails]=useState<Record<string,Details>>({});
  const [suggestions,setSuggestions]=useState<TaskNote[]>([]);
  const [loading,setLoading]=useState(true);
@@ -40,10 +48,13 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
  const [refreshToken,refresh]=useState(0);
  const thisWeek=mondayFor(today);
  const dates=useMemo(()=>daysOfWeek(week),[week]);
- const currentShows=useMemo(()=>shows.filter(show=>cgcShowOnDay(show,today))
-  .sort((a,b)=>a.showName.localeCompare(b.showName)),[shows,today]);
- const currentWeekShows=useMemo(()=>cgcShowsForWeek(shows,week),[shows,week]);
+ const joined=useMemo(()=>combineTodaySources(shows,scheduleActivities),[shows,scheduleActivities]);
+ const currentShows=useMemo(()=>joined.shows.filter(show=>showHasActivityOnDay(show,today,joined))
+  .sort((a,b)=>a.showName.localeCompare(b.showName)),[joined,today]);
+ const currentWeekShows=useMemo(()=>joined.shows.filter(show=>
+  dates.some(date=>showHasActivityOnDay(show,date,joined))),[joined,dates]);
  const todayChanges=useMemo(()=>scheduledWallChanges(suggestions,today),[suggestions,today]);
+ const todayWorkbookWalls=useMemo(()=>workbookWalls.filter(t=>t.date===today),[workbookWalls,today]);
 
  useEffect(()=>{
   if(!active)return;
@@ -65,49 +76,74 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
    try{
     const catalog=await loadDurableShowCatalog();
     if(!live)return;
-    setShows(catalog);
-    const needed=new Map<string,PostConShow>();
-    for(const show of [...cgcShowsForWeek(catalog,week),...catalog.filter(s=>cgcShowOnDay(s,today))])
-     needed.set(show.key,show);
-    if(!bridge){
-     setDetails({});
-     setSuggestions([]);
-     setWarning("EOC links and airwall evidence require the ShowPilot portable desktop app.");
-     return;
-    }
-    let notes:Awaited<ReturnType<typeof bridge.list>>=[];
-    try{notes=await bridge.list("ZIP Schedule:");}catch{/* EOC evidence still works. */}
-    const items=await Promise.all([...needed.values()].map(async show=>{
-     let eocs:Attached[]=[];
-     let error="";
-     try{
-      const attachments=await bridge.eventFileList(show.key);
-      eocs=attachments.filter(file=>file.kind==="eoc"&&!file.archived);
-     }catch(e){error="Documents unavailable: "+String(e);}
-     let hints:ZipScheduleHint[]=[];
-     const prefix="ZIP Schedule: "+show.key+" · ";
-     const matching=notes.filter(note=>note.title.startsWith(prefix))
-       .sort((a,b)=>b.modified.localeCompare(a.modified))[0];
-     if(matching){
-      try{
-       const saved=await bridge.read(matching.id);
-       const evidence=parseZipSchedule(saved.content);
-       if(evidence?.eventKey===show.key)hints=evidence.hints;
-      }catch{/* Keep originals available even if an optional ZIP review note is unreadable. */}
-     }
-     return [show.key,{eocs,airwalls:airwallsForEvent(eocs,hints),...(error?{error}:{})}] as const;
-    }));
+    // First read the actual date-specific schedule. The SQLite show catalog
+    // can have incomplete start/end ranges, so it is NOT sufficient for Today.
+    const activities:DailyActivity[]=[];
+    const warnings:string[]=[];
     let tasks:TaskNote[]=[];
+    let walls:WorkbookWallTask[]=[];
+    let snapshot:Awaited<ReturnType<NonNullable<typeof window.showpilotScheduleSession>["load"]>>=null;
     try{
-     const snapshot=await window.showpilotScheduleSession?.load();
+     snapshot=await window.showpilotScheduleSession?.load()??null;
      if(snapshot){
-      const project=snapshot.project;
-      const candidates=project.originalRows.filter(row=>!isCancelledRow(row));
-      const scoped=scopeShowPilotRows(candidates,project.approvedSpaces).accepted;
-      tasks=airwallTasks(scoped.filter(row=>project.includePending||!isPendingRow(row)));
+      const extracted=activitiesFromReviewProject(snapshot.project);
+      activities.push(...extracted.activities);
+      tasks=extracted.airwalls;
      }
-    }catch{/* EOC data remains authoritative even without a saved scheduling workspace. */}
-    if(live){setDetails(Object.fromEntries(items));setSuggestions(tasks);}
+    }catch(e){warnings.push("Saved schedule review could not be read: "+String(e));}
+    try{
+     const overview=await window.showpilotScheduleSession?.readOverviewWorkbook();
+     // An explicitly imported Today workbook takes priority over historical
+     // masters. Never re-date a workbook just to fill the Today dashboard.
+     const bytes=overview??snapshot?.templateBytes??
+      (await window.showpilotLocal?.readTemplate());
+     if(bytes){
+      const extracted=await readEngineeringWeekWorkbook(bytes);
+      activities.push(...extracted.activities);
+      walls=extracted.airwalls;
+      warnings.push(...extracted.warnings);
+     }
+    }catch(e){warnings.push("Engineering workbook could not be read: "+String(e));}
+    if(!live)return;
+    const joinedSnapshot=combineTodaySources(catalog,activities);
+    const needed=new Map<string,PostConShow>();
+    for(const show of joinedSnapshot.shows){
+     if(!joinedSnapshot.unlinkedKeys.includes(show.key)&&
+       (daysOfWeek(week).some(date=>showHasActivityOnDay(show,date,joinedSnapshot))||
+        showHasActivityOnDay(show,today,joinedSnapshot)))needed.set(show.key,show);
+    }
+    let items:(readonly [string,Details])[]=[];
+    if(bridge){
+     let notes:Awaited<ReturnType<typeof bridge.list>>=[];
+     try{notes=await bridge.list("ZIP Schedule:");}catch{/* EOCs still work. */}
+     items=await Promise.all([...needed.values()].map(async show=>{
+      let eocs:Attached[]=[];
+      let error="";
+      try{
+       const files=await bridge.eventFileList(show.key);
+       eocs=files.filter(file=>file.kind==="eoc"&&!file.archived);
+      }catch(e){error="Documents unavailable: "+String(e);}
+      let hints:ZipScheduleHint[]=[];
+      const prefix="ZIP Schedule: "+show.key+" · ";
+      const note=notes.filter(n=>n.title.startsWith(prefix))
+       .sort((a,b)=>b.modified.localeCompare(a.modified))[0];
+      if(note){
+       try{
+        const saved=await bridge.read(note.id);
+        const evidence=parseZipSchedule(saved.content);
+        if(evidence?.eventKey===show.key)hints=evidence.hints;
+       }catch{/* Optional ZIP index must not block the actual EOC file. */}
+      }
+      return [show.key,{eocs,airwalls:airwallsForEvent(eocs,hints),
+       ...(error?{error}:{})}] as const;
+     }));
+    }
+    if(live){
+     setShows(catalog);setScheduleActivities(activities);
+     setDetails(Object.fromEntries(items));
+     setSuggestions(tasks);setWorkbookWalls(walls);setSourceWarnings(warnings);
+     if(!bridge)setWarning("EOC links require the ShowPilot portable desktop app. Saved schedule activity can still be viewed.");
+    }
    }catch(e){
     if(live)setWarning("Could not read saved Events: "+(e instanceof Error?e.message:String(e)));
    }finally{if(live)setLoading(false);}
@@ -120,12 +156,33 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
   const onData=()=>refresh(n=>n+1);
   window.addEventListener("showpilot:postcon-catalog",onData);
   window.addEventListener("showpilot:event-files-updated",onData);
+  window.addEventListener("showpilot:schedule-autosaved",onData);
   return ()=>{
    window.removeEventListener("showpilot:postcon-catalog",onData);
    window.removeEventListener("showpilot:event-files-updated",onData);
+   window.removeEventListener("showpilot:schedule-autosaved",onData);
   };
  },[active]);
 
+ const importEngineeringWorkbook=async(file:File)=>{
+  if(uploadBusy)return;
+  setUploadBusy(true);setMessage("");
+  try{
+   if(!/\.xlsx$/i.test(file.name)||file.size<100||file.size>30*1024*1024)
+    throw Error("Select an original .xlsx engineering workbook under 30 MB.");
+   const bytes=await file.arrayBuffer();
+   const parsed=await readEngineeringWeekWorkbook(bytes);
+   if(!parsed.activities.length&&!parsed.airwalls.length)
+    throw Error(parsed.warnings.join(" ")||"The workbook has no dated CGC engineering events.");
+   if(!window.showpilotScheduleSession)
+    throw Error("Saving the weekly workbook requires the portable ShowPilot desktop app.");
+   await window.showpilotScheduleSession.saveOverviewWorkbook(bytes);
+   setMessage("Weekly engineering workbook saved locally: "+parsed.activities.length+
+    " dated activity record(s). Today and the week view will now use its actual dates.");
+   refresh(n=>n+1);
+  }catch(e){setMessage("Workbook not imported: "+(e instanceof Error?e.message:String(e)));}
+  finally{setUploadBusy(false);if(uploadPicker.current)uploadPicker.current.value="";}
+ };
  const openEoc=async(file:Attached)=>{
   if(!bridge||!file.available)return;
   setMessage("");
