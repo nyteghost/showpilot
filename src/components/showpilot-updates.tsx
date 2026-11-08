@@ -14,6 +14,7 @@ type Api={
  open:()=>Promise<unknown>;
  openLog:()=>Promise<unknown>;
  copyReport:()=>Promise<{copied:boolean;hasLog:boolean}>;
+ download:()=>Promise<{downloaded:boolean;filename:string;folder:string;version:string}>;
  install:()=>Promise<{cancelled?:boolean;started?:boolean;version?:string}>;
  onProgress:(callback:(event:UpdateProgress)=>void)=>(()=>void);
 };
@@ -26,6 +27,7 @@ export function ShowPilotUpdates(){
  const [check,setCheck]=useState<Check|null>(null);
  const [busy,setBusy]=useState(false);
  const [installing,setInstalling]=useState(false);
+ const [downloadedFile,setDownloadedFile]=useState("");
  const [progress,setProgress]=useState<UpdateProgress|null>(null);
  const [lastUpdate,setLastUpdate]=useState<LastUpdate|null>(null);
  const [error,setError]=useState("");
@@ -45,7 +47,7 @@ export function ShowPilotUpdates(){
   return api.onProgress(setProgress);
  },[api]);
  const change=async(v:Channel)=>{
-  setError("");setCheck(null);setProgress(null);
+  setError("");setCheck(null);setProgress(null);setDownloadedFile("");
   if(!api)return;
   try{await api.setChannel(v);setChannel(v)}catch(e){setError(String(e))}
  };
@@ -76,6 +78,15 @@ export function ShowPilotUpdates(){
     "Could not copy the updater report.");
   }catch(e){setError("Couldn't copy updater diagnostics: "+(e instanceof Error?e.message:String(e)));}
  };
+ const download=async()=>{
+  if(!api?.download||installing)return;
+  setInstalling(true);setDownloadedFile("");setError("");setProgress(null);
+  try{
+   const response=await api.download();
+   if(response.downloaded)setDownloadedFile(response.filename+" saved to your Downloads folder. The current ShowPilot installation was not changed.");
+  }catch(e){setError(e instanceof Error?e.message:String(e))}
+  finally{setInstalling(false)}
+ };
  const install=async()=>{
   if(!api?.install||installing)return;
   setInstalling(true);setError("");setProgress(null);
@@ -87,10 +98,10 @@ export function ShowPilotUpdates(){
   finally{setInstalling(false)}
  };
  const autoReady=!!check?.latest?.installAvailable&&!check.upToDate&&platform==="win32";
- const downloading=progress&&["verifying","downloading","staging","restarting"].includes(progress.phase);
+ const downloading=progress&&["verifying","downloading","staging","restarting","downloaded"].includes(progress.phase);
  return <div className="rounded-lg border border-border p-4 space-y-3">
   <h2 className="font-semibold text-lg">App Updates</h2>
-  <p className="text-sm text-muted-foreground">Check for the newest ShowPilot build, then download and install a verified Windows portable update directly in the app.</p>
+  <p className="text-sm text-muted-foreground">Check for a newer build, then save the verified portable ZIP to your Windows Downloads folder. Installing it is optional and separate.</p>
   {!api?<p className="text-sm">In-app updates are available in the Windows desktop application. Other platforms can download packages from GitHub.</p>:<>
    <label className="block text-sm font-medium">Update channel
     <select className="block mt-1 rounded border border-border bg-background p-2 w-full max-w-xs"
@@ -103,11 +114,14 @@ export function ShowPilotUpdates(){
     <button type="button" className="rounded bg-primary text-primary-foreground px-4 py-2 text-sm disabled:opacity-50"
      disabled={busy||installing} onClick={()=>void run()}>{busy?"Checking…":"Check for Updates"}</button>
     {autoReady&&<button type="button" className="rounded bg-blue-600 text-white px-4 py-2 text-sm font-semibold disabled:opacity-50"
-     disabled={busy||installing} onClick={()=>void install()}>{installing?"Preparing update…":"Download & Install Update"}</button>}
+     disabled={busy||installing} onClick={()=>void download()}>{installing?"Downloading…":"Download ZIP to Downloads"}</button>}
+    {autoReady&&<button type="button" className="rounded border border-border px-4 py-2 text-sm disabled:opacity-50"
+     disabled={busy||installing} onClick={()=>void install()}>Automatic install (optional)</button>}
     {check?.latest&&!check.upToDate&&<button type="button"
      className="rounded border border-border px-4 py-2 text-sm disabled:opacity-50"
      disabled={busy||installing} onClick={()=>void open()}>View GitHub build (manual)</button>}
    </div>
+   {downloadedFile&&<p role="status" className="rounded border border-green-500/50 p-3 text-sm">{downloadedFile}</p>}
    {lastUpdate&&<div className="space-y-2 rounded-md border border-border p-3" role="status">
      <p className="text-sm font-semibold">
       {lastUpdate.status==="failed"?"Previous automatic update did not finish":
@@ -142,7 +156,7 @@ export function ShowPilotUpdates(){
     <span className="text-xs text-muted-foreground">Copies the installer log and version results locally with filesystem paths redacted; nothing is sent automatically.</span>
    </div>
    {copiedReport&&<p className="text-xs" role="status">{copiedReport}</p>}
-   <p className="text-xs text-muted-foreground">The in-app updater asks for confirmation before closing ShowPilot. Save any unfinished work first. It downloads the official public GitHub Release, checks its SHA-256 checksum, stages the files without administrator rights, then closes, replaces and restarts the app. Your SQLite memory and event files stay in the user-data folder. The previous app folder is retained for rollback. If installation is blocked by IT permissions, use the GitHub manual download instead.</p>
+   <p className="text-xs text-muted-foreground">The Downloads option verifies the official GitHub ZIP checksum and saves the file without changing or closing ShowPilot. Extract the ZIP to a separate folder before using the new version. The optional automatic installer asks for confirmation before closing ShowPilot, then stages and replaces the application. Your SQLite memory and event files stay in the user-data folder. The previous app folder is retained for rollback. If installation is blocked by IT permissions, use the GitHub manual download instead.</p>
   </>}
   {error&&<p role="alert" className="text-sm text-red-500">{error}</p>}
  </div>;
