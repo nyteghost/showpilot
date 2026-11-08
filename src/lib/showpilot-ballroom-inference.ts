@@ -98,6 +98,32 @@ function fromCatalog(shows:readonly PostConShow[]):Owner[]{
  return out;
 }
 const compareGroups=(a:readonly string[],b:readonly string[])=>a.join("|")===b.join("|");
+/** Explain exactly which shows require incompatible groups on a given date.
+ * A same-show overlap can be a timed room refresh, not a simultaneous booking. */
+function overlappingGroupWarnings(day:string,owners:readonly Owner[],source:BallroomConfiguration["source"]):string[]{
+ const groups=new Map<string,Set<string>>();
+ for(const owner of owners){
+  const names=groups.get(owner.group)??new Set<string>();
+  names.add(owner.name||"Unlabeled booking");
+  groups.set(owner.group,names);
+ }
+ const entries=[...groups].sort(([a],[b])=>a.localeCompare(b));
+ const warnings:string[]=[];
+ for(let i=0;i<entries.length;i++){
+  for(let j=i+1;j<entries.length;j++){
+   const [a,aShows]=entries[i]!,[b,bShows]=entries[j]!;
+   const shared=[...a].filter(letter=>b.includes(letter)).join("");
+   if(!shared)continue;
+   warnings.push(day+" ("+source+"): "+
+    [...aShows].sort().join(", ")+" [Ballroom "+a+"] and "+
+    [...bShows].sort().join(", ")+" [Ballroom "+b+"] both use "+
+    "ballroom section"+(shared.length>1?"s ":" ")+[...shared].join(", ")+
+    ". They cannot be configured simultaneously. This may be a timed room refresh or room change; check function start/end times and the EOC.");
+  }
+ }
+ return warnings;
+}
+
 function makeDay(owners:readonly Owner[],source:BallroomConfiguration["source"]):
  BallroomConfiguration|null{
  if(!owners.length)return null;
@@ -166,7 +192,7 @@ export function inferBallroomTransitions(
   for(const [day,owners]of dated){
    const config=makeDay(owners,source);
    if(!config){
-    warnings.push(day+" has overlapping ballroom groups; verify the EOC and timed functions.");
+    warnings.push(...overlappingGroupWarnings(day,owners,source));
     byDate.delete(day);continue;
    }
    // A reviewed Event Schedule beats a generic workbook, which beats a broad
