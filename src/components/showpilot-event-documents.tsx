@@ -48,6 +48,7 @@ export function ShowPilotEventDocuments({show,onOpenStage,onOpenFloorMaps}:{show
     }catch(e){failures.push(file.name+": "+(e instanceof Error?e.message:String(e)));}
    }
    await reload();
+   if(uploaded>0)window.dispatchEvent(new Event("showpilot:event-files-updated"));
    setMessage(String(uploaded)+" file(s) saved for "+show.showName+". "+
     (failures.length?failures.join(" | ").slice(0,600):"Originals are stored locally, outside the installation folder."));
   }finally{setBusy(false);if(picker.current)picker.current.value="";}
@@ -67,7 +68,7 @@ export function ShowPilotEventDocuments({show,onOpenStage,onOpenFloorMaps}:{show
  };
  const changeArchived=async(file:Document)=>{
   if(!bridge||!window.confirm((file.archived?"Restore ":"Archive ")+file.name+"? The original will not be deleted."))return;
-  try{await bridge.eventFileArchive(file.id,!file.archived);await reload();}
+  try{await bridge.eventFileArchive(file.id,!file.archived);await reload();window.dispatchEvent(new Event("showpilot:event-files-updated"));}
   catch(e){setMessage("Cannot change file status: "+(e instanceof Error?e.message:String(e)));}
  };
  const backup=async()=>{
