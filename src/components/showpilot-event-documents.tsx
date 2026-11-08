@@ -1,9 +1,12 @@
 import {useEffect,useRef,useState} from "react";
 import {Archive,Download,FileImage,FileText,FolderOpen,RotateCcw,UploadCloud,X,Layers,Map as MapIcon} from "lucide-react";
+import {ShowPilotWhy} from "@/components/showpilot-why";
 import {Button} from "@/components/ui/button";
 import type {PostConShow} from "@/lib/showpilot-postcon";
 import {stageMentionedInEoc,hallLayoutAttached,eocAttendance} from "@/lib/showpilot-event-highlights";
-import {EVENT_ALLOWED_EXTENSIONS,extractEocFromPdf,guessEventFileKind,kindTitle,validateEventFile,type EventFileKind,type EventFileRecord,type EocSection} from "@/lib/showpilot-event-assets";
+import {EVENT_ALLOWED_EXTENSIONS,extractEocFromPdf,pdfTextPages,guessEventFileKind,kindTitle,validateEventFile,type EventFileKind,type EventFileRecord,type EocSection} from "@/lib/showpilot-event-assets";
+import {eocSpaceEvidence,explainSavedRoom} from "@/lib/showpilot-event-provenance";
+import type {ZipScheduleEvidence} from "@/lib/showpilot-zip-schedule";
 
 type Document=EventFileRecord&{available:boolean};
 const kinds:EventFileKind[]=["exhibitor-order","work-order","eoc","diagram","other"];
@@ -11,9 +14,12 @@ const focus:EocSection[]=["Event Notes","Engineering","Utility"];
 const displayBytes=(n:number)=>n<1024?String(n)+" B":n<1024**2?String(Math.round(n/1024))+" KB":(n/(1024**2)).toFixed(1)+" MB";
 const mime=(ext:string)=>ext==="pdf"?"application/pdf":ext==="png"?"image/png":ext==="webp"?"image/webp":"image/jpeg";
 
-export function ShowPilotEventDocuments({show,onOpenStage,onOpenFloorMaps}:{show:PostConShow;onOpenStage?:()=>void;onOpenFloorMaps?:()=>void}){
+export function ShowPilotEventDocuments({show,zipSchedule,onOpenStage,onOpenFloorMaps}:{show:PostConShow;zipSchedule?:ZipScheduleEvidence|null;onOpenStage?:()=>void;onOpenFloorMaps?:()=>void}){
  const bridge=window.showpilotMemory;
  const [files,setFiles]=useState<Document[]>([]);
+ const [roomAudit,setRoomAudit]=useState<ReturnType<typeof eocSpaceEvidence>>({assigned:[],unassigned:[]});
+ const [roomAuditLoading,setRoomAuditLoading]=useState(false);
+ const [roomAuditWarning,setRoomAuditWarning]=useState("");
  const [archived,setArchived]=useState(false);
  const [category,setCategory]=useState<EventFileKind|"auto">("auto");
  const [busy,setBusy]=useState(false);
@@ -30,7 +36,31 @@ export function ShowPilotEventDocuments({show,onOpenStage,onOpenFloorMaps}:{show
    .catch(e=>{if(active)setMessage("Could not load event documents: "+String(e))});
   return ()=>{active=false};
  },[bridge,show.key,archived]);
- useEffect(()=>()=>{if(preview)URL.revokeObjectURL(preview.url)},[preview]);
+ useEffect(()=>{
+  let alive=true;
+  const eocPdfs=files.filter(f=>f.kind==="eoc"&&!f.archived&&f.available&&f.extension==="pdf").slice(0,6);
+  setRoomAudit({assigned:[],unassigned:[]});setRoomAuditWarning("");
+  if(!bridge||!eocPdfs.length){setRoomAuditLoading(false);return;}
+  setRoomAuditLoading(true);
+  // Inspection is read-only. Existing uploaded PDFs are opened locally and
+  // Function Space lines are read with page citations; no data is rewritten.
+  void Promise.allSettled(eocPdfs.map(async f=>{
+   const saved=await bridge.eventFileRead(f.id);
+   const pdf=new File([new Uint8Array(saved.bytes)],f.name,{type:"application/pdf"});
+   return {file:f.name,pages:await pdfTextPages(pdf,80)};
+  })).then(results=>{
+   if(!alive)return;
+   const available=results.filter((x):x is PromiseFulfilledResult<{file:string;pages:string[]}>=>
+    x.status==="fulfilled").map(x=>x.value);
+   setRoomAudit(eocSpaceEvidence(available));
+   if(results.some(x=>x.status==="rejected"))
+    setRoomAuditWarning("Some EOC pages could not be read. Verify rooms in the original PDF.");
+   if(files.filter(f=>f.kind==="eoc"&&!f.archived&&f.available&&f.extension==="pdf").length>6)
+    setRoomAuditWarning("Only the first six EOCs were inspected for room assignments. Verify other originals.");
+  }).finally(()=>{if(alive)setRoomAuditLoading(false)});
+  return ()=>{alive=false};
+ },[bridge,files,show.key]);
+  useEffect(()=>()=>{if(preview)URL.revokeObjectURL(preview.url)},[preview]);
  const upload=async(selected:File[])=>{
   if(!bridge||busy||!selected.length)return;
   setBusy(true);setMessage("");
