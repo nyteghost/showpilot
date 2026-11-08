@@ -442,7 +442,7 @@ async function showCatalogSave(items){
  * Existing bytes and metadata are retained when users install a new build.
  */
 const EVENT_EXTENSIONS=new Set(["pdf","png","jpg","jpeg","webp","docx","xlsx","xls","csv","txt","dwg","dxf"]);
-const EVENT_KINDS=new Set(["work-order","eoc","diagram","other"]);
+const EVENT_KINDS=new Set(["exhibitor-order","work-order","eoc","diagram","other"]);
 const MAX_EVENT_FILE=25*1024*1024, MAX_EVENT_FILE_COUNT=5000;
 const eventFileDir=()=>path.join(dataDir(),"ShowPilot Event Files");
 function eventStoredName(record){
@@ -484,7 +484,7 @@ async function eventFileSave(input){
  if(!eventKey||!queryRows("SELECT key FROM show_catalog WHERE key=?",[eventKey]).length)
   throw Error("Select a saved CGC show before adding documents.");
  const kind=safe(input.kind,30);
- if(!EVENT_KINDS.has(kind))throw Error("Choose Work Order, EOC, Diagram or Other document.");
+ if(!EVENT_KINDS.has(kind))throw Error("Choose Exhibitor Order, Work Order, EOC, Diagram or Other document.");
  const named=safeEventFileName(input.name);
  const value=input.bytes;
  if(!(value instanceof ArrayBuffer)&&!ArrayBuffer.isView(value))throw Error("Attachment bytes are missing.");
@@ -499,6 +499,11 @@ async function eventFileSave(input){
  if(count("SELECT COUNT(*) n FROM event_files WHERE event_key=? AND archived=0",[eventKey])>=200||
    count("SELECT COUNT(*) n FROM event_files")>=MAX_EVENT_FILE_COUNT)throw Error("The local document limit has been reached.");
  const sha256=digest(bytes),id=crypto.randomUUID(),created=now();
+ if(kind==="exhibitor-order"){
+  const existing=queryRows("SELECT id FROM event_files WHERE event_key=? AND sha256=? AND name=? AND kind=? AND archived=0",
+   [eventKey,sha256,named.name,kind])[0];
+  if(existing)return {...eventFileRows(eventKey).find(f=>f.id===existing.id),duplicate:true};
+ }
  const record={sha256,extension:named.extension};
  const folder=eventFileDir();
  fs.mkdirSync(folder,{recursive:true,mode:0o700});
@@ -557,6 +562,19 @@ async function eventFileArchive(id,archived=true){
  * functions can persist anything. ZIP paths are never used as disk paths.
  */
 const eventZip=require("./event-zip.cjs");
+/** Inspect original Work Order documents from a mixed-event ZIP without
+ * importing anything. Entries are validated by the existing bounded ZIP
+ * parser. No ZIP filenames are written as filesystem paths. */
+async function eventZipReadOrders(bytes){
+ await ready();
+ const pack=eventZip.contents(bytes);
+ const orders=pack.files.filter(f=>f.kind!=="eoc"&&f.kind!=="diagram");
+ if(!orders.length)throw Error("The ZIP does not contain supported exhibitor Work Order files.");
+ if(orders.length>60||orders.reduce((size,f)=>size+f.bytes.length,0)>80*1024*1024)
+  throw Error("For safe per-order matching, split this archive into ZIPs of 60 orders or less, totaling no more than 80 MB uncompressed.");
+ return {files:orders.map(f=>({path:f.path,name:f.name,bytes:new Uint8Array(f.bytes)})),
+  skipped:pack.files.length-orders.length,ignored:pack.ignored};
+}
 async function eventZipInspect(input){
  await ready();
  return eventZip.inspect(input);
@@ -812,8 +830,9 @@ function setupMemoryIpc(){
  wrap("event-file-list",eventFileList);wrap("event-file-save",eventFileSave);wrap("event-file-open",eventFileOpen);
  wrap("event-file-read",eventFileRead);wrap("event-file-archive",eventFileArchive);
  wrap("event-zip-inspect",eventZipInspect);wrap("event-zip-scan",eventZipScan);wrap("event-zip-import",eventZipImport);
+ wrap("event-zip-read-orders",eventZipReadOrders);
  wrap("event-file-set-eoc",eventFileSetEocExcerpts);
  wrap("open-folder",openFolder);
  startWeeklyBackups();
 }
-module.exports={setupMemoryIpc,status,preferences,list,search,read,save,edit,archive,importPack,exportPack,rememberSchedule,openFolder,ready,backupNow,automaticBackupCheck,setBackupEnabled,chooseBackupFolder,postConList,postConSave,postConArchive,showCatalogList,showCatalogSave,eventFileList,eventFileSave,eventFileOpen,eventFileRead,eventFileArchive,eventZipInspect,eventZipScan,eventZipImport,eventFileSetEocExcerpts,diagnosticsSummary};
+module.exports={setupMemoryIpc,status,preferences,list,search,read,save,edit,archive,importPack,exportPack,rememberSchedule,openFolder,ready,backupNow,automaticBackupCheck,setBackupEnabled,chooseBackupFolder,postConList,postConSave,postConArchive,showCatalogList,showCatalogSave,eventFileList,eventFileSave,eventFileOpen,eventFileRead,eventFileArchive,eventZipInspect,eventZipScan,eventZipImport,eventZipReadOrders,eventFileSetEocExcerpts,diagnosticsSummary};
