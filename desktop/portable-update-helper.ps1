@@ -205,6 +205,7 @@ function Install-Zip {
   if (Test-Path -LiteralPath $BackupDir) { throw 'Previous-version backup destination already exists.' }
   Require-Executable $StageDir
   Write-UpdateLog ('Install helper started and validated the new executable; expected version='+$ExpectedVersion+'.')
+  Write-InstallerReady
   $movedOld=$false
   $installedNew=$false
   try {
@@ -281,7 +282,6 @@ try {
   # execution (policy, missing executable, or command-line startup).
   Write-UpdateLog ('PowerShell helper entered: mode='+$Mode+'.')
   Require-SiblingDirectories
-  if ($Mode -eq 'Install') { Write-InstallerReady }
   if ($Mode -eq 'Stage') { Stage-Zip } else { Install-Zip }
   exit 0
 } catch {
