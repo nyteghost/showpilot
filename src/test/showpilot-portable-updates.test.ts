@@ -14,7 +14,7 @@ const moduleObj={exports:{} as {
  assertDownloadUrl:(url:string)=>URL;
  prepareInstallPaths:(v:string)=>unknown;
  updateResult:(dir:string,status:string,message:string,version?:string)=>{status:string;message:string;version:string};
- readUpdateResult:(dir:string)=>{status:string;message:string;version:string}|null;
+ readUpdateResult:(dir:string,installedVersion?:string)=>{status:string;message:string;version:string}|null;
  updateLogPath:(dir:string)=>string;
 }};
 runInNewContext(code,{
