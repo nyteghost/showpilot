@@ -1,6 +1,6 @@
 import {describe,expect,it} from "vitest";
 import {roomsFromAssignedLine,discoverEventMetadata} from "@/lib/showpilot-event-discovery";
-import {eocSpaceEvidence,explainSavedRoom} from "@/lib/showpilot-event-provenance";
+import {eocSpaceEvidence,explainSavedRoom,roomsFromSavedEventSchedule} from "@/lib/showpilot-event-provenance";
 
 describe("EOC room assignment explainability and Hall C false-positive protection",()=>{
  it("uses the visible Function Space assignment rather than other hall mentions",()=>{
@@ -52,6 +52,23 @@ describe("EOC room assignment explainability and Hall C false-positive protectio
   const hallC=explainSavedRoom("Hall C",[],result.assigned);
   expect(hallC.status).toBe("not-traced");
   expect(hallC.reason).toContain("cannot determine");
+ });
+ it("shows the exact Event Schedule row if Hall C came from that event, not another one",()=>{
+  const rows=[
+   {level:3,usage:"Event (Evt)",date:"2026-11-17",
+    start:"11:00 AM",end:"12:00 PM",description:"Boxed Lunch",
+    space:"Exhibit Hall D (EXD)",event:"Annual Meeting",eventId:"42389"},
+   {level:3,usage:"Event (Evt)",date:"2026-11-16",
+    start:"09:00 AM",end:"05:00 PM",description:"Another show's reception",
+    space:"Exhibit Hall C (EXC)",event:"Unrelated",eventId:"55555"}
+  ];
+  const sources=roomsFromSavedEventSchedule(rows,"42389");
+  expect(sources.map(x=>x.room)).toEqual(["Hall D"]);
+  expect(explainSavedRoom("Hall C",[],[],sources).status).toBe("not-traced");
+  expect(explainSavedRoom("Hall D",[],[],sources)).toMatchObject({
+   status:"schedule-listed",sources:[{source:"Event Schedule · 2026-11-17"}]
+  });
+  expect(roomsFromSavedEventSchedule(rows,"tes")).toEqual([]);
  });
  it("retains a historical ZIP mention without calling it a verified assignment",()=>{
   const result=explainSavedRoom("Hall C",[{
