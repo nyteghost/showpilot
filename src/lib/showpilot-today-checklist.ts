@@ -37,11 +37,11 @@ export const STANDARD_SHOW_TASKS:readonly ChecklistTask[]=[
  {id:"room-walk",text:"Walk the rooms and confirm the setup is ready",source:"standard",
   detail:"Resolve any outstanding issues and coordinate the room handoff."}
 ];
+/** Building-wide airwall/lighting tasks are deliberately NOT permanent
+ * checkboxes. They appear only when today's engineering workbook or reviewed
+ * Event Schedule contains a dated change for that area. */
 export const STANDARD_BUILDING_TASKS:readonly ChecklistTask[]=[
  {id:"review-requests",text:"Review today's engineering tasks and room changes",source:"standard"},
- {id:"building-airwalls",text:"Verify shared-space airwall changes and secure partitions",source:"standard",
-  detail:"Check the dated engineering schedule and source EOCs before moving walls."},
- {id:"building-lights",text:"Verify lighting after any airwall or room-configuration changes",source:"standard"},
  {id:"handoff",text:"Record outstanding issues for the next shift",source:"standard"}
 ];
 
@@ -61,25 +61,58 @@ export function tasksForShow(show:PostConShow,airwalls:AirwallAssessment):Checkl
  }
  return basic;
 }
+/** A scheduled change needs a clear action. A mere EOC reference to an
+ * airwall does not establish that it needs moving on this particular date. */
+export function scheduledAirwallInstruction(section:"HALLS"|"BALLROOM",raw:string):string|null{
+ const text=raw.replace(/\s+/g," ").trim().slice(0,150);
+ if(!text)return null;
+ if(/^[A-G]{1,7}$/i.test(text))return "Make "+(section==="HALLS"?"Hall ":"")+text.toUpperCase();
+ if(/^make\s+(?:hall\s+)?(?:full\s+ballroom|[A-G]{1,7})(?:\/(?:full\s+ballroom|[A-G]{1,7}))*$/i.test(text))
+  return text;
+ // Explicit dated work directives; do not create an action for a vague mention.
+ if(/\b(?:air[\s-]?walls?|partitions?)\b/i.test(text)&&
+   /\b(?:move|moving|moved|change|changing|changed|reconfigure|reconfiguring|reset|set|setup|open|close|remove|install|shift|relocate)\b/i.test(text))
+  return text;
+ if(/^(?:make|move|reset|change|open|close|reconfigure)\s+(?:full\s+)?(?:ballroom|hall)\b/i.test(text))
+  return text;
+ return null;
+}
+/** Equivalent "ABE" and "Make ABE" schedule instructions refer to the same
+ * target partition arrangement. Keep IDs stable after workbook reimport. */
+function wallInstructionKey(instruction:string):string{
+ return instruction.toLowerCase().replace(/^make\s+(?:hall\s+)?/,"")
+  .replace(/\s+/g," ").trim();
+}
 export function buildingChecklistTasks(
  day:string,excel:readonly WorkbookWallTask[],suggestions:readonly TaskNote[]
 ):ChecklistTask[]{
  const result=[...STANDARD_BUILDING_TASKS];
- const existing=new Set<string>();
- for(const task of excel.filter(t=>t.date===day)){
-  const text=task.text.trim().slice(0,150);
-  if(!text)continue;
-  const id="sheet-"+hash([day,task.section,text].join("|"));
-  if(existing.has(id))continue;existing.add(id);
-  result.push({id,text:"Review and complete: "+text,source:"schedule",
-   detail:"Dated engineering workbook, "+task.section+". Confirm the room layout before acting."});
- }
- for(const task of suggestions.filter(t=>t.date===day)){
-  const text=wallTaskLabel(task);
-  const id="suggest-"+hash([day,task.section,task.text].join("|"));
-  if(existing.has(id))continue;existing.add(id);
-  result.push({id,text:"Verify suggested airwall setup: "+text,source:"schedule",
-   detail:"Event Schedule suggestion. Confirm against the EOC and current room setup."});
+ const changes=new Map<string,{section:"HALLS"|"BALLROOM";instruction:string;source:"workbook"|"event-schedule"}>();
+ const collect=(section:"HALLS"|"BALLROOM",raw:string,source:"workbook"|"event-schedule")=>{
+  const instruction=scheduledAirwallInstruction(section,raw);
+  if(!instruction)return;
+  const key=section+"|"+wallInstructionKey(instruction);
+  // The original engineering workbook instruction takes priority over a
+  // generated recommendation for the same configuration.
+  if(!changes.has(key))changes.set(key,{section,instruction,source});
+ };
+ for(const task of excel)if(task.date===day)collect(task.section,task.text,"workbook");
+ for(const task of suggestions)if(task.date===day)collect(task.section,task.text,"event-schedule");
+ for(const [key,task] of changes){
+  const target=(task.section==="HALLS"?"Halls":"Ballrooms")+" — "+task.instruction;
+  const id="wall-"+hash(key);
+  const sourceDetail=task.source==="workbook"?
+   "Dated engineering workbook task":"Reviewed Event Schedule recommendation";
+  result.push({
+   id,text:"Set / verify airwalls: "+target,source:"schedule",
+   detail:sourceDetail+". Confirm room availability and the approved EOC before moving partitions."
+  });
+  result.push({
+   id:id+"-lighting",
+   text:"Verify lighting settings after airwall setup: "+target,
+   source:"schedule",
+   detail:"After the wall move, check lighting zones, scenes and controls match the final layout. "+sourceDetail+"."
+  });
  }
  return result;
 }
