@@ -2,6 +2,8 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Briefcase, CalendarClock, CalendarDays, CalendarPlus, CalendarSync, FolderOpen, Download, ExternalLink, FileUp, GitBranch, Layers, Eye, Map as MapIcon, Store, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {ShowPilotRuleReview} from "@/components/showpilot-rule-review";
+import {shiftRuleEvidence,calendarRuleEvidence,eventScheduleRuleEvidence,exportRuleEvidence} from "@/lib/showpilot-rule-evidence";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { KeepAliveTabContent } from "@/components/showpilot-keep-alive-tab";
@@ -472,6 +474,7 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
             </div>)}</div>
           </section>}
           <ScheduleReview key={fingerprintRows(source.rows)} initialScope={restoredScope} conflictTarget={conflictTarget} onScopeChange={setAiScope} originalRows={source.rows} proposed={suggestedEntries} suggestedTasks={suggestedTasks} draft={draft} onChange={reviewChanged} onSaveProject={saveProject} />
+          <ShowPilotRuleReview evidence={eventScheduleRuleEvidence(entries,tasks,status)}/>
           <AiTaskAssistant scope={aiScope} entries={entries} tasks={tasks} onApprove={task => reviewChanged({...draftRef.current,addedTasks:[...draftRef.current.addedTasks,{id:"ai-task:"+Date.now()+":"+Math.random().toString(36).slice(2),value:task}]})} />
           {selectedStaffingDates.length>0&&<LocalPlanningAssistant kind="staffing"
             memoryQuery={entries.filter(e=>selectedStaffingDates.includes(e.date)).slice(0,12).map(e=>e.title+" "+e.space).join(" ").slice(0,150)}
@@ -518,6 +521,7 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
             {exportStatus&&<p role="status" className="w-full text-xs text-muted-foreground">{exportStatus}</p>}
           </div>
           <ShowPilotExcelPreview open={previewOpen} onOpenChange={setPreviewOpen} book={previewWorkbook} title={previewTitle}/>
+          <ShowPilotRuleReview evidence={exportRuleEvidence("reviewed workbook",entries.length,new Set(entries.map(e=>e.date)).size,exportStatus)}/>
           <p className="text-xs text-muted-foreground">ShowPilot uses the original Excel template as its layout authority. It will not create a new room section or reformat staffing, dates, colors or borders. Upload your master XLSX alongside the event report, or select it under Settings &amp; AI. Other spaces must be reviewed before export.</p>
           {merged && <p className="text-xs text-amber-700 dark:text-amber-300">Your uploaded workbook remains the layout authority; existing shifts, PTO, notes and other untouched cells are retained. Review historical event cells before publishing. No alternate layout is generated.</p>}
         </>
@@ -648,6 +652,8 @@ function ShiftsTab() {
         </div>
       </details>
       {status && <p className={`text-sm ${/^Could not|^No shifts/.test(status) ? "text-destructive" : ""}`} role="status">{status}</p>}
+      {shifts.length>0&&<ShowPilotRuleReview evidence={shiftRuleEvidence(shifts,removed.length)}/>}
+      {shifts.length>0&&<ShowPilotRuleReview evidence={calendarRuleEvidence(shifts,title,"google")}/>}
       {(shifts.length > 0 || removed.length > 0) && (
         <>
           <div className="flex flex-wrap items-center gap-2">
