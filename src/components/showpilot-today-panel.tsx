@@ -7,6 +7,7 @@ import {getLocalAiRuntimeState,subscribeLocalAiRuntimeState,explainBallroomWarni
 import {reconcileAirwallDay} from "@/lib/showpilot-today-checklist";
 import {inferBallroomTransitions} from "@/lib/showpilot-ballroom-inference";
 import {detectHallOverlaps,describeHallOverlap} from "@/lib/showpilot-hall-inference";
+import {findingKey,readFindingAcknowledgements,acknowledgeFinding,FINDING_ACK_KEY} from "@/lib/showpilot-finding-ack";
 import type {EventRow} from "@/lib/work-tools";
 import {loadDurableShowCatalog,type PostConShow} from "@/lib/showpilot-postcon";
 import type {TaskNote} from "@/lib/work-tools";
@@ -49,6 +50,24 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
  const [aiRuntime,setAiRuntime]=useState(getLocalAiRuntimeState);
  const [aiNotes,setAiNotes]=useState<BallroomAiNote[]>([]);
  const [aiReviewState,setAiReviewState]=useState("");
+ const [acknowledged,setAcknowledged]=useState(()=>
+  typeof window==="undefined"?[]:readFindingAcknowledgements(window.localStorage));
+ const [lastAcknowledged,setLastAcknowledged]=useState<{key:string;text:string}|null>(null);
+ useEffect(()=>{
+  try{window.localStorage.setItem(FINDING_ACK_KEY,JSON.stringify(acknowledged));}
+  catch{/* App still supports in-session acknowledgements if storage is blocked. */}
+ },[acknowledged]);
+ const okayFinding=(source:"source"|"rule",text:string)=>{
+  const key=findingKey(source,text);
+  setAcknowledged(prev=>acknowledgeFinding(prev,key,new Date().toISOString()));
+  setLastAcknowledged({key,text});
+ };
+ const undoLastOkay=()=>{
+  if(!lastAcknowledged)return;
+  setAcknowledged(prev=>prev.filter(x=>x.key!==lastAcknowledged.key));
+  setLastAcknowledged(null);
+ };
+
  const [feedbackRevision,setFeedbackRevision]=useState(0);
  const [findingsDismissed,setFindingsDismissed]=useState(false);
  const [aiRefreshRevision,setAiRefreshRevision]=useState(0);
@@ -94,7 +113,13 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
   ...inferredLayouts.transitions.filter(t=>t.confidence==="review").slice(0,6).map(t=>"Inferred ballroom change (not verified): "+t.explanation)
  ],[inferredLayouts,hallWarnings,joined.unlinkedFunctions]);
 
- const inferenceWarnings=ruleFindings.join("\\n");
+ const acknowledgedKeys=useMemo(()=>new Set(acknowledged.map(x=>x.key)),[acknowledged]);
+ const visibleRuleFindings=useMemo(()=>ruleFindings.filter(x=>
+  !acknowledgedKeys.has(findingKey("rule",x))),[ruleFindings,acknowledgedKeys]);
+ const visibleSourceWarnings=useMemo(()=>sourceWarnings.filter(x=>
+  !acknowledgedKeys.has(findingKey("source",x))),[sourceWarnings,acknowledgedKeys]);
+ const acknowledgedCount=ruleFindings.length+sourceWarnings.length-visibleRuleFindings.length-visibleSourceWarnings.length;
+ const inferenceWarnings=visibleRuleFindings.join("\\n");
  useEffect(()=>{
   if(!active||findingsDismissed||aiRuntime.status!=="ready"||!inferenceWarnings){
    setAiNotes([]);setAiReviewState("");return;
@@ -112,7 +137,7 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
      }
     }catch{/* Keep deterministic rule warnings visible without Native Memory. */}
    }
-   return explainBallroomWarningsLocally(ruleFindings,()=>{},verified);
+   return explainBallroomWarningsLocally(visibleRuleFindings,()=>{},verified);
   })().then(notes=>{
    if(alive){setAiNotes(notes);setAiReviewState(notes.length?"Local AI review — advisory only":"Local AI found no validated notes.");}
   }).catch(e=>{
@@ -308,12 +333,24 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
     </div>
    </div>
    {findingsDismissed?<p role="status" className="text-muted-foreground">Findings hidden. Nothing was deleted. Refresh AI Review to show and recheck the latest saved data.</p>:<>
-   {sourceWarnings.map((warning,i)=><p key={"source"+i}>{warning}</p>)}
-   {ruleFindings.map((finding,i)=><div key={"rule"+i} className="border-t border-amber-500/30 py-2">
-    <p>{finding}</p>
+   {visibleSourceWarnings.map((warning,i)=><div key={"source"+i} className="flex items-start gap-3 border-t border-amber-500/30 py-2">
+    <p className="min-w-0 flex-1">{warning}</p>
+    <Button size="sm" variant="outline" title="Acknowledge and hide this exact finding" onClick={()=>okayFinding("source",warning)}>OK</Button>
+   </div>)}
+   {visibleRuleFindings.map((finding,i)=><div key={"rule"+i} className="border-t border-amber-500/30 py-2">
+    <div className="flex items-start gap-3">
+     <p className="min-w-0 flex-1">{finding}</p>
+     <Button size="sm" variant="outline" title="Acknowledge and hide this exact finding" onClick={()=>okayFinding("rule",finding)}>OK</Button>
+    </div>
     {aiNotes.filter(note=>note.warningIndex===i).map(note=>
      <p key={note.warningIndex} className="mt-1 text-muted-foreground"><strong>Local AI opinion (not verified):</strong> {note.interpretation} <strong>Verify:</strong> {note.check}</p>)}
    </div>)}
+   {visibleSourceWarnings.length===0&&visibleRuleFindings.length===0&&
+    <p role="status" className="text-muted-foreground">All current findings have been acknowledged. New or changed findings will still appear.</p>}
+   {acknowledgedCount>0&&<div className="mt-2 flex items-center gap-3 text-muted-foreground">
+    <span>{acknowledgedCount} acknowledged</span>
+    {lastAcknowledged&&<button type="button" className="underline" onClick={undoLastOkay}>Undo last OK</button>}
+   </div>}
    {aiReviewState&&<p className="mt-2 font-medium" role="status">{aiReviewState}</p>}
    <p className="mt-2 text-muted-foreground">Independent AI review covers currently detected rule findings. It does not change approved bookings, physical setup work or EOC records. Other tools have separate review paths.</p>
    </>}
