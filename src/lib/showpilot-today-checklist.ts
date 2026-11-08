@@ -92,64 +92,168 @@ function wallInstructionKey(instruction:string):string{
  return instruction.toLowerCase().replace(/^make\s+(?:hall\s+)?/,"")
   .replace(/\s+/g," ").trim();
 }
+export type AirwallReviewItem={
+ id:string;
+ kind:"upcoming"|"conflict";
+ target:string;
+ reason:string;
+ sources:string[];
+};
+export type AirwallDayPlan={
+ /** Confirmed dated task, or a single earliest-deadline inferred setup.
+  * Any conflicting ballroom arrangements remain review-only. */
+ tasks:ChecklistTask[];
+ review:AirwallReviewItem[];
+};
+type ExplicitWork={
+ section:"HALLS"|"BALLROOM";
+ key:string;instruction:string;
+ sources:Set<"workbook"|"event-schedule">;
+};
+function configurationKey(section:"HALLS"|"BALLROOM",instruction:string):string{
+ const raw=wallInstructionKey(instruction).replace(/^ballrooms?\s+/i,"").trim();
+ if(section==="BALLROOM"&&/^(?:full\s+ballroom|full|abcdefg)$/.test(raw))
+  return "ABCDEFG";
+ const pieces=raw.replace(/^hall\s+/,"").split("/");
+ const letters=pieces.map(s=>s.replace(/[^a-g]/g,"").toUpperCase());
+ if(letters.length>0&&letters.every((x,i)=>x.length>0&&x.length<=7&&
+  x.length===new Set(x).size&&/^[A-G]+$/.test(x)&&
+  /^[a-g\s]+$/i.test(pieces[i]!.trim())))
+  return letters.map(x=>[...x].sort().join("")).sort().join("/");
+ // Keep an explicit but unparseable move distinctive, never guess its target.
+ return "?"+raw;
+}
+function transitionKey(t:BallroomTransition):string{
+ return [...t.toGroups].map(g=>[...g].sort().join("")).sort().join("/");
+}
+function reviewFromTransition(t:BallroomTransition,kind:"upcoming"|"conflict",reason:string):AirwallReviewItem{
+ return {id:"infer:"+t.id,kind,target:t.target,reason,
+  sources:[
+   "Prior configuration ("+t.afterDate+"): "+t.fromGroups.join(" + ")+" — "+t.fromEvents.join(", "),
+   "Next event ("+t.needByDate+"): "+t.toGroups.join(" + ")+" — "+t.toEvents.join(", "),
+   t.explanation
+  ]};
+}
+/** One actionable ballroom configuration at a time. The earlier code appended
+ * ALL inferred windows and ALL separately worded workbook suggestions, so
+ * Today could show three incompatible setups for the same partition walls.
+ * Do not suppress genuinely distinct work: later changes and disagreements
+ * stay visible as evidence-backed, non-checkable review items. */
+export function reconcileAirwallDay(
+ day:string,excel:readonly WorkbookWallTask[],suggestions:readonly TaskNote[],
+ inferred:readonly BallroomTransition[]=[]
+):AirwallDayPlan{
+ const tasks:ChecklistTask[]=[];
+ const review:AirwallReviewItem[]=[];
+ const explicit=new Map<string,ExplicitWork>();
+ const collect=(section:"HALLS"|"BALLROOM",raw:string,source:"workbook"|"event-schedule")=>{
+  const instruction=scheduledAirwallInstruction(section,raw);
+  if(!instruction)return;
+  const key=section+"|"+configurationKey(section,instruction);
+  let item=explicit.get(key);
+  if(!item){item={section,key,instruction,sources:new Set()};explicit.set(key,item);}
+  item.sources.add(source);
+  // Prefer the original workbook wording if both sources describe the same move.
+  if(source==="workbook")item.instruction=instruction;
+ };
+ for(const t of excel)if(t.date===day)collect(t.section,t.text,"workbook");
+ for(const t of suggestions)if(t.date===day)collect(t.section,t.text,"event-schedule");
+ const windows=inferred.filter(t=>day>=t.afterDate&&day<=t.needByDate)
+  .sort((a,b)=>a.needByDate.localeCompare(b.needByDate)||
+    a.afterDate.localeCompare(b.afterDate)||a.id.localeCompare(b.id));
+ const datedBallroom=[...explicit.values()].filter(t=>t.section==="BALLROOM");
+ const datedHalls=[...explicit.values()].filter(t=>t.section==="HALLS");
+ const listedSource=(t:ExplicitWork)=>
+  [...t.sources].map(x=>x==="workbook"?"Dated engineering workbook task":"Reviewed Event Schedule recommendation").join(" + ");
+ const addExplicit=(t:ExplicitWork,detailSuffix="")=>{
+  // Keep original stable IDs when no inferred layout matches. This preserves
+  // existing checkoffs made on previous versions of ShowPilot.
+  const legacy= t.section+"|"+wallInstructionKey(t.instruction);
+  const id="wall-"+hash(legacy);
+  const target=(t.section==="HALLS"?"Halls":"Ballrooms")+" — "+t.instruction;
+  const source=listedSource(t);
+  tasks.push({id,source:"schedule",
+   text:"Set / verify airwalls: "+target,
+   detail:source+". "+detailSuffix+"Verify approved EOC, actual occupancy and room layout before moving partitions."});
+  tasks.push({id:id+"-lighting",source:"schedule",
+   text:"Verify lighting settings after airwall setup: "+target,
+   detail:"After completing the wall change, verify the lighting zones and scenes. "+source+". "+detailSuffix});
+ };
+ const addTransition=(t:BallroomTransition,matched?:ExplicitWork)=>{
+  const base="wall-infer-"+hash(t.id);
+  const source=matched?" Also confirmed by "+listedSource(matched)+".":"";
+  tasks.push({id:base,storageDay:t.afterDate,source:"inferred",
+   text:"Make "+t.target+" — after "+t.afterDate+", before "+t.needByDate,
+   detail:"Inferred from bookings. "+t.explanation+source+
+    " Check EOC and exact occupancy hours before moving a wall."});
+  tasks.push({id:base+"-lighting",storageDay:t.afterDate,source:"inferred",
+   text:"Verify lighting zones for "+t.target+" after the airwall change",
+   detail:"After the airwalls are set, verify the lighting zones and controls. "+t.explanation+source});
+ };
+ // Separate hall changes do not imply a mutually exclusive ballroom layout.
+ for(const task of datedHalls)addExplicit(task);
+ const candidatesByTarget=new Map<string,BallroomTransition[]>();
+ for(const t of windows){
+  const target=transitionKey(t);
+  (candidatesByTarget.get(target)??candidatesByTarget.set(target,[]).get(target)!).push(t);
+ }
+ const firstDue=windows[0]?.needByDate;
+ const urgent=windows.filter(t=>t.needByDate===firstDue);
+ const urgentTargets=new Set(urgent.map(transitionKey));
+ const activeExplicit=datedBallroom.length===1?datedBallroom[0]:undefined;
+ const explicitTargets=new Set(datedBallroom.map(t=>t.key.slice("BALLROOM|".length)));
+ const conflict=
+  datedBallroom.length>1||
+  (!datedBallroom.length&&urgentTargets.size>1)||
+  (!!activeExplicit&&urgent.length>0&&
+   urgentTargets.size>0&&!urgentTargets.has(activeExplicit.key.slice("BALLROOM|".length))&&
+   (firstDue??"")<=day);
+ if(conflict){
+  const reason=datedBallroom.length>1?
+   "Different ballroom setups were specified for the same day. They might be consecutive moves, but the source rows do not establish their order or handoff times.":
+   urgentTargets.size>1?
+   "Multiple future bookings have different ballroom configurations due on the same date. The schedule does not establish which goes first.":
+   "Today's dated ballroom instruction disagrees with a different inferred layout that is needed by today. Do not choose a physical wall arrangement automatically.";
+  for(const e of datedBallroom)review.push({
+   id:"dated:"+e.key,kind:"conflict",target:e.instruction,reason,
+   sources:[listedSource(e), "Dated task: "+day+" · "+e.instruction]
+  });
+  for(const t of windows)review.push(reviewFromTransition(t,"conflict",reason));
+  return {tasks,review};
+ }
+ let chosen:BallroomTransition|undefined;
+ if(activeExplicit){
+  const target=activeExplicit.key.slice("BALLROOM|".length);
+  chosen=windows.find(t=>transitionKey(t)===target);
+  if(chosen)addTransition(chosen,activeExplicit);
+  else addExplicit(activeExplicit);
+ }else if(windows.length){
+  chosen=windows[0];
+  addTransition(chosen);
+ }
+ // A different later setup is not a second task for TODAY. Keep its dates
+ // and original event names visible for planning; never silently discard it.
+ for(const t of windows){
+  if(t===chosen)continue;
+  const target=transitionKey(t);
+  if(chosen&&target===transitionKey(chosen)){
+   // Same physical target from separate evidence: do not add a duplicate
+   // checkbox, but retain the additional source in the review details.
+   review.push(reviewFromTransition(t,"upcoming",
+    "Another booking supports the same setup. It is not a second wall move; review the dates."));
+  }else review.push(reviewFromTransition(t,"upcoming",
+   chosen?"A different ballroom configuration is needed later. Verify when the current setup ends before scheduling this move.":
+   "A future setup is inferred, but today's explicit engineering task takes precedence. Confirm the next handoff."));
+ }
+ // If a single explicit target matches a DIFFERENT later inferred setup,
+ // show both sources; do not create competing checkboxes for the later move.
+ return {tasks,review};
+}
 export function buildingChecklistTasks(
  day:string,excel:readonly WorkbookWallTask[],suggestions:readonly TaskNote[],
  inferred:readonly BallroomTransition[]=[]
 ):ChecklistTask[]{
- const result=[...STANDARD_BUILDING_TASKS];
- const changes=new Map<string,{section:"HALLS"|"BALLROOM";instruction:string;source:"workbook"|"event-schedule"}>();
- const collect=(section:"HALLS"|"BALLROOM",raw:string,source:"workbook"|"event-schedule")=>{
-  const instruction=scheduledAirwallInstruction(section,raw);
-  if(!instruction)return;
-  const key=section+"|"+wallInstructionKey(instruction);
-  // The original engineering workbook instruction takes priority over a
-  // generated recommendation for the same configuration.
-  if(!changes.has(key))changes.set(key,{section,instruction,source});
- };
- for(const task of excel)if(task.date===day)collect(task.section,task.text,"workbook");
- for(const task of suggestions)if(task.date===day)collect(task.section,task.text,"event-schedule");
- // An inferred before/after change is one job spanning several eligible days.
- // If a dated workbook directive specifies the same target, keep the single
- // inferred job (with the handoff window) rather than two checkboxes for it.
- const eligible=inferred.filter(t=>day>=t.afterDate&&day<=t.needByDate);
- const inferredTargets=new Set(eligible.map(t=>t.toGroups.length===1?
-  t.toGroups[0]==="ABCDEFG"?"full ballroom":t.toGroups[0]:t.toGroups.join("/")));
- for(const [key,task] of changes){
-  if(task.section==="BALLROOM"&&inferredTargets.has(wallInstructionKey(task.instruction)))
-   continue;
-  const target=(task.section==="HALLS"?"Halls":"Ballrooms")+" — "+task.instruction;
-  const id="wall-"+hash(key);
-  const sourceDetail=task.source==="workbook"?
-   "Dated engineering workbook task":"Reviewed Event Schedule recommendation";
-  result.push({
-   id,text:"Set / verify airwalls: "+target,source:"schedule",
-   detail:sourceDetail+". Confirm room availability and the approved EOC before moving partitions."
-  });
-  result.push({
-   id:id+"-lighting",
-   text:"Verify lighting settings after airwall setup: "+target,
-   source:"schedule",
-   detail:"After the wall move, check lighting zones, scenes and controls match the final layout. "+sourceDetail+"."
-  });
- }
- for(const transition of eligible){
-  const base="wall-infer-"+hash(transition.id);
-  const target=transition.target;
-  const details="Inferred from saved room bookings. "+transition.explanation+
-   " Complete only after confirming the EOC and actual room occupancy.";
-  result.push({
-   id:base,storageDay:transition.afterDate,
-   text:"Make "+target+" — after "+transition.afterDate+", before "+transition.needByDate,
-   source:"inferred",detail:details
-  });
-  result.push({
-   id:base+"-lighting",storageDay:transition.afterDate,
-   text:"Verify lighting zones for "+target+" after the airwall change",
-   source:"inferred",
-   detail:"Complete after the airwalls are set. Verify lighting zones, scenes and controls against the final layout. "+transition.explanation
-  });
- }
- return result;
+ return [...STANDARD_BUILDING_TASKS,...reconcileAirwallDay(day,excel,suggestions,inferred).tasks];
 }
 
 // Browser-only fallback remains offline; Electron uses private userData.
