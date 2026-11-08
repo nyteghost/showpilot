@@ -3,7 +3,7 @@ import {Download,HardDriveDownload,KeyRound,Monitor,ShieldCheck,ShieldAlert,Tras
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
 import {AI_PROVIDERS,detectAiProvider,type AiProviderId} from "@/lib/showpilot-ai-providers";
-import {gpuAvailable,localModelOptions,loadLocalModel,localModelCached,localModelButtonLabel,subscribeLocalAiRuntimeState,getLocalAiRuntimeState,type LocalAiRuntimeState,type LocalModelCacheStatus} from "@/lib/showpilot-ai-local";
+import {gpuAvailable,localModelOptions,loadLocalModel,enableLocalAi,localModelCached,localModelButtonLabel,subscribeLocalAiRuntimeState,getLocalAiRuntimeState,type LocalAiRuntimeState,type LocalModelCacheStatus} from "@/lib/showpilot-ai-local";
 import type {AiStatus} from "@/lib/showpilot-ai-bridge";
 const NAME="showpilot:ai:local-model";
 export function ShowPilotAiSettings(){
@@ -48,7 +48,7 @@ export function ShowPilotAiSettings(){
  const load=async()=>{
   if(!model||working)return;
   setWorking(true);setProgress("Checking GPU and preparing local model...");
-  try{await loadLocalModel(model,setProgress);try{localStorage.setItem(NAME,model)}catch{};setCache("cached");setStatus("Local model is ready. You can run task recommendations offline while cached.");}
+  try{enableLocalAi();await loadLocalModel(model,setProgress);try{localStorage.setItem(NAME,model)}catch{};setCache("cached");setStatus("Local model is ready. You can run task recommendations offline while cached.");}
   catch(e){setStatus("Could not load local model: "+(e as Error).message);setCache("unknown")}
   finally{setWorking(false)}
  };
