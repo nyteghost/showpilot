@@ -83,6 +83,7 @@ export function activitiesFromReviewProject(project:ReviewProject):{activities:D
  * The Event ID still takes precedence when a source explicitly provides it. */
 export function isOperationalFunctionTitle(title:string):boolean{
  const t=title.replace(/\s+/g," ").trim();
+ if(/^(?:MO\?|MO|MI|Exmi|Arr)$/i.test(t))return true;
  return /^(?:MO\??|MI|Exmi|Arr|client\s+(?:arrival|move[\s-]?in|move[\s-]?out|load[\s-]?in|load[\s-]?out)|(?:vendor|exhibitor|decorator|contractor|advanced expo services)\s+(?:arrival|move[\s-]?in|move[\s-]?out|load[\s-]?in|load[\s-]?out)|move[\s-]?in|move[\s-]?out|load[\s-]?in|load[\s-]?out|program(?:\s+start)?|general\s+session|breakout\s+session|registration|client\s+check[\s-]?in|tables?\s*(?:&|and)\s*chairs?(?:\s+inc\.?)?\s+move[\s-]?in|setup(?:\s*[-:]\s*|\s+)|set[\s-]?up(?:\s*[-:]\s*|\s+)|strike(?:\s*[-:]\s*|\s+)|trade\s+night|room\s+turn|room\s+flip|rehearsal|vendor\s+load[\s-]?in)\b/i.test(t);
 }
 function roomSet(names:readonly string[]):Set<string>{
