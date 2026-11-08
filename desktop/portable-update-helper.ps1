@@ -12,6 +12,7 @@ param(
   [int]$AppProcessId = 0,
   [string]$ExpectedVersion = '',
   [string]$LogPath = '',
+  [string]$ReadyPath = '',
   [switch]$SmokeTestNoRelaunch
 )
 $ErrorActionPreference='Stop'
@@ -40,6 +41,26 @@ function Write-UpdateResult([string]$status,[string]$message) {
     [System.IO.File]::Copy($temp,$target,$true)
     Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
   } catch { Write-UpdateLog ('Could not persist update result: '+$_.Exception.Message) }
+}
+# The parent must get positive proof of script execution before it quits.
+# This marker lives alongside the local update log, never inside the app.
+function Write-InstallerReady {
+  if (-not $LogPath -or -not $ReadyPath) { throw 'Missing installer startup handshake information.' }
+  $logFolder=[System.IO.Path]::GetDirectoryName([System.IO.Path]::GetFullPath($LogPath))
+  $readyFull=[System.IO.Path]::GetFullPath($ReadyPath)
+  $readyFolder=[System.IO.Path]::GetDirectoryName($readyFull)
+  if (-not [string]::Equals($logFolder,$readyFolder,[StringComparison]::OrdinalIgnoreCase) -or
+      -not [System.IO.Path]::GetFileName($readyFull).StartsWith('install-ready-',[StringComparison]::OrdinalIgnoreCase)) {
+    throw 'Invalid installer startup handshake location.'
+  }
+  # CreateNew prevents a previous failed attempt from satisfying a new launch.
+  $file=[System.IO.File]::Open($readyFull,[System.IO.FileMode]::CreateNew,[System.IO.FileAccess]::Write,[System.IO.FileShare]::None)
+  try {
+    $bytes=[System.Text.Encoding]::UTF8.GetBytes('SHOWPILOT_INSTALL_READY')
+    $file.Write($bytes,0,$bytes.Length)
+    $file.Flush($true)
+  } finally { $file.Dispose() }
+  Write-UpdateLog 'Installer startup handshake was written. Waiting for ShowPilot shutdown.'
 }
 function Running-ShowPilotProcesses {
   # Electron has a browser process, GPU process, renderer and utility children.
@@ -260,6 +281,7 @@ try {
   # execution (policy, missing executable, or command-line startup).
   Write-UpdateLog ('PowerShell helper entered: mode='+$Mode+'.')
   Require-SiblingDirectories
+  if ($Mode -eq 'Install') { Write-InstallerReady }
   if ($Mode -eq 'Stage') { Stage-Zip } else { Install-Zip }
   exit 0
 } catch {
