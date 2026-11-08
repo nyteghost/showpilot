@@ -3,6 +3,7 @@ import {BookOpen,CalendarRange,Save,Search,ClipboardCheck,CalendarClock,FolderOp
 import {Button} from "@/components/ui/button";
 import {ShowPilotEventDocuments} from "@/components/showpilot-event-documents";
 import {ShowPilotEventZipImport} from "@/components/showpilot-event-zip-import";
+import {ShowPilotExhibitorOrdersImport} from "@/components/showpilot-exhibitor-orders-import";
 import {PreConPanel} from "@/components/showpilot-precon-panel";
 import {PostConPanel} from "@/components/showpilot-postcon-panel";
 import {decodePreCon,type PreConDraft} from "@/lib/showpilot-precon";
@@ -69,7 +70,7 @@ export function ShowPilotEventsPanel({active=true,stagePlanner,floorMaps,openEve
    const layouts=files.filter(x=>x.kind==="diagram"&&x.available&&
     ["pdf","png","jpg","jpeg","webp"].includes(x.extension)&&
     /hall|exhibit|floor[\s_-]*(?:plan|map)|event[\s_-]*layout/i.test(x.name));
-   const orders=files.filter(x=>x.kind==="work-order"&&x.available&&x.extension==="pdf");
+   const orders=files.filter(x=>(x.kind==="work-order"||x.kind==="exhibitor-order")&&x.available&&x.extension==="pdf");
    const selected=[...layouts.sort((a,b)=>Number(b.extension==="pdf")-Number(a.extension==="pdf")).slice(0,1),...orders.slice(0,2)];
    const inputs=await Promise.all(selected.map(async item=>{
     const data=await bridge.eventFileRead(item.id);
@@ -166,6 +167,10 @@ export function ShowPilotEventsPanel({active=true,stagePlanner,floorMaps,openEve
    <p className="text-xs text-muted-foreground">{shows.length} saved CGC show{shows.length===1?"":"s"}. Events imported from ShowPilot Event Schedule or event ZIPs are saved in SQLite and remain available after software updates.</p>
   </div>
   <ShowPilotEventZipImport shows={shows} selectedKey={selectedKey} onImported={imported} active={active}/>
+  <ShowPilotExhibitorOrdersImport shows={shows} onSaved={key=>{
+   setSelectedKey(key);setFilesRevision(n=>n+1);selectSection("documents");
+   setMessage("Exhibitor Work Orders saved under the matching Event ID.");
+  }}/>
   <div className="flex flex-wrap gap-2 rounded-lg border p-2" role="tablist" aria-label="Events sections">
    {([
     ["overview","Overview & notes",BookOpen],
@@ -241,7 +246,7 @@ export function ShowPilotEventsPanel({active=true,stagePlanner,floorMaps,openEve
   </div>
   {section==="documents"&&<div className="space-y-3">
    {show&&bridge?<ShowPilotEventDocuments key={show.key+":"+filesRevision} show={show} onOpenStage={()=>selectSection("stage")} onOpenFloorMaps={()=>void openFloorMaps()}/>
-    :<div className="rounded-xl border p-4 text-sm text-muted-foreground">Choose a show or import an event ZIP to see its work orders, EOCs and diagrams.</div>}
+    :<div className="rounded-xl border p-4 text-sm text-muted-foreground">Choose a show or import Exhibitor Orders / an event ZIP to see its orders, EOCs and diagrams.</div>}
   </div>}
   <div hidden={section!=="precon"}>{visited.includes("precon")&&<PreConPanel focusShow={show}/>}</div>
   <div hidden={section!=="postcon"}>{visited.includes("postcon")&&<PostConPanel focusShow={show}/>}</div>
