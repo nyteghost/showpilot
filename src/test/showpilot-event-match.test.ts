@@ -1,5 +1,5 @@
 import {describe,expect,it} from "vitest";
-import {matchEventZipToShow,normalizedEventId} from "@/lib/showpilot-event-match";
+import {canAcknowledgeZipIdConflict,matchEventZipToShow,normalizedEventId} from "@/lib/showpilot-event-match";
 import type {PostConShow} from "@/lib/showpilot-postcon";
 import type {EventMetadataResult} from "@/lib/showpilot-event-discovery";
 const shows:PostConShow[]=[
@@ -27,5 +27,35 @@ describe("Event Schedule and ZIP Event ID linking",()=>{
  it("can find an older ID-keyed show record that lacks the eventId field",()=>{
   const legacy=[{...shows[0]!,eventId:""}];
   expect(matchEventZipToShow(meta("42389"),legacy)).toEqual({status:"matched",show:legacy[0]});
+ });
+});
+
+describe("Explicit review of conflicting ZIP document IDs",()=>{
+ const eoc="EOC cover page: Hospitality Industry Ministries EOC.pdf";
+ const event={key:"id:41622",eventId:"41622",showName:"Hospitality Industry Ministries",
+  showDate:"2026-11-06",startDate:"2026-11-06",rooms:"BallRoom A, BallRoom B, BallRoom E"};
+ const header={eventId:"41622",evidence:[
+  {field:"eventId" as const,value:"41622",source:eoc},
+  {field:"eventId" as const,value:"41622",source:"ZIP filename (fallback)"},
+  {field:"eventId" as const,value:"55555",source:"Work Orders/secondary.txt"}
+ ]};
+ it("permits review only against the exact existing EOC-cover ID",()=>{
+  expect(matchEventZipToShow(header,[event]).status).toBe("conflicting-ids");
+  expect(canAcknowledgeZipIdConflict(header,event)).toBe(true);
+  expect(canAcknowledgeZipIdConflict(header,{...event,eventId:"55555",key:"id:55555"})).toBe(false);
+  expect(canAcknowledgeZipIdConflict(header,null)).toBe(false);
+ });
+ it("never bypasses ambiguity between multiple different EOC cover IDs",()=>{
+  expect(canAcknowledgeZipIdConflict({...header,evidence:[
+   ...header.evidence,{field:"eventId" as const,value:"55555",source:"EOC cover page: other.pdf"}
+  ]},event)).toBe(false);
+ });
+ it("requires a readable EOC cover and genuine conflicting secondary evidence",()=>{
+  expect(canAcknowledgeZipIdConflict({
+   ...header,evidence:header.evidence.filter(x=>!x.source.startsWith("EOC cover page:"))
+  },event)).toBe(false);
+  expect(canAcknowledgeZipIdConflict({
+   ...header,evidence:header.evidence.filter(x=>x.value==="41622")
+  },event)).toBe(false);
  });
 });
