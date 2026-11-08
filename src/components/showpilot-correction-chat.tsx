@@ -47,7 +47,7 @@ export function ShowPilotCorrectionChat(){
     }catch{/* Chat works without native memory. */}
    }
    const reply=await chatWithShowPilotLocalAI(next,refs);
-   setHistory(previous=>[...previous,{role:"assistant",content:reply}].slice(-12));
+   setHistory(previous=>[...previous,{role:"assistant" as const,content:reply}].slice(-12));
   }catch(error){setMessage("Local AI couldn't respond: "+(error instanceof Error?error.message:String(error)));}
   finally{setBusy(false);}
  };
