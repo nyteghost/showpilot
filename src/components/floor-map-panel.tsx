@@ -151,6 +151,77 @@ export function FloorMapPanel({initialEventDocuments,selectedEventId=""}:{initia
     } catch (e) { setStatus(`Couldn't read those PDFs: ${(e as Error).message}`); }
   }
 
+  /** A standalone plan is attached only after its Event ID resolves to one
+   * existing CGC show. Saved itemized reports are loaded by that same exact ID.
+   * No network/AI or separate report upload is required. */
+  async function loadEventLayoutAndOrders(id=eventIdInput,attachUploaded=false){
+    if(!bridge){setLinkStatus("This action requires ShowPilot desktop storage.");return;}
+    if(linking)return;
+    setLinking(true);setLinkStatus("");
+    try{
+      const catalog=await bridge.showCatalogList();
+      setKnownShows(catalog);
+      const match=findFloorMapShowById(id,catalog);
+      if(match.status!=="matched"||!match.show){
+        throw Error(match.status==="ambiguous"?"Multiple saved CGC events use this Event ID. Resolve the duplicate before attaching a layout.":"Enter an existing CGC Event ID from Events before linking a layout.");
+      }
+      const show=match.show;
+      const all=await bridge.eventFileList(show.key);
+      const linked=linkedMapDocuments(all);
+      const loaded=async(fileId:string)=>{
+        const saved=await bridge.eventFileRead(fileId);
+        return new File([new Uint8Array(saved.bytes)],saved.name,{type:saved.extension==="pdf"?"application/pdf":"application/octet-stream"});
+      };
+      const layout=pendingLayout??(linked.layouts.length?await loaded(linked.layouts[0]!.id):null);
+      if(!layout)throw Error("No floor layout is saved for this event. Upload a layout PDF or image first.");
+      const reportList=linked.reports.slice(0,6);
+      const reports=await Promise.all(reportList.map(f=>loaded(f.id)));
+      setEventIdInput(show.eventId);
+      if(attachUploaded&&pendingLayout){
+        if(!/\.pdf$|\.png$|\.jpe?g$|\.webp$/i.test(pendingLayout.name))
+          throw Error("Attach a PDF or image layout.");
+        // Preserve existing layout originals, and avoid blindly duplicating
+        // an identical filename/length already in this show's vault.
+        const already=all.some(x=>!x.archived&&x.kind==="diagram"&&
+          x.name===pendingLayout.name&&x.bytes===pendingLayout.size);
+        if(!already){
+          await bridge.eventFileSave({eventKey:show.key,kind:"diagram",
+            name:pendingLayout.name,bytes:await pendingLayout.arrayBuffer()});
+          window.dispatchEvent(new Event("showpilot:event-files-updated"));
+        }
+      }
+      if(/\.pdf$/i.test(layout.name)){
+        setEventImage("");
+        await read([layout,...reports],1,show.eventId);
+      }else{
+        const url=URL.createObjectURL(layout);
+        setEventImage(previous=>{if(previous)URL.revokeObjectURL(previous);return url;});
+        setPlan(null);setName(layout.name);setEntries([]);setRows(0);
+        setStatus("Image layout loaded. Booth utility coloring requires a text/vector PDF floor plan.");
+      }
+      setPendingLayout(null);
+      setLinkStatus("Linked to "+show.showName+" (Event #"+show.eventId+"). "+
+        (reports.length?reports.length+" saved itemized report(s) loaded for automatic booth placement.":
+        "No itemized Better Work Order Items report is saved for this event yet. Upload one to its Exhibitor Orders."));
+    }catch(e){setLinkStatus("Layout not linked: "+(e instanceof Error?e.message:String(e)));}
+    finally{setLinking(false);}
+  }
+  const importLayoutFiles=(selected:File[])=>{
+    if(!selected.length)return;
+    const layout=selected.find(f=>/\.(?:pdf|png|jpg|jpeg|webp)$/i.test(f.name)&&
+      !isBetterWorkOrderItems(f.name));
+    setPendingLayout(layout??null);
+    setLinkStatus(layout?"Enter or verify the Event ID and select Link layout & load saved orders.":"Choose a floor layout PDF or image to link to an Event ID.");
+    if(layout&&/\.(?:png|jpg|jpeg|webp)$/i.test(layout.name)){
+      const url=URL.createObjectURL(layout);
+      setEventImage(previous=>{if(previous)URL.revokeObjectURL(previous);return url;});
+      setPlan(null);setName(layout.name);
+    }else {
+      setEventImage(previous=>{if(previous)URL.revokeObjectURL(previous);return "";});
+      void read(selected,1,eventIdInput||selectedEventId);
+    }
+  };
+
   useEffect(()=>{
     if(!initialEventDocuments?.length||!eventFileKey||loadedSeed.current===eventFileKey)return;
     loadedSeed.current=eventFileKey;
@@ -163,7 +234,8 @@ export function FloorMapPanel({initialEventDocuments,selectedEventId=""}:{initia
       return ()=>URL.revokeObjectURL(url);
     }
     setEventImage("");
-    void read(initialEventDocuments);
+    if(selectedEventId)setEventIdInput(selectedEventId);
+    void read(initialEventDocuments,1,selectedEventId);
   },[eventFileKey,selectedEventId]);
   // paint: plan + legend strip + colors (+ the booths being picked)
   useEffect(() => {
