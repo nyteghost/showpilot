@@ -64,7 +64,9 @@ export function ShowPilotCorrectionChat(){
      "This is an operator-provided historical correction, not an automatic change to software rules, approved work orders or source EOCs.",
      "Review event-specific evidence and dates before applying to future shows."].join("\n")
    });
-   setSaved(old=>[...old,index]);setMessage("Correction saved to local Native Memory for future AI reviews.");
+   setSaved(old=>[...old,index]);
+   window.dispatchEvent(new Event("showpilot:rule-feedback-saved"));
+   setMessage("Correction saved to local Native Memory for future AI reviews.");
   }catch(error){setMessage("Unable to save correction: "+(error instanceof Error?error.message:String(error)));}
   finally{setBusy(false);}
  };
