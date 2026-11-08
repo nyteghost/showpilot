@@ -6,6 +6,7 @@ import type {PostConShow} from "@/lib/showpilot-postcon";
 import {canAcknowledgeZipIdConflict,matchEventZipToShow,type EventZipMatch} from "@/lib/showpilot-event-match";
 import {extractEocFromPdf,pdfTextPages} from "@/lib/showpilot-event-assets";
 import {discoverEventMetadata,ROOMS,type EventMetadataResult,type EventMetadataSource} from "@/lib/showpilot-event-discovery";
+import {ShowPilotWhy} from "@/components/showpilot-why";
 import {scheduleHintsFromSources,serializeZipSchedule,type ZipScheduleHint} from "@/lib/showpilot-zip-schedule";
 
 const roomsAvailable=ROOMS;
@@ -305,10 +306,23 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
      :"EOC cover data was not readable. Filename/manifest or other document suggestions may be incomplete; confirm the details manually."}</p>
     <p>Event ID: <strong>{metadata.eventId||"Not found"}</strong> · Show: <strong>{metadata.showName||"Not found"}</strong></p>
     <p>Dates: <strong>{metadata.startDate||"Unknown"} to {metadata.showDate||"Unknown"}</strong></p>
-    <p>CGC locations: <strong>{metadata.rooms.join(", ")||"Not found"}</strong></p>
+    <div className="flex items-center gap-1">
+     <p>CGC locations: <strong>{metadata.rooms.join(", ")||"Not directly assigned"}</strong></p>
+     <ShowPilotWhy label="room selections suggested from this ZIP">
+      <p>Only direct <strong>Function Space</strong>, <strong>Rooms</strong>, <strong>Location</strong>, or full-line room assignments can preselect a hall. A filename or casual room mention is displayed as evidence, but not automatically selected.</p>
+      {metadata.evidence.filter(x=>x.field==="room").length?
+       metadata.evidence.filter(x=>x.field==="room").slice(0,30).map((e,i)=>
+        <div key={i} className="border-t pt-1">
+         <p><strong>{e.value}</strong> — {e.confidence==="assigned"?"Directly assigned":e.confidence==="mentioned"?"Mention only — not selected automatically":"Older evidence — verify"}</p>
+         <p>{e.source}{e.context?" · "+e.context:" · Exact original line was not saved"}</p>
+        </div>
+       ):<p>No readable CGC room assignment was found. Enter the rooms manually after checking the EOC.</p>}
+      <p>The EOC's <strong>No Space Assigned</strong> does not mean Hall C, Hall D, or any other room. Always confirm the selected locations before saving.</p>
+     </ShowPilotWhy>
+    </div>
     <details><summary className="cursor-pointer">View document sources ({metadata.evidence.length})</summary>
      <div className="mt-1 max-h-40 overflow-auto">
-      {metadata.evidence.slice(0,80).map((item,i)=><p key={i}>{item.field}: {item.value} — {item.source}</p>)}
+      {metadata.evidence.slice(0,80).map((item,i)=><p key={i}>{item.field}: {item.value} — {item.source}{item.context?" · Matched text: "+item.context:""}{item.confidence?" ("+(item.confidence==="assigned"?"direct assignment":"mention only")+")":""}</p>)}
      </div>
     </details>
     {[...metadata.warnings,...readWarnings].map((warning,i)=><p key={i} className="text-amber-600">Review: {warning}</p>)}
