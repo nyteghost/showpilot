@@ -59,7 +59,7 @@ export function ShowPilotEventsPanel({active=true,stagePlanner,floorMaps,openEve
  },[]);
  useEffect(()=>{
   let live=true;setScheduleRooms([]);
-  if(!show?.eventId||!/^\\d{3,12}$/.test(show.eventId))return;
+  if(!show?.eventId||!/^\d{3,12}$/.test(show.eventId))return;
   void window.showpilotScheduleSession?.load().then(snapshot=>{
    if(!live||!snapshot)return;
    const rows=activitiesFromReviewProject(snapshot.project).acceptedRows;
