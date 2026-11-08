@@ -50,8 +50,10 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
  const [aiRuntime,setAiRuntime]=useState(getLocalAiRuntimeState);
  const [aiNotes,setAiNotes]=useState<BallroomAiNote[]>([]);
  const [aiReviewState,setAiReviewState]=useState("");
- const [acknowledged,setAcknowledged]=useState(()=>
-  typeof window==="undefined"?[]:readFindingAcknowledgements(window.localStorage));
+ const [acknowledged,setAcknowledged]=useState(()=>{
+  try{return typeof window==="undefined"?[]:readFindingAcknowledgements(window.localStorage);}
+  catch{return [];} // Private browsing or restricted storage cannot break Today.
+ });
  const [lastAcknowledged,setLastAcknowledged]=useState<{key:string;text:string}|null>(null);
  useEffect(()=>{
   try{window.localStorage.setItem(FINDING_ACK_KEY,JSON.stringify(acknowledged));}
