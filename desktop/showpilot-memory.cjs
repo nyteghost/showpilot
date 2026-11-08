@@ -138,6 +138,7 @@ async function ready(){
    "CREATE TABLE IF NOT EXISTS postcon_reports(id TEXT PRIMARY KEY,event_id TEXT NOT NULL,show_name TEXT NOT NULL,show_date TEXT NOT NULL,rooms TEXT NOT NULL,rating INTEGER NOT NULL,went_well TEXT NOT NULL,issues TEXT NOT NULL,staffing TEXT NOT NULL,stage TEXT NOT NULL,floor TEXT NOT NULL,follow_up TEXT NOT NULL,created TEXT NOT NULL,modified TEXT NOT NULL,archived INTEGER NOT NULL DEFAULT 0);"+
    "CREATE INDEX IF NOT EXISTS postcon_date ON postcon_reports(show_date,archived);"+
    "CREATE TABLE IF NOT EXISTS show_catalog(key TEXT PRIMARY KEY,event_id TEXT NOT NULL,show_name TEXT NOT NULL,start_date TEXT NOT NULL,show_date TEXT NOT NULL,rooms TEXT NOT NULL,modified TEXT NOT NULL);"+
+   "CREATE TABLE IF NOT EXISTS show_catalog_deleted(key TEXT PRIMARY KEY,deleted_at TEXT NOT NULL);"+
    "CREATE INDEX IF NOT EXISTS show_catalog_dates ON show_catalog(start_date,show_date);"+
    "CREATE TABLE IF NOT EXISTS event_files(id TEXT PRIMARY KEY,event_key TEXT NOT NULL,kind TEXT NOT NULL,name TEXT NOT NULL,extension TEXT NOT NULL,byte_size INTEGER NOT NULL,sha256 TEXT NOT NULL,eoc_json TEXT NOT NULL,created TEXT NOT NULL,archived INTEGER NOT NULL DEFAULT 0);"+
    "CREATE INDEX IF NOT EXISTS event_files_key ON event_files(event_key,archived);");
@@ -410,10 +411,11 @@ function validateShowCatalogItem(item){
  return {key,eventId,showName,startDate,showDate,rooms:[...new Set(rooms)].sort().join(", ")};
 }
 function readShowCatalogRows(){
- return queryRows("SELECT key,event_id AS eventId,show_name AS showName,start_date AS startDate,show_date AS showDate,rooms FROM show_catalog ORDER BY show_date DESC,show_name LIMIT 5000");
+ return queryRows("SELECT key,event_id AS eventId,show_name AS showName,start_date AS startDate,show_date AS showDate,rooms FROM show_catalog WHERE key NOT IN (SELECT key FROM show_catalog_deleted) ORDER BY show_date DESC,show_name LIMIT 5000");
 }
 async function showCatalogList(){await ready();return readShowCatalogRows();}
 function insertShowCatalog(item){
+ if(queryRows("SELECT key FROM show_catalog_deleted WHERE key=?",[item.key]).length)return;
  const prior=queryRows("SELECT key,event_id AS eventId,show_name AS showName,start_date AS startDate,show_date AS showDate,rooms FROM show_catalog WHERE key=?",[item.key])[0];
  const startDate=prior&&prior.startDate<item.startDate?prior.startDate:item.startDate;
  const showDate=prior&&prior.showDate>item.showDate?prior.showDate:item.showDate;
@@ -437,6 +439,35 @@ async function showCatalogSave(items){
  return {saved:true,added:count("SELECT COUNT(*) n FROM show_catalog")-before,total:count("SELECT COUNT(*) n FROM show_catalog")};
 }
 
+/** Delete only specifically previewed catalog entries; never touch EOC assets.
+ * A tombstone prevents a stale imported workbook/cache from recreating them.
+ * A verified local backup is mandatory before the change. */
+async function showCatalogDeleteSelected(request){
+ await ready();
+ if(!request||!Array.isArray(request.records)||request.records.length<1||request.records.length>25)
+  throw Error("Select between 1 and 25 exact event records.");
+ const records=request.records;
+ const keys=new Set();
+ for(const item of records){
+  if(!item||typeof item.key!=="string"||item.key.length>180||
+     typeof item.showName!=="string"||!item.showName||
+     typeof item.showDate!=="string"||!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(item.showDate)||
+     keys.has(item.key))throw Error("Invalid or duplicate event deletion target.");
+  keys.add(item.key);
+  const current=queryRows("SELECT key,show_name AS showName,show_date AS showDate FROM show_catalog WHERE key=?",[item.key])[0];
+  if(!current||current.showName!==item.showName||current.showDate!==item.showDate)
+   throw Error("Event records changed after the preview. Refresh and confirm again.");
+ }
+ const backup=await backupNow(true);
+ if(!backup?.created)throw Error("A verified memory backup is required before deleting event records.");
+ transaction(()=>{
+  for(const item of records){
+   sqlRun("INSERT OR REPLACE INTO show_catalog_deleted(key,deleted_at) VALUES(?,?)",[item.key,now()]);
+   sqlRun("DELETE FROM show_catalog WHERE key=?",[item.key]);
+  }
+ });
+ return {deleted:records.length,backupCreated:true,scope:"show-catalog-only"};
+}
 /** Durable event attachments. Bytes live in ShowPilot's userData folder,
  * never inside the application binary, GitHub, or browser localStorage.
  * Existing bytes and metadata are retained when users install a new build.
@@ -866,6 +897,7 @@ function setupMemoryIpc(){
  wrap("backup-choose-folder",chooseBackupFolder);wrap("backup-open-folder",openBackupFolder);
  wrap("postcon-list",postConList);wrap("postcon-save",postConSave);wrap("postcon-archive",postConArchive);
  wrap("show-catalog-list",showCatalogList);wrap("show-catalog-save",showCatalogSave);
+ wrap("show-catalog-delete-selected",showCatalogDeleteSelected);
  wrap("event-floor-map-events",eventFloorMapEvents);
  wrap("event-file-list",eventFileList);wrap("event-file-save",eventFileSave);wrap("event-file-open",eventFileOpen);
  wrap("event-file-read",eventFileRead);wrap("event-file-archive",eventFileArchive);
@@ -875,4 +907,4 @@ function setupMemoryIpc(){
  wrap("open-folder",openFolder);
  startWeeklyBackups();
 }
-module.exports={setupMemoryIpc,status,preferences,list,search,read,save,edit,archive,importPack,exportPack,rememberSchedule,openFolder,ready,backupNow,automaticBackupCheck,setBackupEnabled,chooseBackupFolder,postConList,postConSave,postConArchive,showCatalogList,showCatalogSave,eventFloorMapEvents,eventFileList,eventFileSave,eventFileOpen,eventFileRead,eventFileArchive,eventZipInspect,eventZipScan,eventZipPdfCandidates,eventZipImport,eventZipReadOrders,eventFileSetEocExcerpts,diagnosticsSummary};
+module.exports={setupMemoryIpc,status,preferences,list,search,read,save,edit,archive,importPack,exportPack,rememberSchedule,openFolder,ready,backupNow,automaticBackupCheck,setBackupEnabled,chooseBackupFolder,postConList,postConSave,postConArchive,showCatalogList,showCatalogSave,showCatalogDeleteSelected,eventFloorMapEvents,eventFileList,eventFileSave,eventFileOpen,eventFileRead,eventFileArchive,eventZipInspect,eventZipScan,eventZipPdfCandidates,eventZipImport,eventZipReadOrders,eventFileSetEocExcerpts,diagnosticsSummary};
