@@ -74,14 +74,6 @@ export function ShowPilotTodayChecklist({day,shows,airwalls,workbookWalls,sugges
   void work(()=>checkTodayTask(day,scope,task.id,checked),
    "Saved locally · "+new Date().toLocaleTimeString());
  };
- const add=(e:FormEvent)=>{
-  e.preventDefault();
-  const text=newText.trim();
-  if(!text)return;
-  void work(()=>addTodayTask(day,newScope,text),"Task added and saved locally.");
-  // Clear only on a successful save: if storage is unavailable, the user
-  // must not lose what they typed.
- };
  const addTask=async(e:FormEvent)=>{
   e.preventDefault();
   const text=newText.trim();
