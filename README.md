@@ -274,6 +274,18 @@ Develop and test new changes on **`beta`**. Promote verified changes to **`main`
 - **Work PC restricts apps:** consult your IT policy before executing portable applications or connecting organizational Google accounts.
 - **Stage layout seems physically unsafe:** stop and check approved manufacturer guidance, equipment and on-site supervisor; do not follow the diagram blindly.
 
+## Local AI independent rule review (beta)
+
+ShowPilot's deterministic rule calculations remain authoritative. When a cached local model is enabled and ready, the following rule-derived results are automatically offered to the local model for **advisory** review:
+
+- **Today:** ballroom and Hall A–D configuration overlap warnings, unresolved event/function ownership, and lower-confidence inferred ballroom changes.
+- **Event Schedule:** date-scoped task suggestions. AI-proposed tasks remain unapproved until the user reviews them.
+- **Stage/deck, Floor Maps, and engineering staffing:** existing planning assistants now review their current rule-derived context automatically while Local AI is ready. Their domain validators still reject infeasible or unsupported proposals.
+
+Review requests to the same GPU model are serialized and debounced when inputs change. Local AI off stops new inference and unloads the model after active requests finish. The model is **not** a general EOC vision parser or a substitute for confirmed event identities and timed occupancy. AI cannot automatically rewrite scheduling algorithms, alter approved workbooks, commit code, or issue physical wall movements.
+
+**Coverage is not yet universal.** Shift editing, vendor pricing and comparison, every import validator, workbook export and calendar sync are not all wired into independent AI review yet. Do not interpret the presence of the green dot as proof that every workflow has been checked. Deterministic rules remain functional with Local AI disabled.
+
 ## Project scope
 
 ShowPilot serves **Cobb Convention Center-Atlanta**. It is an independent professional tool and should **not** schedule or cover Cobb Energy Performing Arts Centre events.
