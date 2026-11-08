@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { Briefcase, CalendarClock, CalendarDays, CalendarPlus, CalendarSync, FolderOpen, Download, ExternalLink, FileUp, GitBranch, Layers, Eye, Map as MapIcon, Store } from "lucide-react";
+import { Briefcase, CalendarClock, CalendarDays, CalendarPlus, CalendarSync, FolderOpen, Download, ExternalLink, FileUp, GitBranch, Layers, Eye, Map as MapIcon, Store, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -18,6 +18,7 @@ import { AiTaskAssistant } from "@/components/showpilot-ai-task-assistant";
 import { LocalPlanningAssistant } from "@/components/showpilot-planning-assistant";
 import { staffingPlanningContext } from "@/lib/showpilot-planning";
 import {ShowPilotEventsPanel} from "@/components/showpilot-events-panel";
+import {ShowPilotTodayPanel} from "@/components/showpilot-today-panel";
 import { rememberPostConShowsFromReportRows } from "@/lib/showpilot-postcon";
 import { applyReview, emptyReviewDraft, fingerprintRows, parseDraft, parseReviewProject, storageKey, type ReviewDraft, type ReviewProject } from "@/lib/showpilot-review";
 
@@ -41,6 +42,7 @@ export function WorkTools() {
 }
 
 const TABS = [
+  { id: "today", label: "Today", Icon: Sun, hint: "Today’s CGC shows, EOC documents, airwall notes and weekly view." },
   { id: "events", label: "Event Schedule", Icon: CalendarDays, hint: "Import event reports and create reviewed engineering schedules." },
   { id: "eventhub", label: "Events", Icon: FolderOpen, hint: "Show details, Pre/Post-Con notes, work orders, EOCs and diagrams." },
   { id: "shifts", label: "My shifts", Icon: CalendarClock, hint: "Pull your shifts from the monthly schedule and put them on your calendar." },
@@ -58,7 +60,8 @@ const startTab = (): TabId => {
   } catch { return "events"; }
 };
 
-export function ShowServicesTools({ page = false, selectedTab, hideTabBar = false, venueOnly = false }: { page?: boolean; selectedTab?: WorkTabId; hideTabBar?: boolean; venueOnly?: boolean } = {}) {
+export type OpenEventRequest={key:string;section:"documents"|"overview";revision:number};
+export function ShowServicesTools({ page = false, selectedTab, hideTabBar = false, venueOnly = false, openEventRequest }: { page?: boolean; selectedTab?: WorkTabId; hideTabBar?: boolean; venueOnly?: boolean; openEventRequest?:OpenEventRequest|null } = {}) {
   const [tab, setTab] = useState<TabId>("events");
   // Keep each visited tab mounted. Radix normally unmounts inactive TabsContent,
   // which used to erase imported files, review edits, and unresolved booth work.
@@ -81,8 +84,9 @@ export function ShowServicesTools({ page = false, selectedTab, hideTabBar = fals
             <p className="text-sm text-muted-foreground">{cur.hint}</p>
             {!page && <a href={`/work?tab=${tab}`} target="_blank" rel="noreferrer" className="inline-flex shrink-0 items-center gap-1 text-xs text-primary underline"><ExternalLink className="size-3.5" /> Open as its own page</a>}
           </div>
+          {visited.includes("today") && <KeepAliveTabContent value="today"><ShowPilotTodayPanel active={activeTab==="today"}/></KeepAliveTabContent>}
           {visited.includes("events") && <KeepAliveTabContent value="events"><EventsTab venueOnly={venueOnly} /></KeepAliveTabContent>}
-          {visited.includes("eventhub") && <KeepAliveTabContent value="eventhub"><ShowPilotEventsPanel active={activeTab==="eventhub"} stagePlanner={<DeckTab/>} floorMaps={(files,eventId)=><FloorMapPanel initialEventDocuments={files} selectedEventId={eventId}/>} /></KeepAliveTabContent>}
+          {visited.includes("eventhub") && <KeepAliveTabContent value="eventhub"><ShowPilotEventsPanel active={activeTab==="eventhub"} openEventRequest={openEventRequest} stagePlanner={<DeckTab/>} floorMaps={(files,eventId)=><FloorMapPanel initialEventDocuments={files} selectedEventId={eventId}/>} /></KeepAliveTabContent>}
           {visited.includes("shifts") && <KeepAliveTabContent value="shifts"><ShiftsTab /></KeepAliveTabContent>}
           {visited.includes("vendors") && <KeepAliveTabContent value="vendors"><StandaloneVendors /></KeepAliveTabContent>}
           {visited.includes("floor") && <KeepAliveTabContent value="floor"><FloorMapPanel /></KeepAliveTabContent>}
