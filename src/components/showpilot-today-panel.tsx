@@ -2,6 +2,8 @@ import {useEffect,useMemo,useRef,useState} from "react";
 import {CalendarDays,ChevronLeft,ChevronRight,FileText,FolderOpen,RefreshCw,AlertTriangle,Layers3} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import {ShowPilotTodayChecklist} from "@/components/showpilot-today-checklist";
+import {inferBallroomTransitions} from "@/lib/showpilot-ballroom-inference";
+import type {EventRow} from "@/lib/work-tools";
 import {loadDurableShowCatalog,type PostConShow} from "@/lib/showpilot-postcon";
 import type {TaskNote} from "@/lib/work-tools";
 import {parseZipSchedule,type ZipScheduleHint} from "@/lib/showpilot-zip-schedule";
@@ -37,6 +39,7 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
  const [week,setWeek]=useState(()=>mondayFor(todayIso()));
  const [shows,setShows]=useState<PostConShow[]>([]);
  const [scheduleActivities,setScheduleActivities]=useState<DailyActivity[]>([]);
+ const [reviewRows,setReviewRows]=useState<EventRow[]>([]);
  const [workbookWalls,setWorkbookWalls]=useState<WorkbookWallTask[]>([]);
  const [sourceWarnings,setSourceWarnings]=useState<string[]>([]);
  const [uploadBusy,setUploadBusy]=useState(false);
@@ -50,6 +53,7 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
  const thisWeek=mondayFor(today);
  const dates=useMemo(()=>daysOfWeek(week),[week]);
  const joined=useMemo(()=>combineTodaySources(shows,scheduleActivities),[shows,scheduleActivities]);
+ const inferredLayouts=useMemo(()=>inferBallroomTransitions(scheduleActivities,reviewRows,shows),[scheduleActivities,reviewRows,shows]);
  const currentShows=useMemo(()=>joined.shows.filter(show=>showHasActivityOnDay(show,today,joined))
   .sort((a,b)=>a.showName.localeCompare(b.showName)),[joined,today]);
  const currentWeekShows=useMemo(()=>joined.shows.filter(show=>
@@ -86,6 +90,7 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
     const activities:DailyActivity[]=[];
     const warnings:string[]=[];
     let tasks:TaskNote[]=[];
+    let acceptedReviewRows:EventRow[]=[];
     let walls:WorkbookWallTask[]=[];
     let snapshot:Awaited<ReturnType<NonNullable<typeof window.showpilotScheduleSession>["load"]>>=null;
     try{
@@ -94,6 +99,7 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
       const extracted=activitiesFromReviewProject(snapshot.project);
       activities.push(...extracted.activities);
       tasks=extracted.airwalls;
+      acceptedReviewRows=extracted.acceptedRows;
      }
     }catch(e){warnings.push("Saved schedule review could not be read: "+String(e));}
     try{
@@ -144,7 +150,7 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
      }));
     }
     if(live){
-     setShows(catalog);setScheduleActivities(activities);
+     setShows(catalog);setScheduleActivities(activities);setReviewRows(acceptedReviewRows);
      setDetails(Object.fromEntries(items));
      setSuggestions(tasks);setWorkbookWalls(walls);setSourceWarnings(warnings);
      if(!bridge)setWarning("EOC links require the ShowPilot portable desktop app. Saved schedule activity can still be viewed.");
@@ -236,7 +242,8 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
   </div>
   {loading&&<p role="status" className="text-sm text-muted-foreground">Loading the local event catalog and EOC notes…</p>}
   {!loading&&<ShowPilotTodayChecklist key={today} day={today} shows={currentShows}
-   airwalls={todayAirwalls} workbookWalls={todayWorkbookWalls} suggestions={todayChanges}/>}
+   airwalls={todayAirwalls} workbookWalls={todayWorkbookWalls} suggestions={todayChanges}
+   transitions={inferredLayouts.transitions}/>}
   {!loading&&!warning&&currentShows.length===0&&<div className="rounded-xl border p-5">
    <strong>No saved CGC activity is available for today's date.</strong>
    <p className="mt-1 text-sm text-muted-foreground">Use engineering workbook above to import the dated Excel schedule, or import an Ungerboeck Event Schedule. No saved activity does not mean the building is inactive.</p>
