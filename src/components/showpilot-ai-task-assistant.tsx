@@ -128,8 +128,10 @@ export function AiTaskAssistant({ entries, tasks, onApprove, scope }:{
   if(runtime.status!=="ready"||mode!=="local"||!scope||!weeks.length||busy)return;
   const key=scopeKey+"|"+entryFingerprint+"|"+tasksFingerprint;
   if(lastAutoReview.current===key)return;
-  lastAutoReview.current=key;
-  void run();
+  const timer=window.setTimeout(()=>{
+   if(lastAutoReview.current!==key){lastAutoReview.current=key;void run();}
+  },900);
+  return ()=>window.clearTimeout(timer);
  },[runtime.status,mode,scopeKey,entryFingerprint,tasksFingerprint,busy,weeks.length]);
  const approve=(s:AiTaskSuggestion)=>{
   const text=(edits[s.id]??s.task.text).trim();
