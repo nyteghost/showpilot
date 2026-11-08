@@ -183,7 +183,8 @@ function prepareInstallPaths(version){
  const zipFile=path.join(cacheDir,"download-"+crypto.randomBytes(8).toString("hex")+".zip");
  const scriptPath=path.join(cacheDir,"helper-"+crypto.randomBytes(8).toString("hex")+".ps1");
  const logPath=path.join(cacheDir,"last-update.log");
- return {installDir,stageDir,backupDir,zipFile,scriptPath,logPath,userData};
+ const readyPath=path.join(cacheDir,"install-ready-"+crypto.randomBytes(12).toString("hex")+".txt");
+ return {installDir,stageDir,backupDir,zipFile,scriptPath,logPath,readyPath,userData};
 }
 function helperArgs(mode,paths,extra=[]){
  return ["-NoProfile","-NonInteractive","-ExecutionPolicy","Bypass",
@@ -200,41 +201,73 @@ function stagePackage(paths){
    });
  });
 }
+/** Use a separate output file: PowerShell must be free to append to the
+ * primary update log. Inheriting that same log for stdout/stderr can conflict
+ * with its own Add-Content calls on Windows. */
+function consoleStartupDetail(outputPath){
+ try{
+  const txt=fs.readFileSync(outputPath,"utf8").replace(/^\uFEFF/,"").trim();
+  if(!txt)return "";
+  return txt.slice(-1800)
+   .replace(/(?:[A-Za-z]:\\|\\\\)[^\r\n]*/g,"[local path]")
+   .replace(/(?:https?:\/\/)\S+/g,"[URL]")
+   .replace(/[\u0000-\u0008\u000B-\u001F]/g," ")
+   .slice(0,1000);
+ }catch{return ""}
+}
 function spawnInstall(paths,expectedVersion){
  return new Promise((resolve,reject)=>{
-  // Capture PowerShell startup / parse / policy errors. Previously detached
-  // stderr was discarded, which left ONLY "Staged ZIP passed ..." in the log.
-  let fd=null,child,settled=false,spawned=false;
+  const outputPath=path.join(path.dirname(paths.logPath),"last-installer-console.log");
+  let fd=null,child,settled=false;
   const failure=error=>{
    if(settled)return;
    settled=true;
-   const message=error instanceof Error?error.message:String(error);
+   const detail=consoleStartupDetail(outputPath);
+   const message=(error instanceof Error?error.message:String(error))+
+    (detail?" PowerShell startup output: "+detail:" (No PowerShell startup output was recorded.)");
    traceUpdate(paths,"Installer handoff failed before ShowPilot shutdown: "+message);
    reject(new Error("Windows installer could not start: "+message));
   };
   try{
-   fd=fs.openSync(paths.logPath,"a",0o600);
+   if(!paths.readyPath||path.dirname(paths.readyPath)!==path.dirname(paths.logPath))
+    throw Error("Invalid updater startup marker path.");
+   fd=fs.openSync(outputPath,"w",0o600);
    child=spawn("powershell.exe",helperArgs("Install",paths,[
     "-BackupDir",paths.backupDir,"-AppProcessId",String(process.pid),
-    "-ExpectedVersion",expectedVersion]),
+    "-ExpectedVersion",expectedVersion,"-ReadyPath",paths.readyPath,
+    ...(process.env.SHOWPILOT_UPDATER_SMOKE_TEST==="1"&&paths.smokeTestNoRelaunch===true?
+      ["-SmokeTestNoRelaunch"]:[])]),
     {cwd:paths.userData,windowsHide:true,detached:true,stdio:["ignore",fd,fd],shell:false});
    child.once("error",failure);
    child.once("exit",(code,signal)=>{
     traceUpdate(paths,"Detached installer exited: code="+code+", signal="+(signal||"none")+".");
-    if(!settled)failure(new Error("PowerShell quit before the install handoff (exit code "+code+"). Check the captured PowerShell error above."));
+    failure(new Error("PowerShell exited before the install-ready handshake (exit code "+code+")."));
    });
    child.once("spawn",()=>{
-    spawned=true;
-    traceUpdate(paths,"Detached PowerShell installer launched (PID "+child.pid+"); checking early startup.");
-    // Do not close the original app if PowerShell immediately exits due to
-    // IT policy, a missing script or command-line parsing. Give the helper
-    // one second to start before the old process releases its executable.
-    setTimeout(()=>{
+    traceUpdate(paths,"Detached installer launched (PID "+child.pid+"); awaiting validated PowerShell handshake.");
+    const start=Date.now();
+    const checkReady=()=>{
      if(settled)return;
-     settled=true;child.unref();
-     traceUpdate(paths,"Installer is running; requesting ShowPilot shutdown.");
-     resolve({started:true,pid:child.pid});
-    },1000);
+     let ready=false;
+     try{ready=fs.readFileSync(paths.readyPath,"utf8").trim()==="SHOWPILOT_INSTALL_READY";}catch{}
+     if(ready){
+      setTimeout(()=>{
+       if(settled)return;
+       settled=true;
+       child.unref();
+       traceUpdate(paths,"Validated installer handshake received; requesting ShowPilot shutdown.");
+       resolve({started:true,pid:child.pid});
+      },300);
+      return;
+     }
+     if(Date.now()-start>15000){
+      failure(new Error("PowerShell did not confirm it reached the install routine within 15 seconds."));
+      try{child.kill()}catch{}
+      return;
+     }
+     setTimeout(checkReady,100);
+    };
+    checkReady();
    });
   }catch(e){failure(e);}
   finally{if(fd!==null)try{fs.closeSync(fd)}catch{}}
@@ -300,4 +333,4 @@ async function installWindowsRelease(sender,release,installedVersion){
 }
 module.exports={semverCompare,officialReleaseAssetUrl,releaseAssetsForRun,
  assertDownloadUrl,checksumFromRelease,downloadVerified,prepareInstallPaths,installWindowsRelease,
- readUpdateResult,updateResult,updateLogPath};
+ readUpdateResult,updateResult,updateLogPath,spawnInstall};
