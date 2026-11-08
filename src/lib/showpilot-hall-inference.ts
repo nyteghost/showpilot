@@ -23,7 +23,7 @@ export function detectHallOverlaps(rows:readonly EventRow[],activities:readonly 
  }
  for(const a of activities){
   if(!validDate(a.date)||excluded.test(a.showName+" "+a.rooms.join(" ")))continue;
-  const group=hallGroup(a.rooms.join(", "));
+  const group=[...new Set(a.rooms.map(hallGroup).filter((g):g is string=>!!g).join(""))].sort().join("");
   if(group)items.push({date:a.date,eventId:a.eventId.trim(),name:a.showName,group,source:a.source});
  }
  const found=new Map<string,HallOverlap>();
