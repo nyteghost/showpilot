@@ -3,7 +3,7 @@ import {FileArchive,UploadCloud} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import type {EventZipInspection} from "@/lib/showpilot-memory-bridge";
 import type {PostConShow} from "@/lib/showpilot-postcon";
-import {matchEventZipToShow,type EventZipMatch} from "@/lib/showpilot-event-match";
+import {canAcknowledgeZipIdConflict,matchEventZipToShow,type EventZipMatch} from "@/lib/showpilot-event-match";
 import {extractEocFromPdf,pdfTextPages} from "@/lib/showpilot-event-assets";
 import {discoverEventMetadata,ROOMS,type EventMetadataResult,type EventMetadataSource} from "@/lib/showpilot-event-discovery";
 import {scheduleHintsFromSources,serializeZipSchedule,type ZipScheduleHint} from "@/lib/showpilot-zip-schedule";
@@ -36,6 +36,7 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
  const [scheduleHints,setScheduleHints]=useState<ZipScheduleHint[]>([]);
  const [readWarnings,setReadWarnings]=useState<string[]>([]);
  const [applyExisting,setApplyExisting]=useState(false);
+ const [conflictReviewed,setConflictReviewed]=useState(false);
  const [matchResult,setMatchResult]=useState<EventZipMatch|null>(null);
  const [availableShows,setAvailableShows]=useState<PostConShow[]|null>(null);
  const candidates=availableShows??shows;
@@ -45,7 +46,7 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
   setArchive(null);setInspection(null);setMetadata(null);
   setScheduleHints([]);setReadWarnings([]);setMatchResult(null);setAvailableShows(null);
   setMode("new");setTarget("");setName("");setEventId("");setStart("");setEnd("");
-  setRooms([]);setApplyExisting(false);setDragging(false);
+  setRooms([]);setApplyExisting(false);setConflictReviewed(false);setDragging(false);
   if(picker.current)picker.current.value="";
  };
  const stage=useCallback(async(file:File)=>{
@@ -102,7 +103,7 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
      "Event ID "+found.eventId+" is not in the saved schedule. Review the ZIP details before creating a new event.":
      "No Event ID found. Choose an existing event manually or create one after reviewing the details."));
    }
-   setApplyExisting(false);
+   setApplyExisting(false);setConflictReviewed(false);
   }catch(e){reset();setStatus("Could not inspect ZIP: "+(e instanceof Error?e.message:String(e)));}
   finally{setBusy(false);}
  },[bridge,shows]);
@@ -151,9 +152,13 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
   // Multiple different IDs inside one ZIP are not safe to attach to any
   // existing Event. Require the customer to correct/split that archive.
   // Reviewing a dropdown alone does not resolve conflicting source evidence.
-  if(metadata&&matchEventZipToShow(metadata,candidates).status==="conflicting-ids"){
-   setStatus("Conflicting Event IDs were found in this ZIP (EOC, manifest or filename)."+
-     " Verify the correct EOC and separate mismatched documents before importing.");
+  const conflictingIds=!!metadata&&matchEventZipToShow(metadata,candidates).status==="conflicting-ids";
+  const verifiedTarget=candidates.find(s=>s.key===target);
+  if(conflictingIds&&(!conflictReviewed||mode!=="existing"||
+      !canAcknowledgeZipIdConflict(metadata,verifiedTarget))){
+   setStatus("This ZIP contains conflicting Event IDs. Choose the existing show"+
+    " matching its unique EOC cover ID and explicitly confirm reviewing all the ZIP documents,"+
+    " or separate the mismatched documents. No files were attached.");
    return;
   }
   if(mode==="existing"){
@@ -203,7 +208,9 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
    if(mode==="existing"&&metadata){
     const selected=live.find(x=>x.key===key);
     if(!selected)throw Error("The selected event no longer exists in the catalog.");
-    if(matchEventZipToShow(metadata,[selected]).status==="no-match")
+    if(conflictingIds&&(!conflictReviewed||!canAcknowledgeZipIdConflict(metadata,selected)))
+     throw Error("EOC-cover ID no longer matches the selected show. Nothing was attached.");
+    if(!conflictingIds&&matchEventZipToShow(metadata,[selected]).status==="no-match")
      throw Error("ZIP Event ID does not match the selected event. Nothing was attached.");
    }
    const result=await bridge.eventZipImport({eventKey:key,bytes:await archive.arrayBuffer()});
@@ -223,6 +230,8 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
       reviewed:{eventId,showName:name,startDate:start,showDate:end,rooms},
       detected:metadata,hints:scheduleHints,
       documents:inspection.files.map(f=>({path:f.path,kind:f.kind})),
+      ...(conflictingIds&&conflictReviewed?{reviewedConflict:{
+       eventId:metadata.eventId,confirmedAt:new Date().toISOString()}}:{}),
       created:new Date().toISOString()
      });
      await bridge.save({category:"Recurring Events",title:("ZIP Schedule: "+key+" · "+archive.name).slice(0,140),content:content.slice(0,14500)});
@@ -300,6 +309,20 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
      </div>
     </details>
     {[...metadata.warnings,...readWarnings].map((warning,i)=><p key={i} className="text-amber-600">Review: {warning}</p>)}
+    {matchResult?.status==="conflicting-ids"&&<div className="space-y-2 rounded-md border border-amber-500/70 p-3">
+     <p className="font-semibold text-amber-600">Conflicting Event IDs — review required</p>
+     {metadata.evidence.filter(item=>item.field==="eventId").map((item,i)=>
+      <p key={i} className="break-words text-xs">#{item.value} — {item.source}</p>)}
+     {mode==="existing"&&canAcknowledgeZipIdConflict(metadata,candidates.find(s=>s.key===target))?
+      <label className="flex gap-2 text-xs">
+       <input type="checkbox" checked={conflictReviewed} onChange={e=>setConflictReviewed(e.target.checked)}/>
+       <span>I verified the EOC cover Event ID <strong>#{metadata.eventId}</strong> and reviewed
+        the conflicting document IDs. Attach this ZIP to the selected matching existing event.</span>
+      </label>:
+      <p className="text-xs text-amber-600">Import is blocked until you select an existing
+       event matching the one unambiguous EOC-cover ID. If EOCs disagree, split the ZIP first.
+       You cannot override the conflict to create a new show.</p>}
+    </div>}
     <p className="font-semibold">Schedule review hints from documents: {scheduleHints.length}</p>
     {scheduleHints.slice(0,8).map((hint,i)=><p key={i}>{hint.topic}: {hint.text} — {hint.source}</p>)}
     <p className="text-muted-foreground">These are review hints, not automatic shift or staffing changes. Importing saves a local schedule evidence note for this event, which you can compare against the engineering schedule.</p>
@@ -307,11 +330,11 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
    <fieldset className="space-y-2">
     <legend className="font-semibold text-sm">Import into</legend>
     <div className="flex flex-wrap gap-4 text-sm">
-     <label className="flex gap-2 items-center"><input type="radio" name="zip-target" checked={mode==="existing"} onChange={()=>setMode("existing")}/> Existing show</label>
-     <label className="flex gap-2 items-center"><input type="radio" name="zip-target" checked={mode==="new"} onChange={()=>setMode("new")}/> New show</label>
+     <label className="flex gap-2 items-center"><input type="radio" name="zip-target" checked={mode==="existing"} onChange={()=>{setMode("existing");setConflictReviewed(false)}}/> Existing show</label>
+     <label className="flex gap-2 items-center"><input type="radio" name="zip-target" checked={mode==="new"} onChange={()=>{setMode("new");setConflictReviewed(false)}}/> New show</label>
     </div>
     {mode==="existing"?<label className="block text-sm">Choose saved event
-     <select className="mt-1 w-full rounded border bg-background p-2" value={target} onChange={e=>setTarget(e.target.value)}>
+     <select className="mt-1 w-full rounded border bg-background p-2" value={target} onChange={e=>{setTarget(e.target.value);setConflictReviewed(false)}}>
       <option value="">Choose show…</option>
       {candidates.map(s=><option key={s.key} value={s.key}>{s.showName} · #{s.eventId||"No ID"} · {s.startDate??s.showDate}</option>)}
      </select>
