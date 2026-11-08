@@ -133,6 +133,14 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
  const submit=async()=>{
   if(!archive||!inspection||!bridge?.eventZipImport||busy)return;
   let key=target;
+  // Multiple different IDs inside one ZIP are not safe to attach to any
+  // existing Event. Require the customer to correct/split that archive.
+  // Reviewing a dropdown alone does not resolve conflicting source evidence.
+  if(metadata&&matchEventZipToShow(metadata,candidates).status==="conflicting-ids"){
+   setStatus("Conflicting Event IDs were found in this ZIP (EOC, manifest or filename)."+
+     " Verify the correct EOC and separate mismatched documents before importing.");
+   return;
+  }
   if(mode==="existing"){
    const chosen=candidates.find(s=>s.key===target);
    if(!chosen){setStatus("Choose an existing show.");return;}
