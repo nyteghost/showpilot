@@ -1,0 +1,115 @@
+import {describe,it,expect} from "vitest";
+import {readFileSync,mkdtempSync,existsSync,rmSync,writeFileSync} from "node:fs";
+import {tmpdir} from "node:os";
+import {join} from "node:path";
+import {createRequire} from "node:module";
+import {fileURLToPath} from "node:url";
+import {runInNewContext} from "node:vm";
+import type {PostConShow} from "@/lib/showpilot-postcon";
+import {
+ buildingChecklistTasks,checklistKey,doneCount,STANDARD_SHOW_TASKS,
+ tasksForShow
+} from "@/lib/showpilot-today-checklist";
+const nodeRequire=createRequire(new URL("../../desktop/today-checklist.cjs",import.meta.url));
+const script=readFileSync(fileURLToPath(new URL("../../desktop/today-checklist.cjs",import.meta.url)),"utf8");
+type Native={
+ load:(day:string)=>{date:string;done:Record<string,string>;custom:{id:string;scope:string;text:string}[]};
+ change:(day:string,scope:string,id:string,done:boolean)=>ReturnType<Native["load"]>;
+ add:(day:string,scope:string,text:string)=>ReturnType<Native["load"]>;
+ remove:(day:string,scope:string,id:string)=>ReturnType<Native["load"]>;
+};
+function fixture(){
+ const folder=mkdtempSync(join(tmpdir(),"showpilot-today-checklist-"));
+ const module={exports:{} as Native};
+ runInNewContext(script,{
+  module,exports:module.exports,require:(name:string)=>name==="electron"?
+   {app:{getPath:()=>folder},ipcMain:{handle:()=>{}}}:nodeRequire(name),
+  Buffer,Date,process
+ },{filename:"desktop/today-checklist.cjs"});
+ return {store:module.exports,folder,close:()=>rmSync(folder,{recursive:true,force:true})};
+}
+const day="2026-11-08";
+const show:PostConShow={key:"id:41622",eventId:"41622",showName:"Hospitality Industry Ministries",
+ rooms:"BallRoom A, BallRoom B, BallRoom E",startDate:day,showDate:day};
+
+describe("Today operations checklist templates",()=>{
+ it("always includes airwall setup before checking the matching lighting zones",()=>{
+  const tasks=tasksForShow(show,{state:"unknown",findings:[]});
+  expect(tasks.findIndex(t=>t.id==="airwalls")).toBeLessThan(tasks.findIndex(t=>t.id==="lighting"));
+  expect(tasks.find(t=>t.id==="lighting")?.text).toMatch(/lighting zones.+airwall/i);
+  expect(tasks.find(t=>t.id==="airwalls")?.text).toMatch(/airwall/i);
+  expect(tasks.find(t=>t.id==="review-eoc")).toBeTruthy();
+ });
+ it("adds an EOC-review task when the EOC references airwalls without claiming today's move is confirmed",()=>{
+  const tasks=tasksForShow(show,{state:"action",findings:[{kind:"action",text:"Move airwall",
+   source:"EOC.pdf",page:2}]});
+  expect(tasks.find(t=>t.id==="eoc-airwall-review")).toMatchObject({source:"eoc"});
+  expect(tasks.find(t=>t.id==="eoc-airwall-review")?.detail).toMatch(/may refer to another day/);
+  expect(tasksForShow(show,{state:"explicit-none",findings:[]})).toHaveLength(STANDARD_SHOW_TASKS.length);
+ });
+ it("keeps dated workbook and planning suggestions separately from standard tasks",()=>{
+  const tasks=buildingChecklistTasks(day,[{date:day,section:"BALLROOM",text:"Make ABE",source:"engineering-workbook"}],[
+   {date:day,section:"BALLROOM",text:"ABE"}
+  ]);
+  expect(tasks.filter(t=>t.source==="schedule")).toHaveLength(2);
+  expect(tasks.find(t=>t.text.includes("Make ABE"))?.detail).toMatch(/Dated engineering workbook/);
+  expect(tasks.find(t=>t.text.includes("suggested airwall"))?.detail).toMatch(/Confirm against the EOC/);
+  expect(buildingChecklistTasks("2026-11-09",[{date:day,section:"BALLROOM",text:"Make ABE",source:"engineering-workbook"}],[]).filter(t=>t.source==="schedule")).toHaveLength(0);
+ });
+ it("does not consider anything completed without an explicit checkoff",()=>{
+  expect(doneCount(STANDARD_SHOW_TASKS,{},"id:41622")).toBe(0);
+  expect(doneCount(STANDARD_SHOW_TASKS,{[checklistKey("id:41622","airwalls")]:new Date().toISOString()},"id:41622")).toBe(1);
+ });
+});
+
+describe("private offline daily checklist storage",()=>{
+ it("saves both building-wide and event checkoffs across restart, isolated by day",()=>{
+  const {store,close}=fixture();
+  try{
+   expect(store.load(day).done).toEqual({});
+   store.change(day,"id:41622","airwalls",true);
+   store.change(day,"id:41622","lighting",true);
+   store.change(day,"building","handoff",true);
+   const again=store.load(day);
+   expect(Object.keys(again.done)).toHaveLength(3);
+   expect(again.done["id:41622::lighting"]).toBeTruthy();
+   expect(store.load("2026-11-09").done).toEqual({});
+   store.change(day,"id:41622","lighting",false);
+   expect(store.load(day).done["id:41622::lighting"]).toBeUndefined();
+   expect(store.load(day).done["building::handoff"]).toBeTruthy();
+  }finally{close();}
+ });
+ it("adds and removes a custom task without affecting other tasks or saved backup",()=>{
+  const {store,folder,close}=fixture();
+  try{
+   store.change(day,"building","review-requests",true);
+   const result=store.add(day,"id:41622","Check lighting scene after wall move");
+   expect(result.custom).toHaveLength(1);
+   const task=result.custom[0]!;
+   store.change(day,"id:41622",task.id,true);
+   const loaded=store.load(day);
+   expect(loaded.done["id:41622::"+task.id]).toBeTruthy();
+   const backup=join(folder,"Today Checklists","checklists.json.bak");
+   expect(existsSync(backup)).toBe(true);
+   store.remove(day,"id:41622",task.id);
+   expect(store.load(day).custom).toEqual([]);
+   expect(store.load(day).done["building::review-requests"]).toBeTruthy();
+   expect(store.load(day).done["id:41622::"+task.id]).toBeUndefined();
+  }finally{close();}
+ });
+ it("rejects invalid or oversized edits without silently overwriting the saved day",()=>{
+  const {store,folder,close}=fixture();
+  try{
+   store.change(day,"building","handoff",true);
+   expect(()=>store.add(day,"building","")).toThrow();
+   expect(()=>store.add(day,"building","a".repeat(161))).toThrow();
+   expect(()=>store.change(day,"../other","handoff",true)).toThrow();
+   expect(()=>store.change("invalid","building","handoff",true)).toThrow();
+   expect(store.load(day).done["building::handoff"]).toBeTruthy();
+   const f=join(folder,"Today Checklists","checklists.json");
+   writeFileSync(f,'{"version":100,"days":{}}');
+   expect(()=>store.change(day,"building","handoff",false)).toThrow();
+   expect(readFileSync(f,"utf8")).toContain('"version":100');
+  }finally{close();}
+ });
+});
