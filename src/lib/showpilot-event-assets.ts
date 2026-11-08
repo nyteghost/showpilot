@@ -65,7 +65,7 @@ export function extractEocFocus(pages:readonly string[]):EocExcerpt[]{
     if(suffix)data.get(current)!.push(suffix);
     continue;
    }
-   if(/^(?:event information|billing|payment|catering|audio visual|security|status|contacts|client information|general information|charges|total|signature|instructions|schedule|event times|exhibitor information|terms and conditions)\s*:?\s*$/i.test(line)){
+   if(/^(?:event information|billing|payment|catering|food\s*(?:&|and|\/)\s*beverage|food\s+services?|public\s+safety\s*(?:\/|and|&)\s*shipping|public safety|shipping|shipping\s*(?:\/|and|&)\s*receiving|transportation\s*(?:\/|and|&)\s*parking|parking|audio visual|audio\s*(?:\/|and|&)\s*visual|security|status|contacts|client information|general information|charges|total|signature|instructions|schedule|event times|exhibitor information|terms and conditions)\s*:?\s*$/i.test(line)){
     current=null;continue;
    }
    if(current){
