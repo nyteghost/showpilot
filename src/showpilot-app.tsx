@@ -11,7 +11,7 @@ import { GoogleCalendarSettings } from "@/components/showpilot-calendar-settings
 import { ShowPilotUpdates } from "@/components/showpilot-updates";
 import { ShowPilotMemorySettings } from "@/components/showpilot-memory-settings";
 import { ShowPilotDiagnosticsPanel } from "@/components/showpilot-diagnostics-panel";
-import { getLocalAiRuntimeState, subscribeLocalAiRuntimeState } from "@/lib/showpilot-ai-local";
+import { getLocalAiRuntimeState, subscribeLocalAiRuntimeState, isLocalAiEnabled,enableLocalAi,disableLocalAi,loadLocalModel,localModelCached,localModelOptions } from "@/lib/showpilot-ai-local";
 import showpilotIcon from "./assets/showpilot-approved.webp";
 
 type Screen = "dashboard" | "settings" | WorkTabId;
@@ -47,6 +47,32 @@ export function App() {
   const [mobileOpen,setMobileOpen] = useState(false);
   const [openEventRequest,setOpenEventRequest]=useState<OpenEventRequest|null>(null);
   const [localAiRuntime,setLocalAiRuntime] = useState(getLocalAiRuntimeState);
+  const [localAiOn,setLocalAiOn]=useState(isLocalAiEnabled);
+  const [localAiBusy,setLocalAiBusy]=useState(false);
+  const [localAiError,setLocalAiError]=useState("");
+  const toggleLocalAi=async()=>{
+    if(localAiBusy)return;
+    setLocalAiBusy(true);setLocalAiError("");
+    try{
+      if(localAiOn){
+        await disableLocalAi();
+        setLocalAiOn(false);
+      }else{
+        // The quick toggle must never unexpectedly download a large model.
+        const chosen=localStorage.getItem("showpilot:ai:local-model")||"";
+        const options=await localModelOptions();
+        const model=chosen&&options.includes(chosen)?chosen:options[0];
+        if(!model)throw new Error("No supported local model is available.");
+        if(!await localModelCached(model))throw new Error("Model is not cached. Load it once in Settings & AI.");
+        enableLocalAi();setLocalAiOn(true);
+        await loadLocalModel(model,()=>{});
+      }
+    }catch(e){
+      setLocalAiError(e instanceof Error?e.message:String(e));
+      if(!localAiOn){await disableLocalAi().catch(()=>{});setLocalAiOn(false);}
+    }finally{setLocalAiBusy(false);}
+  };
+
 
   useEffect(()=>{
     document.documentElement.classList.toggle("dark",dark);
@@ -101,11 +127,19 @@ export function App() {
         <div className="sp-breadcrumb">SHOWPILOT <ChevronRight size={14}/> {current?.label??(screen==="settings"?"Settings & AI":"Dashboard")}</div>
         <div className="sp-header-actions">
           <span className="sp-local" role="status" aria-live="polite"
-            aria-label={localAiRuntime.status==="ready"?"Local AI connected":"Local AI disconnected"}
+            aria-label={localAiRuntime.status==="ready"?"Local AI ready":localAiOn?"Local AI not loaded":"Local AI off"}
             title={localAiRuntime.status==="ready"?"Local AI is loaded and ready":localAiRuntime.status==="loading"?"Local AI is loading":"Local AI is not connected"}>
             <span aria-hidden="true" className={"inline-block size-2.5 shrink-0 rounded-full "+(localAiRuntime.status==="ready"?"bg-emerald-500":"bg-red-500")}/>
             Local Workspace
           </span>
+
+          <button type="button" disabled={localAiBusy} onClick={()=>void toggleLocalAi()}
+            className="rounded-md border px-2.5 py-1 text-xs font-semibold disabled:opacity-50"
+            aria-label={localAiOn?"Turn local AI off":"Turn local AI on"}
+            aria-pressed={localAiOn} title={localAiOn?"Unload the local AI model":"Load a previously cached local model"}>
+            {localAiBusy?"Working…":localAiOn?"AI On":"AI Off"}
+          </button>
+          {localAiError&&<span role="alert" className="max-w-48 text-xs text-amber-600" title={localAiError}>{localAiError}</span>}
           <button className="sp-icon-button" onClick={()=>setDark(v=>!v)} aria-label={dark?"Use light theme":"Use dark theme"}>{dark?<Sun size={19}/>:<Moon size={19}/>}</button>
         </div>
       </header>
