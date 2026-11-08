@@ -311,8 +311,16 @@ async function downloadWindowsReleaseToDownloads(sender,release,installedVersion
   notify(sender,{phase:"verifying",message:"Checking official release checksum…",percent:0});
   const checksum=await checksumFromRelease(release.checksumUrl);
   notify(sender,{phase:"downloading",message:"Saving ShowPilot ZIP to Downloads…",percent:0});
-  await downloadVerified(release.archiveUrl,target,release.archiveBytes,checksum,pct=>
-    notify(sender,{phase:"downloading",message:"Saving ShowPilot ZIP to Downloads…",percent:pct}));
+  // Download into an unpredictable temporary file, verify it, then copy to
+  // the final filename with COPYFILE_EXCL so no existing ZIP is overwritten.
+  const temporary=path.join(directory,".showpilot-update-"+crypto.randomBytes(12).toString("hex")+".part");
+  try{
+   await downloadVerified(release.archiveUrl,temporary,release.archiveBytes,checksum,pct=>
+     notify(sender,{phase:"downloading",message:"Saving ShowPilot ZIP to Downloads…",percent:pct}));
+   fs.copyFileSync(temporary,target,fs.constants.COPYFILE_EXCL);
+  }finally{
+   try{fs.unlinkSync(temporary)}catch{}
+  }
   notify(sender,{phase:"downloaded",message:"Verified ShowPilot ZIP saved to Downloads. No app files were changed.",percent:100});
   return {downloaded:true,version:release.version,filename:path.basename(target),folder:"Downloads"};
  }catch(error){
