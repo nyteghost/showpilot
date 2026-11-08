@@ -2,7 +2,7 @@ import {describe,expect,it} from "vitest";
 import ExcelJS from "exceljs";
 import type {PostConShow} from "@/lib/showpilot-postcon";
 import {combineTodaySources,readEngineeringWeekWorkbook,showHasActivityOnDay,
- isUnlinkedTodayShow,activitiesFromReviewProject} from "@/lib/showpilot-today-sources";
+ isUnlinkedTodayShow,activitiesFromReviewProject,isOperationalFunctionTitle} from "@/lib/showpilot-today-sources";
 import {emptyReviewDraft,type ReviewProject} from "@/lib/showpilot-review";
 
 async function workbook(withDates=true){
@@ -84,5 +84,88 @@ describe("Today reads the user's actual weekly engineering workbook",()=>{
    showName:"Front Row Card Show",source:"event-schedule"});
   const joined=combineTodaySources(catalog,result.activities);
   expect(showHasActivityOnDay(catalog[0]!,"2026-11-08",joined)).toBe(true);
+ });
+});
+
+
+describe("Week at a glance: real show records versus function descriptions",()=>{
+ const shows:PostConShow[]=[
+  {key:"id:4711",eventId:"4711",showName:"Front Row Card Show",startDate:"2026-11-05",showDate:"2026-11-08",rooms:"Hall A, Hall B, BallRoom E"},
+  {key:"id:5588",eventId:"5588",showName:"Coldwell Banker Realty Atlanta Unlocking Home Parties",startDate:"2026-11-02",showDate:"2026-11-03",rooms:"BallRoom A, BallRoom B, BallRoom E"},
+  {key:"id:40566",eventId:"40566",showName:"ARMAC Luncheon",startDate:"2026-11-05",showDate:"2026-11-05",rooms:"BallRoom A, BallRoom B, BallRoom C, BallRoom D, BallRoom E, BallRoom F, BallRoom G"},
+  {key:"id:55666",eventId:"55666",showName:"Georgia DECA 2026",startDate:"2026-11-05",showDate:"2026-11-07",rooms:"Hall D"}
+ ];
+ const item=(date:string,showName:string,rooms:string[],eventId="")=>({
+  date,eventId,showName,rooms,source:"engineering-workbook" as const,details:["S 8a–5p"]
+ });
+ it("identifies the screenshot's operating functions without classifying real show names",()=>{
+  for(const title of [
+   "Client Arrival","Vendor Load-In/Marquee Letters drop-off",
+   "Client Move-In","MO?","Program Start","Move-In (Tables & Chairs)",
+   "Tables & Chairs Inc. Move-In","General Session","Program","Setup - FRCS Team"
+  ])expect(isOperationalFunctionTitle(title),title).toBe(true);
+  for(const title of [
+   "Front Row Card Show","Hospitality Industry Ministries",
+   "ARMAC Luncheon","Georgia DECA 2026",
+   "Coldwell Banker Realty Atlanta Unlocking Home Parties"
+  ])expect(isOperationalFunctionTitle(title),title).toBe(false);
+ });
+ it("attaches Sunday Client Arrival Hall AB to Front Row Card Show, not a second show",()=>{
+  const joined=combineTodaySources(shows,[
+   item("2026-11-08","Front Row Card Show",["Hall A","Hall B"]),
+   item("2026-11-08","Client Arrival",["Hall A","Hall B"])
+  ]);
+  expect(joined.shows.filter(s=>showHasActivityOnDay(s,"2026-11-08",joined)).map(s=>s.showName))
+   .toEqual(["Front Row Card Show"]);
+  expect(joined.daily["id:4711"]?.["2026-11-08"]).toContain(
+   expect.stringContaining("Client Arrival (room/day match — verify)")
+  );
+  expect(joined.unlinkedFunctions).toHaveLength(0);
+ });
+ it("groups Monday vendor load-in, Tuesday client move-in and Friday event support under actual shows",()=>{
+  const joined=combineTodaySources(shows,[
+   item("2026-11-02","Coldwell Banker Realty Atlanta Unlocking Home Parties",
+    ["BallRoom A","BallRoom B","BallRoom E"]),
+   item("2026-11-02","Vendor Load-In/Marquee Letters drop-off",
+    ["BallRoom A","BallRoom B","BallRoom E"]),
+   item("2026-11-03","Coldwell Banker Realty Atlanta Unlocking Home Parties",
+    ["BallRoom A","BallRoom B","BallRoom E"]),
+   item("2026-11-03","Client Move-In",["BallRoom A","BallRoom B","BallRoom E"]),
+   item("2026-11-03","MO?",["BallRoom A","BallRoom B","BallRoom E"]),
+   item("2026-11-05","ARMAC Luncheon",["BallRoom A","BallRoom B","BallRoom C",
+    "BallRoom D","BallRoom E","BallRoom F","BallRoom G"]),
+   item("2026-11-05","Program",["BallRoom A","BallRoom B","BallRoom C",
+    "BallRoom D","BallRoom E","BallRoom F","BallRoom G"]),
+   item("2026-11-05","Georgia DECA 2026",["Hall D"]),
+   item("2026-11-05","Tables & Chairs Inc. Move-In",["Hall D"])
+  ]);
+  expect(joined.unlinkedFunctions).toHaveLength(0);
+  expect(joined.shows.filter(s=>s.key.startsWith("schedule:"))).toHaveLength(0);
+  expect(joined.daily["id:5588"]?.["2026-11-02"]?.join(" ")).toContain("Vendor Load-In");
+  expect(joined.daily["id:5588"]?.["2026-11-03"]?.join(" ")).toContain("Client Move-In");
+  expect(joined.daily["id:40566"]?.["2026-11-05"]?.join(" ")).toContain("Program");
+  expect(joined.daily["id:55666"]?.["2026-11-05"]?.join(" ")).toContain("Tables & Chairs");
+ });
+ it("does not invent a match when two same-day shows use the same rooms",()=>{
+  const overlap:PostConShow={key:"id:another",eventId:"99999",showName:"Another Event",
+   startDate:"2026-11-08",showDate:"2026-11-08",rooms:"Hall A, Hall B"};
+  const joined=combineTodaySources([...shows,overlap],[
+   item("2026-11-08","Front Row Card Show",["Hall A","Hall B"]),
+   item("2026-11-08","Another Event",["Hall A","Hall B"]),
+   item("2026-11-08","Client Arrival",["Hall A","Hall B"])
+  ]);
+  expect(joined.unlinkedFunctions.map(x=>x.showName)).toEqual(["Client Arrival"]);
+  expect(joined.shows.some(x=>x.showName==="Client Arrival")).toBe(false);
+ });
+ it("keeps a function with explicit Event ID attached to its own event despite overlapping room use",()=>{
+  const joined=combineTodaySources(shows,[item("2026-11-08","Client Arrival",["Hall A","Hall B"],"4711")]);
+  expect(joined.unlinkedFunctions).toEqual([]);
+  expect(joined.daily["id:4711"]?.["2026-11-08"]?.join(" ")).toContain("Client Arrival");
+ });
+ it("never counts a legacy catalog function as an additional show",()=>{
+  const polluted:PostConShow={key:"name:client-arrival",eventId:"",showName:"Client Arrival",
+   startDate:"2026-11-08",showDate:"2026-11-08",rooms:"Hall A, Hall B"};
+  const joined=combineTodaySources([...shows,polluted],[]);
+  expect(joined.shows.map(x=>x.showName)).not.toContain("Client Arrival");
  });
 });
