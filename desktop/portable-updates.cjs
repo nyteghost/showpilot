@@ -132,12 +132,21 @@ function updateResult(userData,status,message,version=""){
  fs.writeFileSync(file,JSON.stringify(result),{mode:0o600});
  return result;
 }
-function readUpdateResult(userData){
+function readUpdateResult(userData,installedVersion=""){
  const file=updateResultPath(userData);
  try{
   const data=JSON.parse(fs.readFileSync(file,"utf8").replace(/^\uFEFF/,""));
   if(!["pending","success","failed"].includes(data.status))return null;
   if(typeof data.message!=="string"||typeof data.updated!=="string")return null;
+  // A helper that reports "started" is not proof that Windows actually
+  // launched the replacement. Do not display a false success if the same
+  // old version remains installed after a restart.
+  if(data.status==="success"&&installedVersion&&data.version&&
+     semverCompare(data.version,installedVersion)!==0){
+   return {...data,status:"failed",message:
+    "The installer reported a restart, but ShowPilot is still version "+installedVersion+
+    " (expected "+data.version+"). Check the installation log; the app was not confirmed updated."};
+  }
   if(data.status==="pending"&&Date.now()-Date.parse(data.updated)>4*60*1000)
    return {...data,status:"failed",message:"The previous installer did not confirm completion. Check the installation log. Your saved data has not been deleted."};
   return {status:data.status,message:data.message.slice(0,900),version:data.version||"",updated:data.updated};
@@ -183,10 +192,11 @@ function stagePackage(paths){
    });
  });
 }
-function spawnInstall(paths){
+function spawnInstall(paths,expectedVersion){
  return new Promise((resolve,reject)=>{
   const child=spawn("powershell.exe",helperArgs("Install",paths,[
-   "-BackupDir",paths.backupDir,"-AppProcessId",String(process.pid)]),
+   "-BackupDir",paths.backupDir,"-AppProcessId",String(process.pid),
+   "-ExpectedVersion",expectedVersion]),
    {cwd:paths.userData,windowsHide:true,detached:true,stdio:"ignore",shell:false});
   child.once("error",reject);
   child.once("spawn",()=>{child.unref();resolve({started:true});});
@@ -227,14 +237,14 @@ async function installWindowsRelease(sender,release,installedVersion){
   // even when the main Electron process is no longer available to report it.
   updateResult(paths.userData,"pending","Download verified; preparing to close ShowPilot and install "+release.version+".",release.version);
   notify(sender,{phase:"restarting",message:"Starting the update helper and restarting ShowPilot…",percent:100});
-  await spawnInstall(paths);
-  // The detached helper waits for all Electron processes to release the
-  // application folder. If a window blocks graceful quit, a second attempt
-  // ensures this old process cannot leave the updater waiting forever.
-  const forceQuit=setTimeout(()=>app.exit(0),7000);
-  forceQuit.unref?.();
-  const quit=setTimeout(()=>app.quit(),700);
-  quit.unref?.();
+  await spawnInstall(paths,release.version);
+  // The installer lives outside this application folder and waits for every
+  // Electron process to exit. Keep the shutdown timers referenced: otherwise
+  // a main-process event-loop change can drop the quit request while leaving
+  // the detached installer waiting forever. Graceful quit comes first, with
+  // a bounded forced exit if Windows still has our executable open.
+  const forceQuit=setTimeout(()=>app.exit(0),10000);
+  setTimeout(()=>app.quit(),350);
   return {started:true,version:release.version};
  }catch(e){
   if(paths){
