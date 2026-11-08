@@ -18,6 +18,9 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
  const bridge=window.showpilotMemory;
  const picker=useRef<HTMLInputElement>(null);
  const [archive,setArchive]=useState<File|null>(null);
+ const [queue,setQueue]=useState<File[]>([]);
+ const [queueTotal,setQueueTotal]=useState(0);
+ const [queueReviewed,setQueueReviewed]=useState(0);
  const [inspection,setInspection]=useState<EventZipInspection|null>(null);
  const [status,setStatus]=useState("");
  const [busy,setBusy]=useState(false);
@@ -91,6 +94,29 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
   }catch(e){reset();setStatus("Could not inspect ZIP: "+(e instanceof Error?e.message:String(e)));}
   finally{setBusy(false);}
  },[bridge,shows]);
+ const addArchives=useCallback((files:File[])=>{
+  const zips=files.filter(f=>/\.zip$/i.test(f.name));
+  if(zips.length!==files.length){setStatus("Only ZIP files were added; other files were ignored.");}
+  if(!zips.length){setStatus("Choose one or more event ZIP files.");return;}
+  if(zips.length+queue.length+(archive?1:0)>40){
+   setStatus("A batch can contain up to 40 event ZIPs. Finish this batch before adding more.");return;
+  }
+  if(archive||busy){
+   setQueue(old=>[...old,...zips]);
+   setQueueTotal(old=>old+zips.length);
+   setStatus(zips.length+" event ZIP(s) added to review queue.");
+  }else{
+   setQueue(zips.slice(1));setQueueTotal(zips.length);setQueueReviewed(0);
+   void stage(zips[0]!);
+  }
+ },[archive,busy,queue.length,stage]);
+ const advance=()=>{
+  const next=queue[0];
+  setQueue(old=>old.slice(1));
+  reset();
+  if(next)void stage(next);
+  else setStatus("All selected ZIP files have been reviewed.");
+ };
  useEffect(()=>{
   if(!active)return;
   const dragover=(e:DragEvent)=>{if(e.dataTransfer?.types.includes("Files"))e.preventDefault();};
@@ -98,13 +124,12 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
    const zips=Array.from(e.dataTransfer?.files??[]).filter(f=>/\.zip$/i.test(f.name));
    if(!zips.length)return;
    e.preventDefault();e.stopPropagation();
-   if(zips.length!==1){setStatus("Drop one ZIP at a time so you can confirm its event.");return;}
-   void stage(zips[0]!);
+   addArchives(zips);
   };
   document.addEventListener("dragover",dragover);
   document.addEventListener("drop",drop);
   return ()=>{document.removeEventListener("dragover",dragover);document.removeEventListener("drop",drop)};
- },[active,stage]);
+ },[active,addArchives]);
  const submit=async()=>{
   if(!archive||!inspection||!bridge?.eventZipImport||busy)return;
   let key=target;
@@ -181,8 +206,11 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
     }catch{ /* Imported originals remain safe if optional review-note saving fails. */ }
    }
    window.dispatchEvent(new Event("showpilot:postcon-catalog"));
-   onImported(key);reset();
-   setStatus(result.imported.length+" document(s) imported. "+result.duplicates.length+
+   onImported(key);setQueueReviewed(old=>old+1);
+   const next=queue[0];
+   setQueue(old=>old.slice(1));reset();
+   if(next)void stage(next);
+   else setStatus(result.imported.length+" document(s) imported. "+result.duplicates.length+
     " duplicates skipped; "+result.ignored.length+" unsupported entries ignored."+
     (result.errors.length?" "+result.errors.length+" file(s) failed: "+
      result.errors.map(e=>e.name+" ("+e.error+")").join("; ").slice(0,350):"")+
@@ -193,11 +221,11 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
  };
  return <div className="space-y-3 rounded-xl border p-4" aria-label="Import event ZIP">
   <div className="flex items-start gap-2"><FileArchive size={21}/><div>
-   <h3 className="font-semibold">Import an event ZIP</h3>
-   <p className="text-sm text-muted-foreground">Upload an event ZIP to match its Event ID to the shows imported from Event Schedule. A unique ID match selects the existing event; missing or conflicting IDs require review.</p>
+   <h3 className="font-semibold">Import event ZIPs</h3>
+   <p className="text-sm text-muted-foreground">Select or drop multiple ZIP files. ShowPilot reviews each archive in order, matches the EOC Event ID to existing Events, and asks you to confirm before attaching documents.</p>
   </div></div>
   <div className={"cursor-pointer rounded-xl border-2 border-dashed p-5 text-center "+(dragging?"border-blue-500 bg-blue-500/10":"hover:bg-muted/30")}
-   role="button" tabIndex={0} aria-label="Drop or browse for an event ZIP"
+   role="button" tabIndex={0} aria-label="Drop or browse for multiple event ZIPs"
    onClick={()=>picker.current?.click()}
    onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();picker.current?.click();}}}
    onDragOver={e=>{e.preventDefault();setDragging(true)}}
@@ -205,16 +233,20 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
    onDrop={e=>{
     e.preventDefault();e.stopPropagation();setDragging(false);
     const files=Array.from(e.dataTransfer.files);
-    if(files.length!==1){setStatus("Choose one event ZIP at a time.");return;}
-    void stage(files[0]!);
+    addArchives(files);
    }}>
    <UploadCloud className="mx-auto mb-2 size-7 text-muted-foreground"/>
-   <strong>{busy?"Reading event ZIP…":"Drop event .zip here"}</strong>
-   <p className="mt-1 text-xs text-muted-foreground">Or click to browse · ZIPs up to 150 MB · processed offline</p>
-   <input ref={picker} type="file" className="hidden" accept=".zip"
-    onChange={e=>{const f=e.target.files?.[0];if(f)void stage(f);}}/>
+   <strong>{busy?"Reading event ZIP…":"Drop event ZIPs here"}</strong>
+   <p className="mt-1 text-xs text-muted-foreground">Or click to browse · select multiple · up to 150 MB each · processed offline</p>
+   <input ref={picker} type="file" className="hidden" accept=".zip" multiple
+    onChange={e=>{const files=Array.from(e.target.files??[]);if(files.length)addArchives(files);e.target.value="";}}/>
   </div>
-  {inspection&&archive&&<div className="space-y-3 rounded-lg border p-3">
+  {(queueTotal>1||queue.length>0)&&<div className="flex flex-wrap items-center gap-2 rounded-lg border p-3 text-xs" role="status">
+   <strong>Batch: {queueReviewed} imported · {queue.length} waiting{archive?" · 1 under review":""}</strong>
+   {queue.length>0&&<span className="text-muted-foreground">Next: {queue[0]!.name}</span>}
+   {!archive&&queue.length>0&&<Button size="sm" variant="outline" disabled={busy} onClick={advance}>Review next ZIP</Button>}
+  </div>}
+  {inspection&&archive&&<div className="space-y-3 rounded-lg border p-3>
    <strong className="break-all text-sm">{archive.name}</strong>
    <p className="text-xs text-muted-foreground">{inspection.files.length} supported documents ({Math.round(inspection.totalBytes/1024)} KB). {inspection.ignored.length} unsupported entries skipped.</p>
    <details className="text-xs"><summary className="cursor-pointer font-semibold">Review ZIP documents</summary>
@@ -284,7 +316,9 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
    <div className="flex gap-2">
     <Button size="sm" disabled={busy||(mode==="existing"?!target:!name.trim()||!validDay(start)||!validDay(end)||!rooms.length)}
      onClick={()=>void submit()}>{busy?"Importing…":"Confirm & import"}</Button>
-    <Button size="sm" variant="outline" disabled={busy} onClick={reset}>Cancel</Button>
+    <Button size="sm" variant="outline" disabled={busy} onClick={advance}>
+     {queue.length?"Skip this ZIP & review next":"Cancel"}
+    </Button>
    </div>
   </div>}
   {status&&<p role="status" className="text-xs text-muted-foreground">{status}</p>}
