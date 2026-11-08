@@ -170,6 +170,9 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
     return;
    }
   }else{
+   if(eventId.trim()&&!/^\d{3,12}$/.test(eventId.trim())){
+    setStatus("Event IDs must contain numbers only. Use the numeric ID shown on the EOC cover.");return;
+   }
    if(!name.trim()||!validDay(start)||!validDay(end)||end<start||!rooms.length){
     setStatus("Confirm event name, start/end dates and at least one CGC room.");return;
    }
@@ -349,7 +352,7 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
      </label>
      <div className="grid grid-cols-2 gap-2">
       <label className="text-xs font-semibold">Event ID (optional)
-       <input className="mt-1 w-full rounded border bg-background p-2 font-normal" maxLength={100} value={eventId} onChange={e=>setEventId(e.target.value)}/>
+       <input className="mt-1 w-full rounded border bg-background p-2 font-normal" maxLength={100} value={eventId} onChange={e=>setEventId(e.target.value.replace(/\D/g,""))}/>
       </label><div/>
       <label className="text-xs font-semibold">Start date
        <input type="date" className="mt-1 w-full rounded border bg-background p-2 font-normal" value={start} onChange={e=>setStart(e.target.value)}/>
