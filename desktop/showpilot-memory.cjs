@@ -532,6 +532,17 @@ async function eventFileSave(input){
  return {id,eventKey,kind,name:named.name,extension:named.extension,
   bytes:bytes.length,sha256,created,archived:false,available:true,eocExcerpts};
 }
+/** Read-only index of CGC events with a saved PDF/image floor plan.
+ * Used by the standalone Floor Maps tab, avoiding one request per event. */
+async function eventFloorMapEvents(){
+ await ready();
+ return queryRows("SELECT s.key AS eventKey,s.event_id AS eventId,s.show_name AS showName,"+
+  "COUNT(DISTINCT f.sha256) AS planCount,MAX(f.created) AS updated "+
+  "FROM show_catalog s JOIN event_files f ON f.event_key=s.key "+
+  "WHERE f.archived=0 AND f.kind='diagram' AND f.extension IN ('pdf','png','jpg','jpeg','webp') "+
+  "GROUP BY s.key,s.event_id,s.show_name ORDER BY updated DESC LIMIT 500")
+  .filter(row=>/^\d{3,12}$/.test(row.eventId)&&!otherVenue.test(row.showName));
+}
 async function eventFileList(eventKey,includeArchived=false){
  await ready();
  const key=safe(eventKey,180);
@@ -836,6 +847,7 @@ function setupMemoryIpc(){
  wrap("backup-choose-folder",chooseBackupFolder);wrap("backup-open-folder",openBackupFolder);
  wrap("postcon-list",postConList);wrap("postcon-save",postConSave);wrap("postcon-archive",postConArchive);
  wrap("show-catalog-list",showCatalogList);wrap("show-catalog-save",showCatalogSave);
+ wrap("event-floor-map-events",eventFloorMapEvents);
  wrap("event-file-list",eventFileList);wrap("event-file-save",eventFileSave);wrap("event-file-open",eventFileOpen);
  wrap("event-file-read",eventFileRead);wrap("event-file-archive",eventFileArchive);
  wrap("event-zip-inspect",eventZipInspect);wrap("event-zip-scan",eventZipScan);wrap("event-zip-import",eventZipImport);
@@ -844,4 +856,4 @@ function setupMemoryIpc(){
  wrap("open-folder",openFolder);
  startWeeklyBackups();
 }
-module.exports={setupMemoryIpc,status,preferences,list,search,read,save,edit,archive,importPack,exportPack,rememberSchedule,openFolder,ready,backupNow,automaticBackupCheck,setBackupEnabled,chooseBackupFolder,postConList,postConSave,postConArchive,showCatalogList,showCatalogSave,eventFileList,eventFileSave,eventFileOpen,eventFileRead,eventFileArchive,eventZipInspect,eventZipScan,eventZipImport,eventZipReadOrders,eventFileSetEocExcerpts,diagnosticsSummary};
+module.exports={setupMemoryIpc,status,preferences,list,search,read,save,edit,archive,importPack,exportPack,rememberSchedule,openFolder,ready,backupNow,automaticBackupCheck,setBackupEnabled,chooseBackupFolder,postConList,postConSave,postConArchive,showCatalogList,showCatalogSave,eventFloorMapEvents,eventFileList,eventFileSave,eventFileOpen,eventFileRead,eventFileArchive,eventZipInspect,eventZipScan,eventZipImport,eventZipReadOrders,eventFileSetEocExcerpts,diagnosticsSummary};
