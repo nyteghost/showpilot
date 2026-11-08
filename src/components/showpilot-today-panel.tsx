@@ -315,7 +315,7 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
    <h3 className="flex items-center gap-2 font-semibold"><AlertTriangle size={18}/> Airwall setup plan for today</h3>
    {(todayWallPlan.tasks.length>0||todayWallPlan.review.length>0)?
     <div className="rounded-lg border border-amber-500 p-3 space-y-2">
-     <p className="text-xs text-muted-foreground">One plan reconciles the engineering workbook, Event Schedule and inferred room transitions. Multiple sources do not automatically mean multiple wall moves.</p>
+     <p className="text-xs text-muted-foreground">One plan reconciles the engineering workbook, Event Schedule and inferred room transitions. Multiple setups can reflect planned room refreshes or room changes between functions; different sources do not automatically mean conflicting work orders. Verify sequence and handoff times against the EOC.</p>
      {todayWallPlan.tasks.filter(t=>!t.id.endsWith("-lighting")).map(task=>
       <div key={task.id} className="rounded-md border p-2 text-sm">
        <div className="flex items-center gap-1">
@@ -331,7 +331,7 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
       <details className="rounded-md border border-amber-500/70 p-2 text-xs">
        <summary className="cursor-pointer font-semibold">
         {todayWallPlan.review.some(x=>x.kind==="conflict")?
-         "Conflicting configurations — review before moving":"Other configurations — planning ahead"}
+         "Multiple setups — check room refresh / change timing":"Later room setups — check handoff timing"}
         {" ("+todayWallPlan.review.length+")"}
        </summary>
        {todayWallPlan.review.map(item=>

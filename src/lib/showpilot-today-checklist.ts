@@ -204,10 +204,10 @@ export function reconcileAirwallDay(
    (firstDue??"")<=day);
  if(conflict){
   const reason=datedBallroom.length>1?
-   "Different ballroom setups were specified for the same day. They might be consecutive moves, but the source rows do not establish their order or handoff times.":
+   "Multiple ballroom setups are listed for the same day. These may be intentional room refreshes or room changes between functions, not errors. The available source rows do not establish the sequence or handoff times; verify the event schedule and EOC before moving walls.":
    urgentTargets.size>1?
-   "Multiple future bookings have different ballroom configurations due on the same date. The schedule does not establish which goes first.":
-   "Today's dated ballroom instruction disagrees with a different inferred layout that is needed by today. Do not choose a physical wall arrangement automatically.";
+   "Multiple bookings need different ballroom configurations on the same date. This may be a planned room refresh or room change, but the schedule does not establish which configuration goes first or when the room is free.":
+   "Today's dated ballroom instruction differs from an inferred configuration needed by today. A room refresh or room change may explain both; confirm function timing and the approved EOC instead of automatically selecting one.";
   for(const e of datedBallroom)review.push({
    id:"dated:"+e.key,kind:"conflict",target:e.instruction,reason,
    sources:[listedSource(e), "Dated task: "+day+" · "+e.instruction]
@@ -236,8 +236,8 @@ export function reconcileAirwallDay(
    review.push(reviewFromTransition(t,"upcoming",
     "Another booking supports the same setup. It is not a second wall move; review the dates."));
   }else review.push(reviewFromTransition(t,"upcoming",
-   chosen?"A different ballroom configuration is needed later. Verify when the current setup ends before scheduling this move.":
-   "A future setup is inferred, but today's explicit engineering task takes precedence. Confirm the next handoff."));
+   chosen?"A different ballroom configuration is needed later, possibly for a room refresh or room change. Verify when the current function ends and the next setup begins before scheduling this move.":
+   "A future setup is inferred, potentially following a room refresh or room change. Today's dated engineering task takes precedence; confirm the next handoff."));
  }
  // If a single explicit target matches a DIFFERENT later inferred setup,
  // show both sources; do not create competing checkboxes for the later move.
