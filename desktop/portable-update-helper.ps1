@@ -255,6 +255,10 @@ function Install-Zip {
   }
 }
 try {
+  # This is the first instruction reached after PowerShell has parsed the
+  # script. If this line does not appear, the process never reached script
+  # execution (policy, missing executable, or command-line startup).
+  Write-UpdateLog ('PowerShell helper entered: mode='+$Mode+'.')
   Require-SiblingDirectories
   if ($Mode -eq 'Stage') { Stage-Zip } else { Install-Zip }
   exit 0
