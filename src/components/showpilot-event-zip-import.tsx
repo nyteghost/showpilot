@@ -7,6 +7,7 @@ import {canAcknowledgeZipIdConflict,matchEventZipToShow,type EventZipMatch} from
 import {extractEocFromPdf,pdfTextPages} from "@/lib/showpilot-event-assets";
 import {discoverEventMetadata,ROOMS,type EventMetadataResult,type EventMetadataSource} from "@/lib/showpilot-event-discovery";
 import {ShowPilotWhy} from "@/components/showpilot-why";
+import {floorMapsFromZip} from "@/lib/showpilot-zip-floor-maps";
 import {scheduleHintsFromSources,serializeZipSchedule,type ZipScheduleHint} from "@/lib/showpilot-zip-schedule";
 
 const roomsAvailable=ROOMS;
@@ -14,7 +15,7 @@ const validDay=(day:string)=>/^\d{4}-\d{2}-\d{2}$/.test(day)&&!Number.isNaN(Date
 
 
 export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=true}:{
- shows:PostConShow[];selectedKey:string;onImported:(key:string)=>void;active?:boolean;
+ shows:PostConShow[];selectedKey:string;onImported:(key:string,summary?:{maps:number;duplicateMaps:number})=>void;active?:boolean;
 }){
  const bridge=window.showpilotMemory;
  const picker=useRef<HTMLInputElement>(null);
@@ -41,6 +42,7 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
  const [matchResult,setMatchResult]=useState<EventZipMatch|null>(null);
  const [availableShows,setAvailableShows]=useState<PostConShow[]|null>(null);
  const candidates=availableShows??shows;
+ const floorMapPreview=inspection?floorMapsFromZip(inspection.files):null;
  // Always reset every field that can be populated by a previous ZIP.
  // Preserve the remaining queue so batch imports can advance independently.
  const reset=()=>{
@@ -242,7 +244,10 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
     }catch{ /* Imported originals remain safe if optional review-note saving fails. */ }
    }
    window.dispatchEvent(new Event("showpilot:postcon-catalog"));
-   onImported(key);setQueueReviewed(old=>old+1);
+   const importedMaps=result.imported.filter(f=>f.kind==="diagram"&&
+    ["pdf","png","jpg","jpeg","webp"].includes(f.extension)).length;
+   const duplicateMaps=inspection?floorMapsFromZip(inspection.files).duplicates.length:0;
+   onImported(key,{maps:importedMaps,duplicateMaps});setQueueReviewed(old=>old+1);
    const next=queue[0];
    setQueue(old=>old.slice(1));reset();
    if(next)await stage(next);
@@ -254,6 +259,8 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
     " duplicates skipped; "+result.ignored.length+" unsupported entries ignored."+
     (result.errors.length?" "+result.errors.length+" file(s) failed: "+
      result.errors.map(e=>e.name+" ("+e.error+")").join("; ").slice(0,350):"")+
+    (importedMaps?" "+importedMaps+" floor map(s) saved under this event. Open Floor Maps to view them.":"")+
+    (duplicateMaps?" "+duplicateMaps+" repeated floor plan(s) found in the ZIP.":"")+
     (indexed?" EOC focus sections indexed: "+indexed+".":"")+
     (unreadable?" EOC PDFs needing manual review: "+unreadable+".":""));
    }
@@ -296,6 +303,14 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
      {inspection.ignored.length>0&&<p>Skipped: {inspection.ignored.slice(0,12).join(", ")}</p>}
     </div>
    </details>
+   {floorMapPreview&&(floorMapPreview.maps.length>0||floorMapPreview.drawings.length>0)&&
+    <div className="rounded-lg border border-blue-500/50 p-3 space-y-2 text-xs" aria-label="Detected Floor Maps">
+     <p className="font-semibold">Floor Maps detected automatically — {floorMapPreview.maps.length} unique PDF/image layout(s)</p>
+     <p className="text-muted-foreground">The verified floor plans will be saved under this event's Diagrams and event layouts. Open the event's Floor Maps tab after import; no second upload is required.</p>
+     {floorMapPreview.maps.map(item=><p key={item.path} className="break-all">Floor map: {item.name}</p>)}
+     {floorMapPreview.duplicates.length>0&&<p className="text-muted-foreground">{floorMapPreview.duplicates.length} byte-identical duplicate(s) identified and skipped, including {floorMapPreview.duplicates.map(item=>item.name).join(", ")}.</p>}
+     {floorMapPreview.drawings.length>0&&<p className="text-amber-600">{floorMapPreview.drawings.length} DWG/DXF drawing(s) will be attached as originals. Export PDF or an image to preview them in Floor Maps.</p>}
+    </div>}
    {matchResult?.status==="matched"&&<p className="rounded-md border border-green-600/40 bg-green-600/10 px-3 py-2 text-xs font-semibold" role="status">
     Matched Event ID {metadata?.eventId} to {matchResult.show.showName}. Documents will be filed under the existing event after confirmation.
    </p>}
