@@ -192,16 +192,10 @@ export function reconcileAirwallDay(
  };
  // Separate hall changes do not imply a mutually exclusive ballroom layout.
  for(const task of datedHalls)addExplicit(task);
- const candidatesByTarget=new Map<string,BallroomTransition[]>();
- for(const t of windows){
-  const target=transitionKey(t);
-  (candidatesByTarget.get(target)??candidatesByTarget.set(target,[]).get(target)!).push(t);
- }
  const firstDue=windows[0]?.needByDate;
  const urgent=windows.filter(t=>t.needByDate===firstDue);
  const urgentTargets=new Set(urgent.map(transitionKey));
  const activeExplicit=datedBallroom.length===1?datedBallroom[0]:undefined;
- const explicitTargets=new Set(datedBallroom.map(t=>t.key.slice("BALLROOM|".length)));
  const conflict=
   datedBallroom.length>1||
   (!datedBallroom.length&&urgentTargets.size>1)||
