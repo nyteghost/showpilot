@@ -334,7 +334,7 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
          <strong className="block break-words">{show.showName}</strong>
          <span className="mt-1 block text-muted-foreground break-words">{show.rooms}</span>
          <span className="mt-1 block text-muted-foreground">{unlinked?"Schedule only · match Event ID to attach EOC":hasEoc?"EOC attached":"EOC missing"}</span>
-         {(joined.daily[show.key]?.[date]?.length??0)>0&&<span className="mt-1 block text-muted-foreground">{joined.daily[show.key]![date]!.slice(0,3).join(" · ")}</span>
+         {(joined.daily[show.key]?.[date]?.length??0)>0&&<span className="mt-1 block text-muted-foreground">{joined.daily[show.key]![date]!.slice(0,3).join(" · ")}</span>}
          {(wall==="action"||wall==="review")&&<span className="mt-1 block font-semibold text-amber-600">Airwall note — review</span>}
         </button>;
        })}
