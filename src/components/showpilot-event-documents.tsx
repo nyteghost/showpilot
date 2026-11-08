@@ -4,7 +4,7 @@ import {ShowPilotWhy} from "@/components/showpilot-why";
 import {Button} from "@/components/ui/button";
 import type {PostConShow} from "@/lib/showpilot-postcon";
 import {stageMentionedInEoc,hallLayoutAttached,eocAttendance} from "@/lib/showpilot-event-highlights";
-import {EVENT_ALLOWED_EXTENSIONS,extractEocFromPdf,pdfTextPages,guessEventFileKind,kindTitle,validateEventFile,type EventFileKind,type EventFileRecord,type EocSection} from "@/lib/showpilot-event-assets";
+import {EVENT_ALLOWED_EXTENSIONS,extractEocFocus,extractEocFromPdf,pdfTextPages,guessEventFileKind,kindTitle,validateEventFile,type EventFileKind,type EventFileRecord,type EocSection,type EocExcerpt} from "@/lib/showpilot-event-assets";
 import {eocSpaceEvidence,explainSavedRoom} from "@/lib/showpilot-event-provenance";
 import type {ZipScheduleEvidence} from "@/lib/showpilot-zip-schedule";
 
@@ -18,6 +18,7 @@ export function ShowPilotEventDocuments({show,zipSchedule,onOpenStage,onOpenFloo
  const bridge=window.showpilotMemory;
  const [files,setFiles]=useState<Document[]>([]);
  const [roomAudit,setRoomAudit]=useState<ReturnType<typeof eocSpaceEvidence>>({assigned:[],unassigned:[]});
+ const [freshEocSections,setFreshEocSections]=useState<Record<string,EocExcerpt[]>>({});
  const [roomAuditLoading,setRoomAuditLoading]=useState(false);
  const [roomAuditWarning,setRoomAuditWarning]=useState("");
  const [archived,setArchived]=useState(false);
@@ -39,7 +40,7 @@ export function ShowPilotEventDocuments({show,zipSchedule,onOpenStage,onOpenFloo
  useEffect(()=>{
   let alive=true;
   const eocPdfs=files.filter(f=>f.kind==="eoc"&&!f.archived&&f.available&&f.extension==="pdf").slice(0,6);
-  setRoomAudit({assigned:[],unassigned:[]});setRoomAuditWarning("");
+  setRoomAudit({assigned:[],unassigned:[]});setFreshEocSections({});setRoomAuditWarning("");
   if(!bridge||!eocPdfs.length){setRoomAuditLoading(false);return;}
   setRoomAuditLoading(true);
   // Inspection is read-only. Existing uploaded PDFs are opened locally and
@@ -47,12 +48,16 @@ export function ShowPilotEventDocuments({show,zipSchedule,onOpenStage,onOpenFloo
   void Promise.allSettled(eocPdfs.map(async f=>{
    const saved=await bridge.eventFileRead(f.id);
    const pdf=new File([new Uint8Array(saved.bytes)],f.name,{type:"application/pdf"});
-   return {file:f.name,pages:await pdfTextPages(pdf,80)};
+   return {id:f.id,file:f.name,pages:await pdfTextPages(pdf,80)};
   })).then(results=>{
    if(!alive)return;
-   const available=results.filter((x):x is PromiseFulfilledResult<{file:string;pages:string[]}>=>
+   const available=results.filter((x):x is PromiseFulfilledResult<{id:string;file:string;pages:string[]}>=>
     x.status==="fulfilled").map(x=>x.value);
    setRoomAudit(eocSpaceEvidence(available));
+   // Recompute sections for the UI from saved originals. This repairs old
+   // summaries that accidentally included Food & Beverage in Engineering or
+   // Public Safety/Shipping in Utility, without rewriting any EOC or database.
+   setFreshEocSections(Object.fromEntries(available.map(x=>[x.id,extractEocFocus(x.pages)])));
    if(results.some(x=>x.status==="rejected"))
     setRoomAuditWarning("Some EOC pages could not be read. Verify rooms in the original PDF.");
    if(files.filter(f=>f.kind==="eoc"&&!f.archived&&f.available&&f.extension==="pdf").length>6)
@@ -110,7 +115,8 @@ export function ShowPilotEventDocuments({show,zipSchedule,onOpenStage,onOpenFloo
     "No backup created: "+(result.reason??"unknown reason"));
   }catch(e){setMessage("Backup failed: "+(e instanceof Error?e.message:String(e)));}
  };
- const eocs=files.filter(file=>file.kind==="eoc"&&!file.archived);
+ const eocs=files.filter(file=>file.kind==="eoc"&&!file.archived)
+  .map(file=>freshEocSections[file.id]?{...file,eocExcerpts:freshEocSections[file.id]}:file);
  const attendance=eocAttendance(eocs);
  const stageRequested=eocs.some(file=>stageMentionedInEoc(file.eocExcerpts));
  const layoutAvailable=hallLayoutAttached(files.filter(f=>!f.archived));
