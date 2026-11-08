@@ -117,9 +117,9 @@ describe("Week at a glance: real show records versus function descriptions",()=>
   ]);
   expect(joined.shows.filter(s=>showHasActivityOnDay(s,"2026-11-08",joined)).map(s=>s.showName))
    .toEqual(["Front Row Card Show"]);
-  expect(joined.daily["id:4711"]?.["2026-11-08"]).toContain(
-   expect.stringContaining("Client Arrival (room/day match — verify)")
-  );
+  expect(joined.daily["id:4711"]?.["2026-11-08"]?.some(
+   text=>text.includes("Client Arrival (room/day match — verify)")
+  )).toBe(true);
   expect(joined.unlinkedFunctions).toHaveLength(0);
  });
  it("groups Monday vendor load-in, Tuesday client move-in and Friday event support under actual shows",()=>{
