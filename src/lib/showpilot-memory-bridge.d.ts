@@ -50,6 +50,7 @@ export type MemoryBridge={
  eventFileArchive(id:string,archived?:boolean):Promise<{archived:boolean}>;
  eventZipInspect(bytes:ArrayBuffer):Promise<EventZipInspection>;
  eventZipScan(bytes:ArrayBuffer):Promise<EventZipScan>;
+ eventZipPdfCandidates(bytes:ArrayBuffer):Promise<{files:{path:string;name:string;kind:EventFileKind;sha256:string;bytes:Uint8Array}[];skipped:string[]}>;
  eventZipImport(input:{eventKey:string;bytes:ArrayBuffer}):Promise<EventZipImportResult>;
  eventZipReadOrders(bytes:ArrayBuffer):Promise<{files:{path:string;name:string;bytes:Uint8Array}[];skipped:number;ignored:string[]}>;
  eventFileSetEocExcerpts(id:string,excerpts:EocExcerpt[]):Promise<{saved:true;count:number}>;
