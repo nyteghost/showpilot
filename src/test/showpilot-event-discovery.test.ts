@@ -1,5 +1,5 @@
 import {describe,expect,it} from "vitest";
-import {cgcRoomsFromText,discoverEventMetadata,normalizeEventDate} from "@/lib/showpilot-event-discovery";
+import {cgcRoomsFromText,discoverEventMetadata,normalizeEventDate,parseEocCoverHeader,parseEventZipFilename} from "@/lib/showpilot-event-discovery";
 import {scheduleHintsFromSources,serializeZipSchedule,parseZipSchedule} from "@/lib/showpilot-zip-schedule";
 describe("event ZIP metadata and scheduling evidence",()=>{
  it("prefills ID, real show name, event date range and ALL specified CGC locations from EOCs and work orders",()=>{
@@ -18,6 +18,30 @@ describe("event ZIP metadata and scheduling evidence",()=>{
   expect(meta.evidence.some(e=>e.source.includes("EOC"))).toBe(true);
   expect(scheduleHintsFromSources(sources).map(h=>h.topic)).toContain("Utility");
   expect(scheduleHintsFromSources(sources).map(h=>h.topic)).toContain("Stage & Deck");
+ });
+ it("reads EOC cover name, numeric ID and third-line date range instead of the email ZIP prefix",()=>{
+  const page="Event Order Confirmation\nARMAC Luncheon (40566)\nThu 11/5/2026 - Thu 11/5/2026\nLocation: Ballroom ABE";
+  expect(parseEocCoverHeader(page)).toEqual({showName:"ARMAC Luncheon",eventId:"40566",
+   startDate:"2026-11-05",showDate:"2026-11-05"});
+  const name="Event Order Confirmation + Supporting Documents Hospitality Industry Ministries Event ID#41622 11 06 2026.zip";
+  expect(parseEventZipFilename(name)).toEqual({showName:"Hospitality Industry Ministries",
+   eventId:"41622",date:"2026-11-06"});
+  const meta=discoverEventMetadata([{path:"documents/EOC.pdf",text:page}],null,name);
+  expect(meta.showName).toBe("ARMAC Luncheon");
+  expect(meta.eventId).toBe("40566");
+  expect(meta.startDate).toBe("2026-11-05");
+  expect(meta.showDate).toBe("2026-11-05");
+  expect(meta.evidence.some(v=>v.field==="eventId"&&v.value==="41622")).toBe(true);
+  expect(meta.warnings.some(w=>w.startsWith("Conflicting eventId"))).toBe(true);
+ });
+ it("uses filename Event ID and cleaned title when no readable EOC cover exists",()=>{
+  const file="Event Order Confirmation + Supporting Documents Hospitality Industry Ministries Event ID#41622 11 06 2026.zip";
+  const m=discoverEventMetadata([],null,file);
+  expect(m.showName).toBe("Hospitality Industry Ministries");
+  expect(m.eventId).toBe("41622");
+  expect(m.startDate).toBe("2026-11-06");
+  expect(m.showDate).toBe("2026-11-06");
+  expect(m.showName).not.toContain("Event Order Confirmation");
  });
  it("handles room groups, date validation, and does not treat functions as show names",()=>{
   expect(cgcRoomsFromText("Halls A-C and Ballroom C/D")).toEqual(["Hall A","Hall B","Hall C","BallRoom C","BallRoom D"]);
