@@ -1,5 +1,6 @@
 import {useEffect,useRef,useState,type FormEvent} from "react";
 import {MessageSquareText,Send,BookCheck} from "lucide-react";
+import {conciseChatAnswer,conciseChatReference} from "@/lib/showpilot-chat-format";
 import {chatWithShowPilotLocalAI,getLocalAiRuntimeState,subscribeLocalAiRuntimeState,
  type LocalChatMessage} from "@/lib/showpilot-ai-local";
 
@@ -9,7 +10,8 @@ function restore():LocalChatMessage[]{
   const data:unknown=JSON.parse(localStorage.getItem(KEY)||"[]");
   if(!Array.isArray(data))return [];
   return data.filter((x):x is LocalChatMessage=>!!x&&typeof x==="object"&&
-   (x.role==="user"||x.role==="assistant")&&typeof x.content==="string"&&x.content.length<=2500).slice(-12);
+   (x.role==="user"||x.role==="assistant")&&typeof x.content==="string"&&x.content.length<=2500)
+   .slice(-12).map(x=>x.role==="assistant"?{...x,content:conciseChatAnswer(x.content)}:x);
  }catch{return [];}
 }
 /** The conversation runs locally; saving a verified correction is a separate
@@ -40,9 +42,7 @@ export function ShowPilotCorrectionChat(){
      const status=await window.showpilotMemory.status();
      if(status.configured){
       const confirmed=await window.showpilotMemory.list("User-verified ShowPilot correction");
-      refs.push(...confirmed.slice(0,4).map(x=>x.title+": "+x.excerpt));
-      const found=await window.showpilotMemory.search(content.slice(0,130));
-      refs.push(...found.slice(0,3).map(x=>x.title+": "+x.excerpt));
+      refs.push(...confirmed.map(x=>conciseChatReference(x.title+": "+x.excerpt)).filter(Boolean).slice(0,3));
      }
     }catch{/* Chat works without native memory. */}
    }
