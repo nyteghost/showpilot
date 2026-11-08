@@ -26,8 +26,10 @@ async function serialInference<T>(invoke:()=>Promise<T>):Promise<T>{
 export function isLocalAiEnabled(){return localAiEnabled;}
 export async function disableLocalAi():Promise<void>{
  localAiEnabled=false;
- // An in-progress initialization must finish before its engine can be freed.
+ // Inference requests share one worker. Drain the active request before unloading;
+ // queued calls see the disabled flag and fail without executing.
  if(loading)await loading.catch(()=>{});
+ await inferenceTail.catch(()=>{});
  try{if(engine)await engine.unload();}
  finally{
   engine=null;loadedModel="";
