@@ -197,7 +197,7 @@ export async function readEventSheet(file: File): Promise<EventRow[] | null> {
       ...(id?{eventId:id}:{}),...(status?{status}:{}),date:day});
   });
   // Recover a missing group heading from another function with the same Event ID.
-  for(const row of rows)if(!row.event.trim()&&row.eventId)
+  for(const row of rows)if(!row.event?.trim()&&row.eventId)
    row.event=parentById.get(row.eventId)??"";
   return rows;
 }
