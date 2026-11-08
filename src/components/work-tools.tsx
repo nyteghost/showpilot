@@ -654,6 +654,7 @@ function ShiftsTab() {
       {status && <p className={`text-sm ${/^Could not|^No shifts/.test(status) ? "text-destructive" : ""}`} role="status">{status}</p>}
       {shifts.length>0&&<ShowPilotRuleReview evidence={shiftRuleEvidence(shifts,removed.length)}/>}
       {shifts.length>0&&<ShowPilotRuleReview evidence={calendarRuleEvidence(shifts,title,"google")}/>}
+      {shifts.length>0&&<ShowPilotRuleReview evidence={calendarRuleEvidence(shifts,title,"ics")}/>}
       {(shifts.length > 0 || removed.length > 0) && (
         <>
           <div className="flex flex-wrap items-center gap-2">
