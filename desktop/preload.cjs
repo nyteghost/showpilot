@@ -18,6 +18,12 @@ contextBridge.exposeInMainWorld("showpilotUpdates",Object.freeze({
   return ()=>ipcRenderer.removeListener("showpilot-update:progress",listener);
  }
 }));
+contextBridge.exposeInMainWorld("showpilotTodayChecklist",Object.freeze({
+ load:(day)=>ipcRenderer.invoke("showpilot-today-checklist:load",day),
+ change:(day,scope,id,done)=>ipcRenderer.invoke("showpilot-today-checklist:change",day,scope,id,done),
+ add:(day,scope,text)=>ipcRenderer.invoke("showpilot-today-checklist:add",day,scope,text),
+ remove:(day,scope,id)=>ipcRenderer.invoke("showpilot-today-checklist:remove",day,scope,id)
+}));
 contextBridge.exposeInMainWorld("showpilotScheduleSession",Object.freeze({
  load:()=>ipcRenderer.invoke("showpilot-schedule-session:load"),
  save:(project)=>ipcRenderer.invoke("showpilot-schedule-session:save",project),
