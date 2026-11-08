@@ -1,4 +1,4 @@
-import {useEffect,useMemo,useState,type ReactNode} from "react";
+import {useEffect,useMemo,useRef,useState,type ReactNode} from "react";
 import {BookOpen,CalendarRange,Save,Search,ClipboardCheck,CalendarClock,FolderOpen,Layers,Map as MapIcon} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import {ShowPilotEventDocuments} from "@/components/showpilot-event-documents";
@@ -18,7 +18,7 @@ const preFields=[["overview","Pre-show overview"],["staffing","Staffing and engi
 const postFields=[["wentWell","What went well"],["issues","Issues and outcomes"],["staffing","Staffing lessons"],["stage","Stage notes"],["floor","Floor-map improvements"],["followUp","Follow-ups"]] as const;
 
 type EventSection="overview"|"documents"|"precon"|"postcon"|"stage"|"floor";
-export function ShowPilotEventsPanel({active=true,stagePlanner,floorMaps}:{active?:boolean;stagePlanner?:ReactNode;floorMaps?:(files:File[],eventId:string)=>ReactNode}){
+export function ShowPilotEventsPanel({active=true,stagePlanner,floorMaps,openEventRequest}:{active?:boolean;stagePlanner?:ReactNode;floorMaps?:(files:File[],eventId:string)=>ReactNode;openEventRequest?:{key:string;section:"documents"|"overview";revision:number}|null}){
  const bridge=window.showpilotMemory;
  const [shows,setShows]=useState<PostConShow[]>(()=>loadPostConShows());
  const [selectedKey,setSelectedKey]=useState("");
@@ -34,6 +34,7 @@ export function ShowPilotEventsPanel({active=true,stagePlanner,floorMaps}:{activ
  const [message,setMessage]=useState("");
  const [section,setSection]=useState<EventSection>("overview");
  const [filesRevision,setFilesRevision]=useState(0);
+ const lastOpenRequest=useRef(0);
  const [visited,setVisited]=useState<EventSection[]>([]);
  const selectSection=(next:EventSection)=>{
   setSection(next);
@@ -44,6 +45,22 @@ export function ShowPilotEventsPanel({active=true,stagePlanner,floorMaps}:{activ
   setMessage("Event ZIP imported. The documents are stored locally under this show.");
  };
  const show=shows.find(s=>s.key===selectedKey);
+ // A Today card can target an Events record before this tab is mounted.
+ // The request is passed as state, so no navigation event is lost.
+ useEffect(()=>{
+  if(!active||!openEventRequest||lastOpenRequest.current===openEventRequest.revision)return;
+  if(!shows.some(s=>s.key===openEventRequest.key))return;
+  if(notesDirty&&selectedKey!==openEventRequest.key&&
+    !window.confirm("Open another event? Unsaved general notes will be lost.")){
+   lastOpenRequest.current=openEventRequest.revision;return;
+  }
+  lastOpenRequest.current=openEventRequest.revision;
+  if(selectedKey!==openEventRequest.key){
+   setSelectedKey(openEventRequest.key);setNoteText("");setNoteId("");
+   setNotesDirty(false);setPrecon(null);setPostcon(null);setFloorFiles([]);
+  }
+  setSearch("");selectSection(openEventRequest.section);
+ },[active,openEventRequest,shows,notesDirty,selectedKey]);
  const openFloorMaps=async()=>{
   selectSection("floor");
   if(!show||!bridge||!floorMaps)return;
