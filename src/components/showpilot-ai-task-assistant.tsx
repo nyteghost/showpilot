@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { EventEntry, TaskNote } from "@/lib/work-tools";
 import { taskContext, validateTaskResponse, type AiTaskSuggestion } from "@/lib/showpilot-ai-tasks";
-import { runLocalTaskAI } from "@/lib/showpilot-ai-local";
+import { runLocalTaskAI,getLocalAiRuntimeState,subscribeLocalAiRuntimeState } from "@/lib/showpilot-ai-local";
 import { AI_PROVIDERS, type AiProviderId } from "@/lib/showpilot-ai-providers";
 import { reviewScopeDates, reviewScopeLabel, reviewWeekStart, type ReviewDateScope } from "@/lib/showpilot-review-months";
 import { approvedTaskMemoryDraft } from "@/lib/showpilot-memory-notes";
@@ -45,6 +45,11 @@ export function AiTaskAssistant({ entries, tasks, onApprove, scope }:{
  const [edits,setEdits]=useState<Record<string,string>>({});
  const [dismissed,setDismissed]=useState<string[]>([]);
  const [memoryRefs,setMemoryRefs]=useState<MemoryReference[]>([]);
+ const [runtime,setRuntime]=useState(getLocalAiRuntimeState);
+ const lastAutoReview=useRef("");
+ useEffect(()=>subscribeLocalAiRuntimeState(setRuntime),[]);
+ const entryFingerprint=useMemo(()=>JSON.stringify(entries.map(e=>[e.date,e.space,e.code,e.start,e.end,e.title])),[entries]);
+
  useEffect(()=>{if(!window.showpilotAI)return;void window.showpilotAI.status().then(s=>{
    const p=s.providers.filter((n):n is AiProviderId=>AI_PROVIDERS.some(x=>x.id===n&&x.canGenerate));
    setAvailable(p);if(p.length)setProvider(p[0]!);
@@ -115,6 +120,16 @@ export function AiTaskAssistant({ entries, tasks, onApprove, scope }:{
   }catch(e){setStatus("AI suggestion failed: "+aiError(e))}
   finally{setBusy(false)}
  };
+
+ // Local mode automatically checks generated schedule proposals when the
+ // operator enables the model. Never auto-approve its task suggestions.
+ useEffect(()=>{
+  if(runtime.status!=="ready"||mode!=="local"||!scope||!weeks.length||busy)return;
+  const key=scopeKey+"|"+entryFingerprint+"|"+JSON.stringify(tasks);
+  if(lastAutoReview.current===key)return;
+  lastAutoReview.current=key;
+  void run();
+ },[runtime.status,mode,scopeKey,entryFingerprint,tasks,busy,weeks.length]);
  const approve=(s:AiTaskSuggestion)=>{
   const text=(edits[s.id]??s.task.text).trim();
   if(!text){setStatus("Enter a task description before approving.");return;}
@@ -136,7 +151,7 @@ export function AiTaskAssistant({ entries, tasks, onApprove, scope }:{
    <div className="flex items-start gap-3">
      <span className="rounded-lg bg-muted p-2"><Sparkles size={20}/></span>
      <div><h3 className="font-semibold">AI Task Assistant</h3>
-       <p className="text-xs text-muted-foreground">Suggests air-wall, stage and room-turn checks. Recommendations never change engineer shifts and require your approval.</p></div>
+       <p className="text-xs text-muted-foreground">Automatically reviews current event-schedule rules when Local AI is loaded. Any new air-wall, stage or room-turn suggestions still require your approval.</p></div>
    </div>
    <div className="flex flex-wrap gap-3 items-center">
      <p className="text-sm"><strong>Schedule selection:</strong> {reviewScopeLabel(scope)}
