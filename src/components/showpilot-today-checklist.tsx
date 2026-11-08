@@ -135,10 +135,10 @@ export function ShowPilotTodayChecklist({day,shows,airwalls,workbookWalls,sugges
      {g.scope==="building"&&airwallPlan.review.length>0&&
       <details className="rounded-md border border-amber-500/60 p-2 text-xs">
        <summary className="cursor-pointer font-semibold">
-        {airwallPlan.review.some(x=>x.kind==="conflict")?"Conflicting ballroom setups — verify before moving":"Other proposed setups — not additional moves for today"}
+        {airwallPlan.review.some(x=>x.kind==="conflict")?"Multiple ballroom setups — check room refresh / change timing":"Later room setups — not necessarily additional moves today"}
         {" · "+airwallPlan.review.length+" source suggestion(s)"}
        </summary>
-       <p className="mt-2 text-muted-foreground">ShowPilot compares the engineering workbook, Event Schedule and inferred event-to-event room changes. A contradictory or later arrangement is not automatically another task for today.</p>
+       <p className="mt-2 text-muted-foreground">ShowPilot compares the engineering workbook, Event Schedule and inferred event-to-event room changes. Different arrangements may be intentional room refreshes or room changes between functions. Without verified function order and handoff times, they are review items rather than extra automatic wall moves.</p>
        {airwallPlan.review.map(item=>
         <div key={item.id} className="mt-2 border-t pt-2 space-y-1">
          <div className="flex items-center gap-1">
