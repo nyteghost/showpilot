@@ -67,6 +67,10 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
     }catch(e){scanWarnings.push("Could not fully scan ZIP documents: "+String(e));}
    }else scanWarnings.push("This build cannot inspect ZIP document contents.");
    const found=discoverEventMetadata(sources,result.manifest,file.name);
+   const fromEoc=found.evidence.some(item=>item.source.startsWith("EOC cover page:"));
+   const detectedSource=fromEoc
+    ?"Show name, Event ID and dates read from the EOC cover. "
+    :"No readable EOC cover header was found; verify any ZIP filename or manifest suggestions. ";
    setArchive(file);setInspection(result);setMetadata(found);setScheduleHints(scheduleHintsFromSources(sources));setReadWarnings(scanWarnings);
    setName(found.showName);setEventId(found.eventId);setStart(found.startDate);setEnd(found.showDate);
    setRooms(found.rooms);
@@ -79,16 +83,16 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
    setMatchResult(match);
    if(match.status==="matched"){
     setTarget(match.show.key);setMode("existing");
-    setStatus("Event ID "+found.eventId+" matched "+match.show.showName+". Confirm to attach these documents to its Events record.");
+    setStatus(detectedSource+"Event ID "+found.eventId+" matched "+match.show.showName+". Confirm to attach these documents to its Events record.");
    }else{
     setTarget("");setMode("new");
-    setStatus(match.status==="conflicting-ids"?
+    setStatus(detectedSource+(match.status==="conflicting-ids"?
      "Conflicting Event IDs were found. No event was chosen automatically. Review the documents before importing.":
      match.status==="ambiguous"?
      "Several saved records have this Event ID. No event was chosen automatically; review the catalog first.":
      match.status==="no-match"?
      "Event ID "+found.eventId+" is not in the saved schedule. Review the ZIP details before creating a new event.":
-     "No Event ID found. Choose an existing event manually or create one after reviewing the details.");
+     "No Event ID found. Choose an existing event manually or create one after reviewing the details."));
    }
    setApplyExisting(false);
   }catch(e){reset();setStatus("Could not inspect ZIP: "+(e instanceof Error?e.message:String(e)));}
@@ -268,6 +272,9 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
    </p>}
    {metadata&&<div className="space-y-2 rounded border p-3 text-xs">
     <p className="font-semibold">Information found in ZIP documents</p>
+    <p className="text-muted-foreground">{metadata.evidence.some(item=>item.source.startsWith("EOC cover page:"))
+     ?"Read from the EOC cover: line 2 is the event name and ID, line 3 is the start/end date range. Review these before importing."
+     :"EOC cover data was not readable. Filename/manifest or other document suggestions may be incomplete; confirm the details manually."}</p>
     <p>Event ID: <strong>{metadata.eventId||"Not found"}</strong> · Show: <strong>{metadata.showName||"Not found"}</strong></p>
     <p>Dates: <strong>{metadata.startDate||"Unknown"} to {metadata.showDate||"Unknown"}</strong></p>
     <p>CGC locations: <strong>{metadata.rooms.join(", ")||"Not found"}</strong></p>
@@ -297,7 +304,7 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
       Add reviewed ZIP dates/locations to this show's saved catalog (never overwrite Excel)
      </label>
     </label>:<div className="space-y-3">
-     <p className="text-xs text-muted-foreground">The ZIP filename or event.json may suggest details. Verify them before creating the show.</p>
+     <p className="text-xs text-muted-foreground">ShowPilot uses the EOC cover for the event name, ID and date range when readable. ZIP filename or event.json values are fallbacks. Verify all fields before creating the show.</p>
      <label className="block text-xs font-semibold">Actual show name
       <input className="mt-1 w-full rounded border bg-background p-2 font-normal" value={name} maxLength={140} onChange={e=>setName(e.target.value)}/>
      </label>
