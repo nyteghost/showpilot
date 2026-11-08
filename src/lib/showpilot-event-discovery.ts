@@ -118,8 +118,14 @@ export function discoverEventMetadata(sources:readonly EventMetadataSource[],man
   // displayed as an event ID, selected as the destination, or counted as
   // conflicting evidence against the numeric EOC cover.
   const normalized=field==="eventId"?validCgcEventId(value):value;
-  if(normalized&&!evidence.some(x=>x.field===field&&x.value===normalized&&x.source===source))
-   evidence.push({field,value:normalized,source,...details});
+  if(!normalized)return;
+  const existing=evidence.find(x=>x.field===field&&x.value===normalized&&x.source===source);
+  if(existing){
+   // A later direct Function Space assignment supersedes a casual mention.
+   if(field==="room"&&details?.confidence==="assigned"&&existing.confidence!=="assigned"){
+    existing.confidence="assigned";existing.context=details.context;
+   }
+  }else evidence.push({field,value:normalized,source,...details});
  };
  if(manifest){
   add("showName",manifest.showName?.trim()||"","ZIP manifest");
@@ -160,12 +166,11 @@ export function discoverEventMetadata(sources:readonly EventMetadataSource[],man
    // Direct Function Space / Rooms assignment is reliable; casual mentions
    // and diagram filenames remain evidence for review but cannot auto-select
    // additional halls. Keep the exact PDF text line for the Why? panel.
+   const directContext=mentioned.length?line:line+" "+next;
    for(const room of assigned)add("room",room,source.path,{
-    confidence:"assigned",context:(line+(line===next?"":"")).slice(0,320)});
+    confidence:"assigned",context:directContext.trim().slice(0,320)});
    for(const room of mentioned.filter(r=>!assigned.includes(r)))
     add("room",room,source.path,{confidence:"mentioned",context:line.slice(0,320)});
-   if(assigned.length&&!mentioned.length)for(const room of assigned)
-    add("room",room,source.path,{confidence:"assigned",context:(line+" "+next).slice(0,320)});
   }
   if(/hall|layout|diagram|floor/i.test(source.path))
    for(const room of cgcRoomsFromText(source.path))
