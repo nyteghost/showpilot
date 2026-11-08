@@ -7,7 +7,7 @@ import {fileURLToPath} from "node:url";
 import {runInNewContext} from "node:vm";
 import type {PostConShow} from "@/lib/showpilot-postcon";
 import {
- buildingChecklistTasks,checklistKey,doneCount,STANDARD_BUILDING_TASKS,STANDARD_SHOW_TASKS,
+ buildingChecklistTasks,reconcileAirwallDay,checklistKey,doneCount,STANDARD_BUILDING_TASKS,STANDARD_SHOW_TASKS,
  scheduledAirwallInstruction,tasksForShow
 } from "@/lib/showpilot-today-checklist";
 const nodeRequire=createRequire(new URL("../../desktop/today-checklist.cjs",import.meta.url));
@@ -149,5 +149,72 @@ describe("private offline daily checklist storage",()=>{
    expect(()=>store.change(day,"building","handoff",false)).toThrow();
    expect(readFileSync(f,"utf8")).toContain('"version":100');
   }finally{close();}
+ });
+});
+
+describe("Today reconciles three possible airwall setups without three immediate moves",()=>{
+ const transition=(id:string,afterDate:string,needByDate:string,toGroups:string[])=>({
+  id,section:"BALLROOM" as const,afterDate,needByDate,
+  fromGroups:["ABEG","CDF"],toGroups,
+  target:toGroups.length===1&&toGroups[0]==="ABCDEFG"?"Full Ballroom":
+   toGroups.map(x=>"Ballroom "+x).join(" + "),
+  fromEvents:["Previous Event"],toEvents:["Next Event "+id],
+  source:"inferred" as const,confidence:"confirmed-layout" as const,
+  explanation:"Previous Event occupies ABEG + CDF through "+afterDate+
+   "; next Event "+id+" needs "+toGroups.join(" + ")+" by "+needByDate+"."
+ });
+ it("displays the earliest required arrangement as today's next task, with two later setups for review",()=>{
+  const windows=[
+   transition("a","2026-11-06","2026-11-08",["ABE"]),
+   transition("b","2026-11-07","2026-11-09",["ABCDEFG"]),
+   transition("c","2026-11-07","2026-11-10",["CDF"])
+  ];
+  const plan=reconcileAirwallDay("2026-11-08",[],[],windows);
+  expect(plan.tasks).toHaveLength(2);
+  expect(plan.tasks[0]?.text).toContain("Ballroom ABE");
+  expect(plan.tasks[0]?.storageDay).toBe("2026-11-06");
+  expect(plan.review).toHaveLength(2);
+  expect(plan.review.every(x=>x.kind==="upcoming")).toBe(true);
+  expect(plan.review.map(x=>x.target)).toEqual(["Full Ballroom","Ballroom CDF"]);
+  expect(buildingChecklistTasks("2026-11-08",[],[],windows)).toHaveLength(STANDARD_BUILDING_TASKS.length+2);
+ });
+ it("unifies a workbook instruction, Event Schedule suggestion, and inferred handoff of the same arrangement",()=>{
+  const t=transition("matched","2026-11-06","2026-11-08",["ABE"]);
+  const plan=reconcileAirwallDay("2026-11-08",[
+   {date:"2026-11-08",section:"BALLROOM",text:"Make ABE",source:"engineering-workbook"}
+  ],[{date:"2026-11-08",section:"BALLROOM",text:"ABE"}],[t]);
+  expect(plan.tasks).toHaveLength(2);
+  expect(plan.tasks[0]?.source).toBe("inferred");
+  expect(plan.tasks[0]?.detail).toContain("Dated engineering workbook");
+  expect(plan.tasks[0]?.detail).toContain("Event Schedule");
+  expect(plan.review).toHaveLength(0);
+ });
+ it("does not choose between conflicting ballroom arrangements dated today",()=>{
+  const plan=reconcileAirwallDay("2026-11-08",[
+   {date:"2026-11-08",section:"BALLROOM",text:"Make ABE",source:"engineering-workbook"}
+  ],[{date:"2026-11-08",section:"BALLROOM",text:"Make full ballroom"}],[]);
+  expect(plan.tasks).toEqual([]);
+  expect(plan.review).toHaveLength(2);
+  expect(plan.review.every(x=>x.kind==="conflict")).toBe(true);
+  expect(plan.review[0]?.reason).toMatch(/order or handoff times/);
+ });
+ it("flags an urgent EOC/workbook disagreement instead of creating two incompatible checkboxes",()=>{
+  const t=transition("urgent","2026-11-07","2026-11-08",["ABCDEFG"]);
+  const plan=reconcileAirwallDay("2026-11-08",[
+   {date:"2026-11-08",section:"BALLROOM",text:"Make ABE",source:"engineering-workbook"}
+  ],[],[t]);
+  expect(plan.tasks).toHaveLength(0);
+  expect(plan.review.filter(x=>x.kind==="conflict")).toHaveLength(2);
+  expect(plan.review.some(x=>x.sources.some(y=>y.includes("Next Event")))).toBe(true);
+ });
+ it("a hall change remains its own task even when a ballroom conflict needs review",()=>{
+  const plan=reconcileAirwallDay("2026-11-08",[],[
+   {date:"2026-11-08",section:"HALLS",text:"Make Hall AB"},
+   {date:"2026-11-08",section:"BALLROOM",text:"Make ABE"},
+   {date:"2026-11-08",section:"BALLROOM",text:"Make full ballroom"}
+  ],[]);
+  expect(plan.tasks).toHaveLength(2);
+  expect(plan.tasks[0]?.text).toContain("Halls");
+  expect(plan.review).toHaveLength(2);
  });
 });
