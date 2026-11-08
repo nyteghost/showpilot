@@ -1,5 +1,5 @@
 import type {TaskNote} from "./work-tools";
-import {summarizeEvents,isCancelledRow,isPendingRow,airwallTasks,formatMinutes} from "./work-tools";
+import {summarizeEvents,isCancelledRow,isPendingRow,airwallTasks,formatMinutes,expandSpace} from "./work-tools";
 import {scopeShowPilotRows} from "./showpilot-venue";
 import {applyReview,parseReviewProject,type ReviewProject} from "./showpilot-review";
 import {postConShowsFromReportRows} from "./showpilot-postcon";
@@ -16,7 +16,15 @@ export type DailyActivity={
 };
 export type WorkbookWallTask={date:string;section:"HALLS"|"BALLROOM";text:string;source:"engineering-workbook"};
 export type WorkbookActivityResult={activities:DailyActivity[];airwalls:WorkbookWallTask[];warnings:string[]};
-export type TodayJoined={shows:PostConShow[];activeDates:Record<string,string[]>;origin:Record<string,DailyActivity["source"]>;daily:Record<string,Record<string,string[]>>;unlinkedKeys:string[]};
+export type TodayJoined={
+ shows:PostConShow[];activeDates:Record<string,string[]>;
+ origin:Record<string,DailyActivity["source"]>;
+ daily:Record<string,Record<string,string[]>>;
+ unlinkedKeys:string[];
+ /** Schedule function lines without a verified event or unique same-day room
+  * match. Never count these as standalone shows or silently assign EOCs. */
+ unlinkedFunctions:DailyActivity[];
+};
 const ISO=/^\d{4}-\d{2}-\d{2}$/;
 const nonCgc=/\b(?:CEPAC|cobb energy|performing arts)\b/i;
 const canonical=(s:string)=>s.normalize("NFKC").replace(/\s+/g," ").trim().toLowerCase().replace(/[^a-z0-9]/g,"");
@@ -69,48 +77,119 @@ export function activitiesFromReviewProject(project:ReviewProject):{activities:D
  return {activities:aggregate(items),airwalls};
 }
 
+/** Ungerboeck / engineering workbook operation names are NOT show names.
+ * The strict, anchored patterns intentionally do not classify a title merely
+ * because it contains "program" or "show" somewhere in a real event name.
+ * The Event ID still takes precedence when a source explicitly provides it. */
+export function isOperationalFunctionTitle(title:string):boolean{
+ const t=title.replace(/\s+/g," ").trim();
+ return /^(?:MO\??|MI|Exmi|Arr|client\s+(?:arrival|move[\s-]?in|move[\s-]?out|load[\s-]?in|load[\s-]?out)|(?:vendor|exhibitor|decorator|contractor|advanced expo services)\s+(?:arrival|move[\s-]?in|move[\s-]?out|load[\s-]?in|load[\s-]?out)|move[\s-]?in|move[\s-]?out|load[\s-]?in|load[\s-]?out|program(?:\s+start)?|general\s+session|breakout\s+session|registration|client\s+check[\s-]?in|tables?\s*(?:&|and)\s*chairs?(?:\s+inc\.?)?\s+move[\s-]?in|setup(?:\s*[-:]\s*|\s+)|set[\s-]?up(?:\s*[-:]\s*|\s+)|strike(?:\s*[-:]\s*|\s+)|trade\s+night|room\s+turn|room\s+flip|rehearsal|vendor\s+load[\s-]?in)\b/i.test(t);
+}
+function roomSet(names:readonly string[]):Set<string>{
+ return new Set(names.flatMap(name=>expandSpace(name)).map(maybeRoom).filter((r):r is string=>r!==null));
+}
+function coverRooms(activityRooms:readonly string[],showRooms:string):boolean{
+ const required=roomSet(activityRooms);
+ const available=roomSet(showRooms.split(","));
+ return required.size>0&&[...required].every(r=>available.has(r));
+}
+function dayInShow(date:string,show:PostConShow):boolean{
+ const first=show.startDate??show.showDate;
+ return safeDate(first)&&safeDate(show.showDate)&&date>=first&&date<=show.showDate;
+}
+/** Join actual show records first and THEN the functions. A function may be
+ * linked to a confirmed Event ID, or to a single same-day show occupying all
+ * of the function's rooms. Multiple candidates => no guess.
+ *
+ * The return value is read-only; no SQLite catalog or EOC files are altered. */
 export function combineTodaySources(
  catalog:readonly PostConShow[], activities:readonly DailyActivity[]
 ):TodayJoined{
- const shows=catalog.filter(s=>!nonCgc.test(s.showName+" "+s.rooms)).map(s=>({...s}));
+ // Do not promote old polluted SQLite entries whose "show name" is actually
+ // a workbook function (e.g. "Client Arrival", "Program Start", "MO?").
+ const shows=catalog.filter(s=>!nonCgc.test(s.showName+" "+s.rooms)&&
+  !isOperationalFunctionTitle(s.showName)).map(s=>({...s}));
  const activeDates:Record<string,string[]>={};
  const origin:Record<string,DailyActivity["source"]>={};
  const daily:Record<string,Record<string,string[]>>={};
  const unlinkedKeys:string[]=[];
+ const unlinkedFunctions:DailyActivity[]=[];
  const byId=new Map<string,PostConShow[]>();
  const byName=new Map<string,PostConShow[]>();
  for(const show of shows){
-  if(show.eventId)(byId.get(show.eventId)??byId.set(show.eventId,[]).get(show.eventId)!).push(show);
+  if(show.eventId)(byId.get(show.eventId.trim())??byId.set(show.eventId.trim(),[]).get(show.eventId.trim())!).push(show);
   const key=canonical(show.showName);
   (byName.get(key)??byName.set(key,[]).get(key)!).push(show);
  }
  const merged=new Map<string,PostConShow>();
- for(const activity of aggregate(activities)){
-  const matches=activity.eventId?(byId.get(activity.eventId)??[]):(byName.get(canonical(activity.showName))??[]);
-  // Never link EOCs using an ambiguous name. Event IDs take precedence.
-  const matched=matches.length===1?matches[0]:undefined;
-  const key=matched?.key??("schedule:"+canonical(activity.showName)+":"+(activity.eventId||"no-id"));
-  const old=merged.get(key);
-  if(!matched&&!unlinkedKeys.includes(key))unlinkedKeys.push(key);
-  if(!old){
-   if(!matched){
-    const stub:PostConShow={key,eventId:activity.eventId,showName:activity.showName,
-      startDate:activity.date,showDate:activity.date,rooms:activity.rooms.join(", ")};
-    merged.set(key,stub);shows.push(stub);
-   }else merged.set(key,matched);
-  }else if(!matched){
-   old.startDate=[old.startDate??old.showDate,activity.date].sort()[0]!;
-   old.showDate=[old.showDate,activity.date].sort()[1]!;
-   const rooms=new Set([...old.rooms.split(", ").filter(Boolean),...activity.rooms]);
-   old.rooms=[...rooms].join(", ");
-  }
+ const records=aggregate(activities);
+ // Show records and event-ID linked rows must be processed before functions,
+ // so "Client Arrival" can find the Front Row Card Show on the same date.
+ const ordered=[...records.filter(a=>!isOperationalFunctionTitle(a.showName)),
+  ...records.filter(a=>isOperationalFunctionTitle(a.showName))];
+ const attach=(key:string,activity:DailyActivity,inferred=false)=>{
   (activeDates[key]??=[]).push(activity.date);
   const day=(daily[key]??={})[activity.date]??=[];
-  for(const detail of activity.details)if(!day.includes(detail))day.push(detail);
+  const details=isOperationalFunctionTitle(activity.showName)?
+   [activity.showName+(inferred?" (room/day match — verify)":"")+" · "+activity.details.join(" · ")]:
+   activity.details;
+  for(const d of details)if(d&&!day.includes(d))day.push(d);
   if(activity.source==="event-schedule"||!origin[key])origin[key]=activity.source;
+ };
+ for(const activity of ordered){
+  const functional=isOperationalFunctionTitle(activity.showName);
+  const matches=activity.eventId.trim()?
+   (byId.get(activity.eventId.trim())??[]):
+   (byName.get(canonical(activity.showName))??[]);
+  let matched=matches.length===1?matches[0]:undefined;
+  let inferred=false;
+  // A truncated Excel label can be matched to one unique named catalog
+  // show, but ONLY when it is long enough and the dates/rooms agree.
+  if(!matched&&!functional&&!activity.eventId&&canonical(activity.showName).length>=16){
+   const prefix=canonical(activity.showName);
+   const possibilities=shows.filter(s=>s.eventId&&
+    (canonical(s.showName).startsWith(prefix)||prefix.startsWith(canonical(s.showName)))&&
+    dayInShow(activity.date,s)&&coverRooms(activity.rooms,s.rooms));
+   if(possibilities.length===1)matched=possibilities[0];
+  }
+  if(!matched&&functional&&!activity.eventId){
+   // Prefer an actual show ALREADY observed on this date in the source
+   // workbook/report. Fallback to a unique same-day ID-bearing catalog show.
+   const observed=shows.filter(s=>
+    !!activeDates[s.key]?.includes(activity.date)&&coverRooms(activity.rooms,s.rooms));
+   if(observed.length===1){matched=observed[0];inferred=true;}
+   else if(observed.length===0){
+    const catalogCandidates=shows.filter(s=>s.eventId&&
+     dayInShow(activity.date,s)&&coverRooms(activity.rooms,s.rooms));
+    if(catalogCandidates.length===1){matched=catalogCandidates[0];inferred=true;}
+   }
+  }
+  if(matched){
+   merged.set(matched.key,matched);
+   attach(matched.key,activity,inferred);
+   continue;
+  }
+  if(functional){
+   // A date and a room alone aren't sufficient when shows overlap. Keep
+   // these visible separately for a human to match, never as "new shows".
+   unlinkedFunctions.push(activity);
+   continue;
+  }
+  const key="schedule:"+canonical(activity.showName)+":"+(activity.eventId||"no-id");
+  let stub=merged.get(key);
+  if(!stub){
+   stub={key,eventId:activity.eventId,showName:activity.showName,
+    startDate:activity.date,showDate:activity.date,rooms:activity.rooms.join(", ")};
+   merged.set(key,stub);shows.push(stub);unlinkedKeys.push(key);
+  }else{
+   stub.startDate=[stub.startDate??stub.showDate,activity.date].sort()[0]!;
+   stub.showDate=[stub.showDate,activity.date].sort()[1]!;
+   stub.rooms=[...new Set([...stub.rooms.split(", ").filter(Boolean),...activity.rooms])].join(", ");
+  }
+  attach(key,activity);
  }
  for(const key of Object.keys(activeDates))activeDates[key]=[...new Set(activeDates[key])].sort();
- return {shows,activeDates,origin,daily,unlinkedKeys};
+ return {shows,activeDates,origin,daily,unlinkedKeys,unlinkedFunctions};
 }
 export function showHasActivityOnDay(show:PostConShow,date:string,joined:TodayJoined):boolean{
  // If actual dated rows exist, prefer those over potentially stale range
