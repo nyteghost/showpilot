@@ -170,7 +170,7 @@ export function ShowPilotTodayChecklist({day,shows,airwalls,workbookWalls,sugges
           <ShowPilotWhy label={task.text}>
            <p>{task.detail||"This task was found in the saved schedule."}</p>
            <p>Completion is a manual acknowledgment. ShowPilot has not controlled the physical airwalls or verified their present position.</p>
-          </ShowPilotWhy>
+          </ShowPilotWhy>}
          {task.source==="eoc"&&<p className="text-xs text-amber-600">Document note — confirm date and timing</p>}
         </div>
         {task.source==="manual"&&<button type="button" disabled={saving||loading}
