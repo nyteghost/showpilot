@@ -62,6 +62,18 @@ describe("Today airwall evidence requires a real source",()=>{
   expect(conflicts.state).toBe("action");
   expect(findAirwallPhrases("No airwall movement is required","EOC").map(f=>f.kind)).toEqual(["no-change"]);
  });
+ it("recognizes actual dated Make instructions generated from the Event Schedule",()=>{
+  const tasks=[
+   {date:"2026-11-08",section:"BALLROOM" as const,text:"Make ABE/CDFG"},
+   {date:"2026-11-08",section:"BALLROOM" as const,text:"Make full ballroom"},
+   {date:"2026-11-08",section:"HALLS" as const,text:"Make Hall AB"},
+   {date:"2026-11-07",section:"BALLROOM" as const,text:"Make ABE"},
+   {date:"2026-11-08",section:"BALLROOM" as const,text:"Airwalls shown on plan"}
+  ];
+  expect(scheduledWallChanges(tasks,"2026-11-08").map(t=>t.text))
+   .toEqual(["Make ABE/CDFG","Make full ballroom","Make Hall AB"]);
+  expect(wallTaskLabel(tasks[0]!)).toBe("Ballrooms — Make ABE/CDFG");
+ });
  it("does not invent a dated move from an undated ZIP note",()=>{
   const tasks=[{date:"2026-11-08",section:"BALLROOM" as const,text:"ABE"},
    {date:"2026-11-09",section:"HALLS" as const,text:"AB"},
