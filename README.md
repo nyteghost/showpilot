@@ -8,6 +8,13 @@ ShowPilot is a professional, work-focused application for convention-center even
 
 **Current status:** Active beta. Use real work documents carefully, review automatically generated assignments and stage layouts before acting on them, and retain originals/backups. The packaged desktop applications do not require Node.js, Bun, Ollama, or Git on the destination computer.
 
+## Windows updater: download to Downloads
+
+In **Settings & AI → App Updates**, choose `beta` or `main` and click **Check for Updates**.
+When a newer, **published and checksum-verified Windows beta release** is available, the recommended **Download ZIP to Downloads** button saves its original versioned portable ZIP in your Windows **Downloads** folder. The app stays open; no program files or local data are replaced. If that filename already exists, a numbered copy is saved instead. Extract it to a separate folder and open `ShowPilot.exe` to use the new version. Do not extract over a running installation.
+
+The existing **Automatic install (optional)** button remains available if you want to retry the in-place updater. If no official release has been published yet (or your work firewall blocks the download), use **View GitHub build (manual)**. Linux builds continue through GitHub downloads. These download-only controls require a current Windows ShowPilot build that includes them.
+
 ## Get ShowPilot
 
 1. Open [ShowPilot GitHub Actions](https://github.com/nyteghost/showpilot/actions/workflows/showpilot.yml).
