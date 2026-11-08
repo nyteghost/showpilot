@@ -6,7 +6,7 @@ import {stageMentionedInEoc,hallLayoutAttached,eocAttendance} from "@/lib/showpi
 import {EVENT_ALLOWED_EXTENSIONS,extractEocFromPdf,guessEventFileKind,kindTitle,validateEventFile,type EventFileKind,type EventFileRecord,type EocSection} from "@/lib/showpilot-event-assets";
 
 type Document=EventFileRecord&{available:boolean};
-const kinds:EventFileKind[]=["work-order","eoc","diagram","other"];
+const kinds:EventFileKind[]=["exhibitor-order","work-order","eoc","diagram","other"];
 const focus:EocSection[]=["Event Notes","Engineering","Utility"];
 const displayBytes=(n:number)=>n<1024?String(n)+" B":n<1024**2?String(Math.round(n/1024))+" KB":(n/(1024**2)).toFixed(1)+" MB";
 const mime=(ext:string)=>ext==="pdf"?"application/pdf":ext==="png"?"image/png":ext==="webp"?"image/webp":"image/jpeg";
@@ -88,14 +88,15 @@ export function ShowPilotEventDocuments({show,onOpenStage,onOpenFloorMaps}:{show
   <div className="rounded-xl border p-4 space-y-3">
    <div className="flex flex-wrap items-center justify-between gap-2">
     <div><h3 className="font-semibold">Event documents</h3>
-     <p className="text-xs text-muted-foreground">Attach work orders, Event Order Confirmations (EOCs), diagrams and layouts to this show.</p></div>
+     <p className="text-xs text-muted-foreground">Attach Exhibitor Orders, Event Order Confirmations (EOCs), diagrams and layouts to this show.</p></div>
     <Button size="sm" variant="outline" onClick={()=>void backup()}><Download size={16}/> Back up attachments</Button>
    </div>
    <div className="flex flex-wrap items-center gap-4">
     <label className="text-sm">Type
      <select className="ml-2 rounded border bg-background p-2" value={category} onChange={e=>setCategory(e.target.value as EventFileKind|"auto")}>
       <option value="auto">Detect from filename</option>
-      <option value="work-order">Work order</option>
+      <option value="exhibitor-order">Exhibitor Order</option>
+      <option value="work-order">Other Work Order (legacy)</option>
       <option value="eoc">Event Order Confirmation</option>
       <option value="diagram">Diagram / event layout</option>
       <option value="other">Other event file</option>
