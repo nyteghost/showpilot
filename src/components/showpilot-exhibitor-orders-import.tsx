@@ -95,7 +95,7 @@ export function ShowPilotExhibitorOrdersImport({shows,onSaved}:{
       eventKey:match.status==="matched"?match.show!.key:"",
       acknowledged:false,selected:true,warning
      });
-    }catch(e)messages.push(candidate.source+": "+(e instanceof Error?e.message:String(e)));
+    }catch(e){messages.push(candidate.source+": "+(e instanceof Error?e.message:String(e)));}
    }
    setRows(old=>[...old,...staged]);
    setStatus(staged.length+" Work Order(s) ready for review. "+
