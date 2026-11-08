@@ -246,7 +246,7 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
    {queue.length>0&&<span className="text-muted-foreground">Next: {queue[0]!.name}</span>}
    {!archive&&queue.length>0&&<Button size="sm" variant="outline" disabled={busy} onClick={advance}>Review next ZIP</Button>}
   </div>}
-  {inspection&&archive&&<div className="space-y-3 rounded-lg border p-3>
+  {inspection&&archive&&<div className="space-y-3 rounded-lg border p-3">
    <strong className="break-all text-sm">{archive.name}</strong>
    <p className="text-xs text-muted-foreground">{inspection.files.length} supported documents ({Math.round(inspection.totalBytes/1024)} KB). {inspection.ignored.length} unsupported entries skipped.</p>
    <details className="text-xs"><summary className="cursor-pointer font-semibold">Review ZIP documents</summary>
