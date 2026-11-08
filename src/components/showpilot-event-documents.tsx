@@ -114,6 +114,9 @@ export function ShowPilotEventDocuments({show,zipSchedule,onOpenStage,onOpenFloo
  const attendance=eocAttendance(eocs);
  const stageRequested=eocs.some(file=>stageMentionedInEoc(file.eocExcerpts));
  const layoutAvailable=hallLayoutAttached(files.filter(f=>!f.archived));
+ const catalogRooms=show.rooms.split(",").map(x=>x.trim()).filter(Boolean);
+ const roomEvidence=zipSchedule?.detected?.evidence??[];
+ const eocAssignedRooms=[...new Set(roomAudit.assigned.map(x=>x.room))];
  return <div className="space-y-4">
   <div className="rounded-xl border p-4 space-y-3">
    <div className="flex flex-wrap items-center justify-between gap-2">
@@ -178,7 +181,16 @@ export function ShowPilotEventDocuments({show,zipSchedule,onOpenStage,onOpenFloo
      </div>
     </div>
     <div className="min-w-44 rounded-md border p-3 text-right" aria-label="EOC attendance">
-     <p className="text-xs font-semibold text-muted-foreground">Attendance</p>
+     <div className="flex items-center justify-end gap-1">
+      <p className="text-xs font-semibold text-muted-foreground">Attendance</p>
+      <ShowPilotWhy label="Attendance figure">
+       <p>ShowPilot searches the EOC's readable PDF text for an explicit attendance, attendee, guest count, or similar labeled number. It does not estimate attendance from rooms, meal counts, or client details.</p>
+       {attendance.readings.length?attendance.readings.map((item,i)=>
+        <p key={i}>Found <strong>{item.value}</strong> in <strong>{item.file}</strong>, PDF page {item.page}.</p>
+       ):<p>No labeled attendance value was extracted. Check the original EOC.</p>}
+       {attendance.conflicting&&<p>Different explicit figures were found, so no single value was selected.</p>}
+      </ShowPilotWhy>
+     </div>
      {attendance.readings.length?
       <><strong className="block text-lg tabular-nums">{attendance.conflicting?"Review figures":attendance.readings[0]!.value}</strong>
        <div className="space-y-1 text-xs text-muted-foreground">
@@ -190,12 +202,63 @@ export function ShowPilotEventDocuments({show,zipSchedule,onOpenStage,onOpenFloo
       </>:<p className="text-sm text-muted-foreground">Not found in EOC</p>}
     </div>
    </div>
+   <div className="rounded-lg border p-3 space-y-2" aria-label="EOC room assignments and room origin audit">
+    <div className="flex items-center gap-2">
+     <h4 className="font-semibold text-sm">Room assignment check</h4>
+     <ShowPilotWhy label="why these rooms are shown">
+      <p>The <strong>Events</strong> room list may combine saved Event Schedule rows, reviewed ZIP metadata, and manually selected rooms. It is not necessarily taken from this EOC.</p>
+      <p>To confirm rooms, ShowPilot reads the original EOC PDF's <strong>Function Space</strong> fields. Text such as <strong>No Space Assigned</strong> does not assign Hall C, Hall D, or any other room.</p>
+      <p>A ZIP filename or a casual reference to a hall is only a mention, not proof of a booking. Previous imports might not have retained exact text provenance.</p>
+     </ShowPilotWhy>
+    </div>
+    {roomAuditLoading?<p className="text-xs text-muted-foreground">Checking saved EOC Function Space lines and PDF page references…</p>:null}
+    {roomAuditWarning&&<p className="text-xs text-amber-600">{roomAuditWarning}</p>}
+    {roomAudit.unassigned.length>0&&<p className="text-xs text-muted-foreground">{roomAudit.unassigned.length} EOC Function Space line(s) say <strong>No Space Assigned</strong>. These do not establish any room.</p>}
+    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+     {catalogRooms.map(room=>{
+      const origin=explainSavedRoom(room,roomEvidence,roomAudit.assigned);
+      const status=roomAuditLoading?"Checking EOC…":
+       origin.status==="eoc-confirmed"?"EOC Function Space confirmed":
+       origin.status==="zip-assigned"?"ZIP assignment — verify EOC":
+       origin.status==="mention-only"?"Mention only — unverified":
+       "Not established by the inspected EOC";
+      return <div key={room} className="rounded border p-2 text-xs">
+       <div className="flex items-center gap-1">
+        <strong className="flex-1">{room}</strong>
+        <ShowPilotWhy label={room}>
+         <p>{origin.reason}</p>
+         {origin.sources.length?origin.sources.slice(0,10).map((item,i)=>
+          <div key={i} className="border-t pt-1">
+           <p><strong>{item.certainty==="assigned"?"Direct assignment":item.certainty==="mentioned"?"Text mention":"Legacy evidence"}:</strong> {item.source}</p>
+           <p className="whitespace-pre-wrap">{item.context}</p>
+          </div>
+         ):<p>No saved room source line was available. Compare the original EOC and your approved Event Schedule before assuming this location.</p>}
+        </ShowPilotWhy>
+       </div>
+       <p className={origin.status==="eoc-confirmed"&&!roomAuditLoading?"text-emerald-600":"text-amber-600"}>{status}</p>
+      </div>;
+     })}
+    </div>
+    {eocAssignedRooms.filter(room=>!catalogRooms.includes(room)).length>0&&
+     <p className="text-xs text-amber-600">EOC explicitly assigns additional rooms that are missing from the saved event catalog: {eocAssignedRooms.filter(room=>!catalogRooms.includes(room)).join(", ")}. Review before editing the event.</p>}
+    {!roomAuditLoading&&eocs.length>0&&!roomAudit.assigned.length&&
+     <p className="text-xs text-muted-foreground">No explicit room assignments were extracted from the available EOC Function Space lines. This does not mean that the event uses no rooms; check the original PDF.</p>}
+   </div>
    <p className="text-xs text-muted-foreground">Showing <strong>Event Notes, Engineering, and Utility</strong> with source PDF page numbers. Attendance is shown above when listed in the EOC. Always verify against the original PDF.</p>
    <div className="grid gap-3 lg:grid-cols-3">
     {focus.map(section=>{
      const matched=eocs.flatMap(file=>file.eocExcerpts.filter(x=>x.section===section).map(x=>({file,x})));
      return <div key={section} className="rounded border p-3 space-y-2">
-      <h4 className="font-semibold text-sm">{section}</h4>
+      <div className="flex items-center gap-1">
+       <h4 className="font-semibold text-sm">{section}</h4>
+       <ShowPilotWhy label={section+" EOC section"}>
+        <p>These lines were placed under <strong>{section}</strong> because the PDF text has a matching department heading. The text is copied from that heading until another recognized department begins; this is a reading aid, not AI-generated instructions.</p>
+        {matched.length?matched.map(({file,x},i)=>
+         <p key={i}><strong>Source:</strong> {file.name}, page {x.page}. The original PDF is authoritative.</p>
+        ):<p>There was no readable {section} section in the saved EOC excerpts.</p>}
+        <p>Room assignments are checked separately using the EOC's <strong>Function Space</strong> lines. A <strong>No Space Assigned</strong> entry cannot justify including Hall C or any other location.</p>
+       </ShowPilotWhy>
+      </div>
       {matched.length?matched.map(({file,x},i)=><div key={file.id+":"+i} className="space-y-1 border-t pt-2 text-xs">
        <strong>{file.name} · page {x.page}</strong>
        <p className="whitespace-pre-wrap break-words">{x.text}</p>
