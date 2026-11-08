@@ -1,7 +1,7 @@
 /** Local event file categories. Original documents are always preserved.
  * EOC summaries are a reading aid only; the PDF remains authoritative.
  */
-export const EVENT_FILE_KINDS=["work-order","eoc","diagram","other"] as const;
+export const EVENT_FILE_KINDS=["exhibitor-order","work-order","eoc","diagram","other"] as const;
 export type EventFileKind=typeof EVENT_FILE_KINDS[number];
 export type EocSection="Event Notes"|"Engineering"|"Utility"|"Attendance";
 export type EocExcerpt={section:EocSection;page:number;text:string};
@@ -11,11 +11,11 @@ export type EventFileRecord={
 };
 export const EVENT_ALLOWED_EXTENSIONS=["pdf","png","jpg","jpeg","webp","docx","xlsx","xls","csv","txt","dwg","dxf"] as const;
 export const EVENT_MAX_FILE_BYTES=25*1024*1024;
-export const kindTitle=(kind:EventFileKind)=>kind==="work-order"?"Work orders":kind==="eoc"?"Event Order Confirmations (EOCs)":kind==="diagram"?"Diagrams and event layouts":"Other event documents";
+export const kindTitle=(kind:EventFileKind)=>kind==="exhibitor-order"?"Exhibitor Orders":kind==="work-order"?"Other Work Orders (legacy)":kind==="eoc"?"Event Order Confirmations (EOCs)":kind==="diagram"?"Diagrams and event layouts":"Other event documents";
 export function guessEventFileKind(name:string):EventFileKind{
  const s=name.toLowerCase();
  if(/\beoc\b|event[\s_-]*order[\s_-]*confirmation/.test(s))return "eoc";
- if(/\bwo\b|work[\s_-]*order|utility[\s_-]*order/.test(s))return "work-order";
+ if(/\bwo\b|work[\s_-]*order|exhibitor[\s_-]*orders?|utility[\s_-]*order/.test(s))return "exhibitor-order";
  if(/diagram|layout|floor[\s_-]*plan|seating[\s_-]*plan|room[\s_-]*set|drawing/.test(s)||/\.(?:dwg|dxf)$/i.test(s))return "diagram";
  return "other";
 }
