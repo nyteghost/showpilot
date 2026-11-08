@@ -7,8 +7,8 @@ import {fileURLToPath} from "node:url";
 import {runInNewContext} from "node:vm";
 import type {PostConShow} from "@/lib/showpilot-postcon";
 import {
- buildingChecklistTasks,checklistKey,doneCount,STANDARD_SHOW_TASKS,
- tasksForShow
+ buildingChecklistTasks,checklistKey,doneCount,STANDARD_BUILDING_TASKS,STANDARD_SHOW_TASKS,
+ scheduledAirwallInstruction,tasksForShow
 } from "@/lib/showpilot-today-checklist";
 const nodeRequire=createRequire(new URL("../../desktop/today-checklist.cjs",import.meta.url));
 const script=readFileSync(fileURLToPath(new URL("../../desktop/today-checklist.cjs",import.meta.url)),"utf8");
@@ -47,14 +47,50 @@ describe("Today operations checklist templates",()=>{
   expect(tasks.find(t=>t.id==="eoc-airwall-review")?.detail).toMatch(/may refer to another day/);
   expect(tasksForShow(show,{state:"explicit-none",findings:[]})).toHaveLength(STANDARD_SHOW_TASKS.length);
  });
- it("keeps dated workbook and planning suggestions separately from standard tasks",()=>{
-  const tasks=buildingChecklistTasks(day,[{date:day,section:"BALLROOM",text:"Make ABE",source:"engineering-workbook"}],[
-   {date:day,section:"BALLROOM",text:"ABE"}
+ it("creates an airwall check and an AFTER-wall lighting check from the dated engineering workbook",()=>{
+  const workbook=[{date:day,section:"BALLROOM" as const,text:"Make ABE",source:"engineering-workbook" as const}];
+  const tasks=buildingChecklistTasks(day,workbook,[]);
+  expect(tasks).toHaveLength(STANDARD_BUILDING_TASKS.length+2);
+  const scheduled=tasks.filter(t=>t.source==="schedule");
+  expect(scheduled).toHaveLength(2);
+  expect(scheduled[0]?.text).toContain("Set / verify airwalls: Ballrooms — Make ABE");
+  expect(scheduled[0]?.detail).toContain("Dated engineering workbook");
+  expect(scheduled[1]?.text).toContain("Verify lighting settings after airwall setup");
+  expect(scheduled[1]?.text).toContain("Make ABE");
+  expect(scheduled[0]?.id+"-lighting").toBe(scheduled[1]?.id);
+ });
+ it("uses reviewed Event Schedule Make commands, full ballroom and multiple setups",()=>{
+  const tasks=buildingChecklistTasks(day,[],[
+   {date:day,section:"BALLROOM",text:"Make full ballroom"},
+   {date:day,section:"HALLS",text:"Make Hall AB"},
+   {date:"2026-11-09",section:"BALLROOM",text:"Make ABE"}
   ]);
-  expect(tasks.filter(t=>t.source==="schedule")).toHaveLength(2);
-  expect(tasks.find(t=>t.text.includes("Make ABE"))?.detail).toMatch(/Dated engineering workbook/);
-  expect(tasks.find(t=>t.text.includes("suggested airwall"))?.detail).toMatch(/Confirm against the EOC/);
-  expect(buildingChecklistTasks("2026-11-09",[{date:day,section:"BALLROOM",text:"Make ABE",source:"engineering-workbook"}],[]).filter(t=>t.source==="schedule")).toHaveLength(0);
+  expect(tasks.filter(t=>t.source==="schedule")).toHaveLength(4);
+  expect(tasks.some(t=>t.text.includes("Ballrooms — Make full ballroom"))).toBe(true);
+  expect(tasks.some(t=>t.text.includes("Halls — Make Hall AB"))).toBe(true);
+  expect(tasks.some(t=>t.text.includes("Verify lighting settings after airwall setup: Halls"))).toBe(true);
+  expect(tasks.some(t=>t.text.includes("Make ABE"))).toBe(false);
+ });
+ it("deduplicates matching workbook and reviewed-schedule moves without losing stable checkbox IDs",()=>{
+  const workbook=[{date:day,section:"BALLROOM" as const,text:"Make ABE",source:"engineering-workbook" as const}];
+  const suggestion=[{date:day,section:"BALLROOM" as const,text:"ABE"}];
+  const first=buildingChecklistTasks(day,workbook,suggestion).filter(t=>t.source==="schedule");
+  const again=buildingChecklistTasks(day,[],suggestion).filter(t=>t.source==="schedule");
+  expect(first).toHaveLength(2);
+  expect(again).toHaveLength(2);
+  expect(first.map(t=>t.id)).toEqual(again.map(t=>t.id));
+  expect(first[0]?.detail).toContain("Dated engineering workbook");
+ });
+ it("does not create scheduled airwall or lighting tasks when no dated move exists",()=>{
+  const tasks=buildingChecklistTasks(day,[],[]);
+  expect(tasks).toHaveLength(2);
+  expect(tasks.map(t=>t.id)).toEqual(["review-requests","handoff"]);
+  expect(buildingChecklistTasks("2026-11-09",[
+   {date:day,section:"BALLROOM",text:"Make ABE",source:"engineering-workbook"}
+  ],[{date:day,section:"BALLROOM",text:"Make full ballroom"}])).toHaveLength(2);
+  expect(scheduledAirwallInstruction("BALLROOM","Airwalls listed in EOC")).toBeNull();
+  expect(scheduledAirwallInstruction("BALLROOM","No airwall changes")).toBeNull();
+  expect(scheduledAirwallInstruction("BALLROOM","Move airwall between B and C")).toBeTruthy();
  });
  it("does not consider anything completed without an explicit checkoff",()=>{
   expect(doneCount(STANDARD_SHOW_TASKS,{},"id:41622")).toBe(0);
