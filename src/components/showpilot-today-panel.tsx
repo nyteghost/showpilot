@@ -203,14 +203,24 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
   <div className="flex flex-wrap items-start justify-between gap-3">
    <div>
     <h2 className="flex items-center gap-2 text-lg font-semibold"><CalendarDays size={20}/> Today · {fmt(today,{weekday:"long",month:"long",day:"numeric",year:"numeric"})}</h2>
-    <p className="text-sm text-muted-foreground">CGC shows from the saved Events catalog. Dates reflect the event's saved start–end range, not confirmed daily function times.</p>
+    <p className="text-sm text-muted-foreground">Today combines saved Event records with actual dated activity from Event Schedule and the engineering Excel workbook. EOC links attach only to confirmed Events records.</p>
    </div>
-   <Button size="sm" variant="outline" disabled={loading} onClick={()=>refresh(n=>n+1)}>
-    <RefreshCw size={15}/>{loading?"Loading…":"Refresh Events"}
-   </Button>
+   <div className="flex flex-wrap items-center gap-2">
+    <input ref={uploadPicker} className="sr-only" type="file" accept=".xlsx" aria-label="Choose dated weekly engineering Excel workbook"
+     onChange={e=>{const file=e.target.files?.[0];if(file)void importEngineeringWorkbook(file);}}/>
+    <Button size="sm" variant="outline" disabled={uploadBusy} onClick={()=>uploadPicker.current?.click()}>
+     {uploadBusy?"Importing workbook…":"Use engineering workbook"}
+    </Button>
+    <Button size="sm" variant="outline" disabled={loading} onClick={()=>refresh(n=>n+1)}>
+     <RefreshCw size={15}/>{loading?"Loading…":"Refresh Events"}
+    </Button>
+   </div>
   </div>
   {warning&&<p role="alert" className="rounded-lg border border-amber-500 p-3 text-sm">{warning}</p>}
   {message&&<p role="status" className="rounded-lg border p-3 text-sm">{message}</p>}
+  {sourceWarnings.length>0&&<div className="rounded-lg border border-amber-500 p-3 text-xs" role="status">
+   {sourceWarnings.map((warning,i)=><p key={i}>{warning}</p>)}
+  </div>}
   <div className="grid gap-3 sm:grid-cols-3">
    <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Shows on today's date</p>
     <strong className="text-2xl tabular-nums">{currentShows.length}</strong></div>
@@ -221,8 +231,8 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
   </div>
   {loading&&<p role="status" className="text-sm text-muted-foreground">Loading the local event catalog and EOC notes…</p>}
   {!loading&&!warning&&currentShows.length===0&&<div className="rounded-xl border p-5">
-   <strong>No saved CGC shows cover today's date.</strong>
-   <p className="mt-1 text-sm text-muted-foreground">Import an Ungerboeck Event Schedule or event ZIP to populate the Events catalog. This does not confirm the building has no activity.</p>
+   <strong>No saved CGC activity is available for today's date.</strong>
+   <p className="mt-1 text-sm text-muted-foreground">Use engineering workbook above to import the dated Excel schedule, or import an Ungerboeck Event Schedule. No saved activity does not mean the building is inactive.</p>
    <Button className="mt-3" variant="outline" size="sm" onClick={()=>
     window.dispatchEvent(new CustomEvent("showpilot:navigate",{detail:{tab:"events"}}))
    }>Open Event Schedule</Button>
@@ -231,19 +241,24 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
    {currentShows.map(show=>{
     const info=detail(show);
     const report=info.airwalls;
+    const unlinked=isUnlinkedTodayShow(show,joined);
+    const dayDetails=joined.daily[show.key]?.[today]??[];
     return <article key={show.key} className="rounded-xl border p-4 space-y-3">
      <div className="flex flex-wrap items-start justify-between gap-3">
       <div>
        <h3 className="font-semibold">{show.showName}</h3>
        <p className="text-xs text-muted-foreground">Event {show.eventId?"#"+show.eventId:"(no ID)"} · {show.rooms||"Rooms not listed"}</p>
        <p className="text-xs text-muted-foreground">{show.startDate??show.showDate} – {show.showDate}</p>
+       {joined.origin[show.key]&&<p className="text-xs text-muted-foreground">Today's source: {joined.origin[show.key]==="engineering-workbook"?"engineering Excel workbook":"reviewed Event Schedule"}</p>}
+       {dayDetails.length>0&&<p className="mt-2 text-xs font-medium break-words">Today: {dayDetails.join(" · ")}</p>}
       </div>
-      <Button size="sm" variant="outline" onClick={()=>openSavedEvent(show.key)}><FolderOpen size={15}/> View in Events</Button>
+      {unlinked?<span className="text-xs text-amber-600">Schedule-only entry · no linked Event ID/EOC</span>:
+       <Button size="sm" variant="outline" onClick={()=>openSavedEvent(show.key)}><FolderOpen size={15}/> View in Events</Button>}
      </div>
      <div className="grid gap-3 lg:grid-cols-2">
       <div className="space-y-2 rounded-lg border p-3">
        <h4 className="flex items-center gap-2 text-sm font-semibold"><FileText size={16}/> Event Order Confirmation</h4>
-       {info.eocs.length?info.eocs.map(file=>
+       {unlinked?<p className="text-xs text-muted-foreground">Not linked to a saved Events record. Import this show's Event ID to link its EOC.</p>:info.eocs.length?info.eocs.map(file=>
         <div key={file.id} className="flex flex-wrap items-center justify-between gap-2 border-t pt-2 text-xs">
          <span className="min-w-0 break-all">{file.name}{!file.available?" (file unavailable)":""}</span>
          <Button size="sm" variant="outline" disabled={!file.available} onClick={()=>void openEoc(file)}>
@@ -274,16 +289,21 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
   </div>
   <section className="space-y-3" aria-label="Scheduled airwall changes today">
    <h3 className="flex items-center gap-2 font-semibold"><AlertTriangle size={18}/> Airwall changes suggested for today</h3>
-   {todayChanges.length?<div className="rounded-lg border border-amber-500 p-3 space-y-1">
-    {todayChanges.map((task,i)=><p key={i} className="text-sm">{wallTaskLabel(task)} — check layout before moving</p>)}
-    <p className="text-xs text-muted-foreground">Suggestions derived from your last locally saved Event Schedule, not approved work orders. Confirm room configuration and timing in the EOC.</p>
+   {(todayChanges.length>0||todayWorkbookWalls.length>0)?<div className="rounded-lg border border-amber-500 p-3 space-y-1">
+    {todayWorkbookWalls.map((task,i)=><p key={"workbook-"+i} className="text-sm">
+     <strong>Engineering workbook:</strong> {task.text} ({task.section==="HALLS"?"Halls":"Ballrooms"}) — verify before moving
+    </p>)}
+    {todayChanges.map((task,i)=><p key={"suggestion-"+i} className="text-sm">
+     <strong>Schedule suggestion:</strong> {wallTaskLabel(task)} — check layout before moving
+    </p>)}
+    <p className="text-xs text-muted-foreground">Workbook tasks retain their original dated Excel instructions. Other suggestions come from the locally saved Event Schedule. Confirm room configuration and timing in the EOC.</p>
    </div>:<p className="rounded-lg border p-3 text-sm text-muted-foreground">No dated airwall-change suggestion is available from the last saved Event Schedule. This is not confirmation that no walls need moving.</p>}
   </section>
   <section className="space-y-3" aria-label="Easy seven-day event view">
    <div className="flex flex-wrap items-center justify-between gap-3">
     <div>
      <h3 className="text-lg font-semibold">Week at a glance</h3>
-     <p className="text-sm text-muted-foreground">{rangeLabel(week)} · Monday–Sunday · {currentWeekShows.length} unique saved shows</p>
+     <p className="text-sm text-muted-foreground">{rangeLabel(week)} · Monday–Sunday · {currentWeekShows.length} unique CGC shows</p>
     </div>
     <div className="flex items-center gap-2">
      <Button variant="outline" size="sm" onClick={()=>setWeek(addIsoDays(week,-7))} aria-label="Previous week"><ChevronLeft size={16}/></Button>
@@ -294,8 +314,9 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
    <div className="overflow-x-auto rounded-xl border" role="region" aria-label="Seven day CGC Events calendar" tabIndex={0}>
     <div className="grid min-w-[940px] grid-cols-7 divide-x">
      {dates.map(date=>{
-      const dayShows=currentWeekShows.filter(s=>cgcShowOnDay(s,date));
+      const dayShows=currentWeekShows.filter(s=>showHasActivityOnDay(s,date,joined));
       const wallChanges=scheduledWallChanges(suggestions,date);
+      const sheetWalls=workbookWalls.filter(t=>t.date===date);
       const isToday=date===today;
       return <div key={date} className={"min-h-52 p-2 space-y-2 "+(isToday?"bg-primary/5":"")}>
        <div className="border-b pb-2">
@@ -303,26 +324,32 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
         <p className="text-xs text-muted-foreground">{dayShows.length} show{dayShows.length===1?"":"s"}</p>
        </div>
        {dayShows.map(show=>{
+        const unlinked=isUnlinkedTodayShow(show,joined);
         const report=detail(show);
         const hasEoc=report.eocs.some(f=>f.available);
         const wall=report.airwalls.state;
-        return <button type="button" key={show.key} onClick={()=>openSavedEvent(show.key)}
+        return <button type="button" key={show.key} onClick={()=>unlinked?
+         window.dispatchEvent(new CustomEvent("showpilot:navigate",{detail:{tab:"events"}})):openSavedEvent(show.key)}
          className="block w-full rounded-md border p-2 text-left text-xs hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
          <strong className="block break-words">{show.showName}</strong>
          <span className="mt-1 block text-muted-foreground break-words">{show.rooms}</span>
-         <span className="mt-1 block text-muted-foreground">{hasEoc?"EOC attached":"EOC missing"}</span>
+         <span className="mt-1 block text-muted-foreground">{unlinked?"Schedule only · match Event ID to attach EOC":hasEoc?"EOC attached":"EOC missing"}</span>
+         {(joined.daily[show.key]?.[date]?.length??0)>0&&<span className="mt-1 block text-muted-foreground">{joined.daily[show.key]![date]!.slice(0,3).join(" · ")}</span>
          {(wall==="action"||wall==="review")&&<span className="mt-1 block font-semibold text-amber-600">Airwall note — review</span>}
         </button>;
        })}
+       {sheetWalls.map((task,i)=><div key={"sheet-wall-"+i} className="rounded-md border border-amber-500 px-2 py-1 text-xs">
+        <strong>Engineering task</strong><p>{task.text}</p>
+       </div>)}
        {wallChanges.map((task,i)=><div key={"wall-"+i} className="rounded-md border border-amber-500 px-2 py-1 text-xs">
         <strong>Airwall suggestion</strong><p>{wallTaskLabel(task)}</p>
        </div>)}
-       {!dayShows.length&&!wallChanges.length&&<p className="text-xs text-muted-foreground">No saved events</p>}
+       {!dayShows.length&&!wallChanges.length&&!sheetWalls.length&&<p className="text-xs text-muted-foreground">No saved events</p>}
       </div>;
      })}
     </div>
    </div>
-   <p className="text-xs text-muted-foreground">The weekly view shows saved event date ranges. Airwall notes may apply to a different day; dated suggestions come from the last saved Event Schedule. Verify the EOC, current room setup and work orders before moving walls.</p>
+   <p className="text-xs text-muted-foreground">Dated Event Schedule and workbook activity takes precedence over incomplete Events catalog date ranges. Document-only airwall notes may apply to a different day; original engineering tasks retain their Excel dates. Verify the EOC and current room setup.</p>
   </section>
  </section>;
 }
