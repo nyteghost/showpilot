@@ -221,7 +221,7 @@ export async function explainBallroomWarningsLocally(
  return parsed.notes.flatMap((raw:unknown)=>{
   if(!raw||typeof raw!=="object")return [];
   const item=raw as Record<string,unknown>;
-  if(!Number.isInteger(item.warningIndex)||typeof item.warningIndex!=="number"||
+  if(typeof item.warningIndex!=="number"||!Number.isInteger(item.warningIndex)||
    item.warningIndex<0||item.warningIndex>=limited.length||seen.has(item.warningIndex)||
    typeof item.interpretation!=="string"||typeof item.check!=="string"||
    !item.interpretation.trim()||!item.check.trim()||
