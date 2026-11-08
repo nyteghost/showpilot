@@ -209,7 +209,7 @@ export function ShowPilotEventZipImport({shows,selectedKey,onImported,active=tru
    onImported(key);setQueueReviewed(old=>old+1);
    const next=queue[0];
    setQueue(old=>old.slice(1));reset();
-   if(next)void stage(next);
+   if(next)await stage(next);
    else setStatus(result.imported.length+" document(s) imported. "+result.duplicates.length+
     " duplicates skipped; "+result.ignored.length+" unsupported entries ignored."+
     (result.errors.length?" "+result.errors.length+" file(s) failed: "+
