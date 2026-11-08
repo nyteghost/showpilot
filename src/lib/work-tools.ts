@@ -109,7 +109,7 @@ export function attachShowNames(entries:readonly EventEntry[],rows:readonly Even
 }
 /** Do not export an anonymous function as if its description were a show. */
 export function assertNamedScheduleEntries(entries:readonly EventEntry[]):void{
- const bad=entries.filter(e=>!(e.showName||e.title).trim()||isFunctionOnlyTitle(e.showName||e.title));
+ const bad=entries.filter(e=>!(e.showName||e.title).trim()||isFunctionOnlyTitle(e.showName||e.title)||Boolean(e.eventId&&!e.showName?.trim()));
  if(bad.length){
   const examples=bad.slice(0,3).map(e=>e.date+" "+e.space+
    (e.eventId?" (Event ID "+e.eventId+")":"")+" — "+e.title).join("; ");
