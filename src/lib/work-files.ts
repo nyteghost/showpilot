@@ -1,6 +1,6 @@
 // Browser-only file readers for work tools. Libraries load on demand.
 import { planWeeks, airwallHolds, needText, shiftText, workedHours, readAvail, SHOW_STAFF, ON_CALL, type Avail, type DayPlan } from "./staffing";
-import { BALLROOM_ROWS, ENGINEER_ROSTER, HALL_ROWS, weekLayouts, mondayOf as mondayIso, expandSpace, type WeekLayout, type TaskNote, DEFAULT_SCHEDULE_NAME, parseShift, reportDateToIso, type EventEntry, type EventRow, type Shift } from "./work-tools";
+import { BALLROOM_ROWS, ENGINEER_ROSTER, HALL_ROWS, assertNamedScheduleEntries, weekLayouts, mondayOf as mondayIso, expandSpace, type WeekLayout, type TaskNote, DEFAULT_SCHEDULE_NAME, parseShift, reportDateToIso, type EventEntry, type EventRow, type Shift } from "./work-tools";
 
 import {readShowPilotEventSchedulePages, eventScheduleDate, type SchedulePdfPage} from "./showpilot-event-schedule";
 
@@ -719,6 +719,7 @@ export async function eventsWorkbook(entries: EventEntry[], existing?: File, tas
   const module = await import("exceljs");
   const ExcelJS = module.default ?? module;
   const wb: XWorkbook = new ExcelJS.Workbook();
+  assertNamedScheduleEntries(entries);
   // Only the actual CGC Hall A-D and Ballroom A-G rows exist in the user's
   // workbook. Never invent an "Other Spaces" block; fail visibly so the venue
   // alias can be reviewed rather than dropping or misplacing an event.
