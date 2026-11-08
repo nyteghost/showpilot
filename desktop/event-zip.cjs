@@ -141,6 +141,31 @@ function inspect(input){
  if(!files.length)throw Error("This ZIP has no supported work orders, EOCs, diagrams or other documents.");
  return {files,ignored,manifest,totalBytes:files.reduce((n,f)=>n+f.bytes,0)};
 }
+/** Candidate PDF bytes for offline page-content classification in the
+ * renderer. Do NOT write extracted data to disk. Validate ZIP structure and
+ * CRC first, then bound total memory and per-file size. Named EOCs and orders
+ * may be inspected for warnings, but are never silently reclassified. */
+function pdfCandidates(input){
+ const parsed=readZip(input);
+ const files=[],skipped=[];
+ let total=0;
+ const MAX_CANDIDATES=36,MAX_CANDIDATE_BYTES=12*1024*1024,MAX_TOTAL=64*1024*1024;
+ for(const entry of parsed.entries){
+  if(!/\.pdf$/i.test(entry.path))continue;
+  const kind=classify(entry.path);
+  if(kind==="diagram")continue; // Already identified by name/folder.
+  if(entry.uncompressed>MAX_CANDIDATE_BYTES||
+    files.length>=MAX_CANDIDATES||total+entry.uncompressed>MAX_TOTAL){
+   skipped.push(entry.path);continue;
+  }
+  const bytes=decodeEntry(parsed.bytes,entry,MAX_CANDIDATE_BYTES);
+  files.push({path:entry.path,name:entry.path.split("/").pop(),kind,
+   sha256:crypto.createHash("sha256").update(bytes).digest("hex"),
+   bytes:new Uint8Array(bytes)});
+  total+=bytes.byteLength;
+ }
+ return {files,skipped};
+}
 function contents(input){
  const parsed=readZip(input),preview=inspect(parsed.bytes);
  const files=preview.files.map(f=>{
@@ -218,4 +243,4 @@ function reviewSources(input){
  return {sources,skipped,manifest:pack.manifest};
 }
 
-module.exports={inspect,contents,reviewSources,readZip,crc32,MAX_ZIP,MAX_DOCUMENT,MAX_ENTRIES};
+module.exports={inspect,contents,pdfCandidates,reviewSources,readZip,crc32,MAX_ZIP,MAX_DOCUMENT,MAX_ENTRIES};
