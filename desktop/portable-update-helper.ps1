@@ -10,6 +10,7 @@ param(
   [string]$ArchivePath = '',
   [string]$BackupDir = '',
   [int]$AppProcessId = 0,
+  [string]$ExpectedVersion = '',
   [string]$LogPath = '',
   [switch]$SmokeTestNoRelaunch
 )
@@ -33,6 +34,7 @@ function Write-UpdateResult([string]$status,[string]$message) {
       status=$status
       message=$message
       updated=(Get-Date -Format o)
+      version=$ExpectedVersion
     } | ConvertTo-Json -Compress
     [System.IO.File]::WriteAllText($temp,$payload,[System.Text.Encoding]::UTF8)
     [System.IO.File]::Copy($temp,$target,$true)
@@ -56,7 +58,7 @@ function Running-ShowPilotProcesses {
   return @($list)
 }
 function Wait-For-Old-App {
-  Write-UpdateLog 'Waiting for all ShowPilot browser/GPU/renderer processes to exit.'
+  Write-UpdateLog ('Waiting for all ShowPilot browser/GPU/renderer processes to exit (main PID '+$AppProcessId+').')
   for ($i=0;$i -lt 180;$i++) {
     $main=(Get-Process -Id $AppProcessId -ErrorAction SilentlyContinue)
     $children=@(Running-ShowPilotProcesses)
@@ -66,18 +68,29 @@ function Wait-For-Old-App {
     }
     Start-Sleep -Milliseconds 500
   }
-  throw 'Other ShowPilot processes are still running or holding files open. The original installation was not modified.'
+  $remaining=@(Running-ShowPilotProcesses)
+  $parentStillRunning=$null -ne (Get-Process -Id $AppProcessId -ErrorAction SilentlyContinue)
+  Write-UpdateLog ('Timed out waiting: remaining app processes='+$remaining.Count+', original PID still present='+$parentStillRunning+'.')
+  throw 'ShowPilot did not fully exit (browser/GPU/renderer process lock). No app folder was replaced. Close all ShowPilot windows and check the update log.'
 }
 function Launch-ShowPilot([string]$directory) {
   $exe=Join-Path $directory 'ShowPilot.exe'
   if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) {
     throw ('Cannot find ShowPilot.exe for restart at '+$directory)
   }
+  Write-UpdateLog 'Starting the newly installed ShowPilot.exe.'
   $appProcess=Start-Process -FilePath $exe -WorkingDirectory $directory -PassThru
   Start-Sleep -Seconds 4
   $appProcess.Refresh()
+  # Electron can hand off to an existing instance and allow the initial
+  # process to exit. Only consider it failed when no instance from the
+  # freshly installed directory survives the hand-off.
   if ($appProcess.HasExited) {
-    throw ('ShowPilot closed immediately after launch (exit code '+$appProcess.ExitCode+').')
+    $active=@(Running-ShowPilotProcesses)
+    if ($active.Count -eq 0) {
+      throw ('ShowPilot exited immediately after relaunch (exit code '+$appProcess.ExitCode+').')
+    }
+    Write-UpdateLog ('Launcher handed off; '+$active.Count+' ShowPilot process(es) are running from the installed folder.')
   }
   return $appProcess
 }
@@ -170,7 +183,7 @@ function Install-Zip {
   if (-not (Test-Path -LiteralPath $InstallDir -PathType Container)) { throw 'Original installation was not found.' }
   if (Test-Path -LiteralPath $BackupDir) { throw 'Previous-version backup destination already exists.' }
   Require-Executable $StageDir
-  Write-UpdateLog 'Install helper started and validated the new executable.'
+  Write-UpdateLog ('Install helper started and validated the new executable; expected version='+$ExpectedVersion+'.')
   $movedOld=$false
   $installedNew=$false
   try {
