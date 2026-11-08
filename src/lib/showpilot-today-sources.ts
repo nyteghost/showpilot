@@ -179,7 +179,8 @@ function parseActivityCell(value:unknown):{title:string;details:string[]}[]{
 export async function readEngineeringWeekWorkbook(bytes:ArrayBuffer|Uint8Array):Promise<WorkbookActivityResult>{
  const module=await import("exceljs");const ExcelJS=module.default??module;
  const wb=new ExcelJS.Workbook();
- await wb.xlsx.load(bytes instanceof Uint8Array?bytes:new Uint8Array(bytes));
+ const data:ArrayBuffer=bytes instanceof Uint8Array?(()=>{const copy=new ArrayBuffer(bytes.byteLength);new Uint8Array(copy).set(bytes);return copy;})():bytes;
+ await wb.xlsx.load(data);
  const activities:DailyActivity[]=[],airwalls:WorkbookWallTask[]=[],warnings:string[]=[];
  let recognized=0;
  for(const ws of wb.worksheets){
