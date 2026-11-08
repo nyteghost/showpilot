@@ -196,7 +196,8 @@ describe("Today reconciles three possible airwall setups without three immediate
   expect(plan.tasks).toEqual([]);
   expect(plan.review).toHaveLength(2);
   expect(plan.review.every(x=>x.kind==="conflict")).toBe(true);
-  expect(plan.review[0]?.reason).toMatch(/order or handoff times/);
+  expect(plan.review[0]?.reason).toMatch(/room refreshes or room changes/i);
+  expect(plan.review[0]?.reason).toMatch(/sequence or handoff times/i);
  });
  it("flags an urgent EOC/workbook disagreement instead of creating two incompatible checkboxes",()=>{
   const t=transition("urgent","2026-11-07","2026-11-08",["ABCDEFG"]);
