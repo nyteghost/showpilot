@@ -13,6 +13,7 @@ type Api={
  check:()=>Promise<Check>;
  open:()=>Promise<unknown>;
  openLog:()=>Promise<unknown>;
+ copyReport:()=>Promise<{copied:boolean;hasLog:boolean}>;
  install:()=>Promise<{cancelled?:boolean;started?:boolean;version?:string}>;
  onProgress:(callback:(event:UpdateProgress)=>void)=>(()=>void);
 };
@@ -28,6 +29,7 @@ export function ShowPilotUpdates(){
  const [progress,setProgress]=useState<UpdateProgress|null>(null);
  const [lastUpdate,setLastUpdate]=useState<LastUpdate|null>(null);
  const [error,setError]=useState("");
+ const [copiedReport,setCopiedReport]=useState("");
  useEffect(()=>{if(api)void api.status().then(s=>{
   setChannel(s.channel);setVersion(s.installedVersion);setPlatform(s.platform);setLastUpdate(s.lastUpdate??null);
  }).catch(e=>setError(String(e)))},[api]);
@@ -62,6 +64,17 @@ export function ShowPilotUpdates(){
  const openLog=async()=>{
   if(!api?.openLog)return;
   try{await api.openLog()}catch(e){setError(e instanceof Error?e.message:String(e))}
+ };
+ const copyReport=async()=>{
+  if(!api?.copyReport)return;
+  setCopiedReport("");
+  try{
+   const result=await api.copyReport();
+   setCopiedReport(result.copied?(result.hasLog?
+    "Updater report copied. Paste it into the ShowPilot troubleshooting chat to identify the specific install blocker.":
+    "No installation log exists yet. Basic updater status was copied."):
+    "Could not copy the updater report.");
+  }catch(e){setError("Couldn't copy updater diagnostics: "+(e instanceof Error?e.message:String(e)));}
  };
  const install=async()=>{
   if(!api?.install||installing)return;
@@ -122,6 +135,13 @@ export function ShowPilotUpdates(){
     </div>
     <p className="text-xs text-muted-foreground">{progress.phase==="downloading"?progress.percent+"% downloaded":"Windows portable update · "+progress.phase}</p>
    </div>}
+   <div className="flex flex-wrap items-center gap-2">
+    <button type="button" className="rounded border border-border px-3 py-2 text-xs font-semibold" onClick={()=>void copyReport()}>
+     Copy updater diagnostics
+    </button>
+    <span className="text-xs text-muted-foreground">Copies the installer log and version results locally with filesystem paths redacted; nothing is sent automatically.</span>
+   </div>
+   {copiedReport&&<p className="text-xs" role="status">{copiedReport}</p>}
    <p className="text-xs text-muted-foreground">The in-app updater asks for confirmation before closing ShowPilot. Save any unfinished work first. It downloads the official public GitHub Release, checks its SHA-256 checksum, stages the files without administrator rights, then closes, replaces and restarts the app. Your SQLite memory and event files stay in the user-data folder. The previous app folder is retained for rollback. If installation is blocked by IT permissions, use the GitHub manual download instead.</p>
   </>}
   {error&&<p role="alert" className="text-sm text-red-500">{error}</p>}
