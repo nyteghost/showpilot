@@ -237,7 +237,10 @@ function spawnInstall(paths,expectedVersion){
     "-ExpectedVersion",expectedVersion,"-ReadyPath",paths.readyPath,
     ...(process.env.SHOWPILOT_UPDATER_SMOKE_TEST==="1"&&paths.smokeTestNoRelaunch===true?
       ["-SmokeTestNoRelaunch"]:[])]),
-    {cwd:paths.userData,windowsHide:true,detached:true,stdio:["ignore",fd,fd],shell:false});
+    // Windows PowerShell 5.1 can exit 0 BEFORE -File executes when launched
+    // with DETACHED_PROCESS + windowsHide. A hidden, non-detached child runs
+    // normally; it remains an independent Windows process after Electron exits.
+    {cwd:paths.userData,windowsHide:true,detached:false,stdio:["ignore",fd,fd],shell:false});
    child.once("error",failure);
    child.once("exit",(code,signal)=>{
     traceUpdate(paths,"Detached installer exited: code="+code+", signal="+(signal||"none")+".");
