@@ -280,6 +280,48 @@ let updateRunning=false;
 function notify(sender,progress){
  try{if(sender&&!sender.isDestroyed())sender.send("showpilot-update:progress",progress)}catch{}
 }
+/** Download a checksum-verified official ZIP to the user's Downloads folder.
+ * This does not stage, install, restart, or overwrite any existing file.
+ * Only official release assets discovered and validated by app-updates may enter. */
+async function downloadWindowsReleaseToDownloads(sender,release,installedVersion){
+ if(updateRunning)throw new Error("Another update download is in progress.");
+ if(process.platform!=="win32"||!app.isPackaged)
+  throw new Error("Direct Downloads-folder updates require the packaged Windows ShowPilot app.");
+ if(!release||typeof release.archiveName!=="string"||
+    !/^ShowPilot-v[0-9]+\.[0-9]+\.[0-9]+-beta-Portable-Windows\.zip$/.test(release.archiveName)||
+    !release.archiveUrl||!release.checksumUrl||
+    !officialReleaseAssetUrl(release.archiveUrl,release.tag,release.archiveName)||
+    !officialReleaseAssetUrl(release.checksumUrl,release.tag,release.archiveName+".sha256"))
+  throw new Error("No verified official ShowPilot Windows release is available.");
+ if(semverCompare(release.version,installedVersion)!==1)
+  throw new Error("The available build is not newer than your installed version.");
+ updateRunning=true;
+ let target="";
+ try{
+  const directory=app.getPath("downloads");
+  if(!directory||!fs.statSync(directory).isDirectory())
+   throw new Error("Windows Downloads folder is unavailable. Check folder permissions.");
+  // Keep the real ZIP filename; choose a new name if an older copy exists.
+  const suffix=".zip",stem=release.archiveName.slice(0,-suffix.length);
+  for(let i=0;i<100;i++){
+   const candidate=path.join(directory,stem+(i?" ("+i+")":"")+suffix);
+   if(!fs.existsSync(candidate)){target=candidate;break}
+  }
+  if(!target)throw new Error("Too many copies of this ShowPilot update already exist in Downloads.");
+  notify(sender,{phase:"verifying",message:"Checking official release checksum…",percent:0});
+  const checksum=await checksumFromRelease(release.checksumUrl);
+  notify(sender,{phase:"downloading",message:"Saving ShowPilot ZIP to Downloads…",percent:0});
+  await downloadVerified(release.archiveUrl,target,release.archiveBytes,checksum,pct=>
+    notify(sender,{phase:"downloading",message:"Saving ShowPilot ZIP to Downloads…",percent:pct}));
+  notify(sender,{phase:"downloaded",message:"Verified ShowPilot ZIP saved to Downloads. No app files were changed.",percent:100});
+  return {downloaded:true,version:release.version,filename:path.basename(target),folder:"Downloads"};
+ }catch(error){
+  // downloadVerified deletes its own partial download on failure. Do not
+  // delete an unrelated file if the path was taken in a race with another app.
+  notify(sender,{phase:"error",message:error instanceof Error?error.message:String(error),percent:0});
+  throw error;
+ }finally{updateRunning=false}
+}
 async function installWindowsRelease(sender,release,installedVersion){
  if(updateRunning)throw new Error("An update is already downloading.");
  if(!release||!release.archiveUrl||!release.checksumUrl)
@@ -336,4 +378,4 @@ async function installWindowsRelease(sender,release,installedVersion){
 }
 module.exports={semverCompare,officialReleaseAssetUrl,releaseAssetsForRun,
  assertDownloadUrl,checksumFromRelease,downloadVerified,prepareInstallPaths,installWindowsRelease,
- readUpdateResult,updateResult,updateLogPath,spawnInstall};
+ readUpdateResult,updateResult,updateLogPath,spawnInstall,downloadWindowsReleaseToDownloads};
