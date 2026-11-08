@@ -326,15 +326,44 @@ export function FloorMapPanel({initialEventDocuments,selectedEventId=""}:{initia
 
   return (
     <div className="space-y-3 pt-2">
+      <div className="rounded-lg border p-3 space-y-2">
+        <p className="font-semibold text-sm">Event ID — link layout and saved Exhibitor Orders</p>
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="min-w-44 flex-1 text-xs">CGC Event ID
+            <Input className="mt-1" value={eventIdInput} placeholder="e.g. 41622"
+              list="floor-map-saved-events"
+              onChange={e=>{setEventIdInput(e.target.value);setLinkStatus("");}}/>
+            <datalist id="floor-map-saved-events">{knownShows.filter(s=>s.eventId&&
+              !/CEPAC|Cobb Energy|Performing Arts/i.test(s.showName+" "+s.rooms))
+              .map(s=><option value={s.eventId} key={s.key}>{s.showName}</option>)}</datalist>
+          </label>
+          <Button size="sm" disabled={linking||selectedShow.status!=="matched"||!pendingLayout}
+            onClick={()=>void loadEventLayoutAndOrders(eventIdInput,true)}>
+            {linking?"Linking…":"Link uploaded layout & fill orders"}
+          </Button>
+          <Button size="sm" variant="outline" disabled={linking||selectedShow.status!=="matched"}
+            onClick={()=>void loadEventLayoutAndOrders(eventIdInput,false)}>
+            Load saved layout & orders
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {selectedShow.status==="matched"&&selectedShow.show?
+           "Matched: "+selectedShow.show.showName+" (#"+selectedShow.show.eventId+")":
+           selectedShow.status==="ambiguous"?"More than one Events record has this ID; resolve the duplicate first.":
+           eventIdInput?"No unique saved CGC event matches this ID. Import it in Events before linking.":"Enter an existing Event ID, or choose a saved event from the suggestions."}
+        </p>
+        <p className="text-xs text-muted-foreground">Layouts uploaded separately from an EOC ZIP are saved under the confirmed Events record. Existing itemized Better Work Order Items PDFs in Exhibitor Orders automatically supply booth utility information; unclear booth locations still require review.</p>
+        {linkStatus&&<p role="status" className="text-xs">{linkStatus}</p>}
+      </div>
       <label
         onDragOver={(e) => { e.preventDefault(); setOver(true); }}
         onDragLeave={() => setOver(false)}
-        onDrop={(e) => { e.preventDefault(); setOver(false); const l = [...e.dataTransfer.files]; if (l.length) void read(l); }}
+        onDrop={(e) => { e.preventDefault(); setOver(false); const l = [...e.dataTransfer.files]; if (l.length) importLayoutFiles(l); }}
         className={`flex cursor-pointer flex-col items-center justify-center gap-1 rounded-md border border-dashed p-4 text-center text-sm hover:bg-muted ${over ? "border-primary bg-muted text-foreground" : "border-border text-muted-foreground"}`}
       >
-        <span className="flex items-center gap-2"><FileUp className="size-4" /> Select floor plan PDF and itemized Better Work Order Items PDF together</span>
-        <span className="text-xs">Either order is fine — I tell them apart by what's inside.</span>
-        <input type="file" accept="application/pdf" multiple className="sr-only" onChange={(e) => { const l = [...(e.target.files ?? [])]; if (l.length) void read(l); e.target.value = ""; }} />
+        <span className="flex items-center gap-2"><FileUp className="size-4" /> Upload floor layout PDF or image (and optionally Better Work Order Items PDF)</span>
+        <span className="text-xs">Choose an Event ID above to load saved order items automatically, even when the layout was not in the EOC ZIP.</span>
+        <input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp" multiple className="sr-only" onChange={(e) => { const l = [...(e.target.files ?? [])]; if (l.length) importLayoutFiles(l); e.target.value = ""; }} />
       </label>
       <p className="text-xs text-muted-foreground">10 amp = yellow · 20 amp = orange · both = split · more than one → x#. Small squares: red 30 amp, green 60 amp, blue water, purple compressed air. Showcase power is yellow (SCase xN), track lights show A / B xN. Runs in this browser; answers you give are remembered for the same plan.</p>
       {itemized.length>0&&<div className="rounded-md border p-3 space-y-2 text-sm">
