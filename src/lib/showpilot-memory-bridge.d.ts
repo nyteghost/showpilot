@@ -42,6 +42,7 @@ export type MemoryBridge={
  postConArchive(id:string):Promise<{archived:true}>;
  showCatalogList():Promise<ShowCatalogRecord[]>;
  showCatalogSave(shows:readonly ShowCatalogRecord[]):Promise<{saved:true;added:number;total:number}>;
+ eventFloorMapEvents():Promise<{eventKey:string;eventId:string;showName:string;planCount:number;updated:string}[]>;
  eventFileList(eventKey:string,includeArchived?:boolean):Promise<(EventFileRecord&{available:boolean})[]>;
  eventFileSave(input:{eventKey:string;kind:EventFileKind;name:string;bytes:ArrayBuffer;eocExcerpts?:EocExcerpt[]}):Promise<EventFileRecord&{available:true}>;
  eventFileOpen(id:string):Promise<{opened:true}>;
