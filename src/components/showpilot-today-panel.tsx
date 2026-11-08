@@ -55,6 +55,7 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
   dates.some(date=>showHasActivityOnDay(show,date,joined))),[joined,dates]);
  const todayChanges=useMemo(()=>scheduledWallChanges(suggestions,today),[suggestions,today]);
  const todayWorkbookWalls=useMemo(()=>workbookWalls.filter(t=>t.date===today),[workbookWalls,today]);
+ const todayUnmatched=useMemo(()=>joined.unlinkedFunctions.filter(f=>f.date===today),[joined,today]);
 
  useEffect(()=>{
   if(!active)return;
@@ -222,7 +223,7 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
    {sourceWarnings.map((warning,i)=><p key={i}>{warning}</p>)}
   </div>}
   <div className="grid gap-3 sm:grid-cols-3">
-   <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Shows on today's date</p>
+   <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Actual shows on today's date</p>
     <strong className="text-2xl tabular-nums">{currentShows.length}</strong></div>
    <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Shows with attached EOCs</p>
     <strong className="text-2xl tabular-nums">{eocCount}</strong></div>
@@ -287,6 +288,13 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
     </article>;
    })}
   </div>
+  {todayUnmatched.length>0&&<details className="rounded-xl border border-amber-500/60 p-3">
+   <summary className="cursor-pointer font-medium text-sm">Functions needing Event ID review today ({todayUnmatched.length})</summary>
+   <p className="mt-2 text-xs text-muted-foreground">These are engineering functions, not additional shows. ShowPilot could not identify a unique event using the saved EOC/Event ID or date and room evidence.</p>
+   <div className="mt-2 space-y-1">{todayUnmatched.map((f,i)=>
+    <p key={i} className="text-xs">{f.showName} · {f.rooms.join(", ")}{f.details.length?" · "+f.details.join(" · "):""}</p>
+   )}</div>
+  </details>}
   <section className="space-y-3" aria-label="Scheduled airwall changes today">
    <h3 className="flex items-center gap-2 font-semibold"><AlertTriangle size={18}/> Airwall changes suggested for today</h3>
    {(todayChanges.length>0||todayWorkbookWalls.length>0)?<div className="rounded-lg border border-amber-500 p-3 space-y-1">
@@ -303,7 +311,7 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
    <div className="flex flex-wrap items-center justify-between gap-3">
     <div>
      <h3 className="text-lg font-semibold">Week at a glance</h3>
-     <p className="text-sm text-muted-foreground">{rangeLabel(week)} · Monday–Sunday · {currentWeekShows.length} unique CGC shows</p>
+     <p className="text-sm text-muted-foreground">{rangeLabel(week)} · Monday–Sunday · {currentWeekShows.length} named CGC shows{joined.unlinkedFunctions.some(f=>dates.includes(f.date))?" · unmatched functions listed separately":""}</p>
     </div>
     <div className="flex items-center gap-2">
      <Button variant="outline" size="sm" onClick={()=>setWeek(addIsoDays(week,-7))} aria-label="Previous week"><ChevronLeft size={16}/></Button>
@@ -316,12 +324,13 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
      {dates.map(date=>{
       const dayShows=currentWeekShows.filter(s=>showHasActivityOnDay(s,date,joined));
       const wallChanges=scheduledWallChanges(suggestions,date);
+      const unmatched=joined.unlinkedFunctions.filter(f=>f.date===date);
       const sheetWalls=workbookWalls.filter(t=>t.date===date);
       const isToday=date===today;
       return <div key={date} className={"min-h-52 p-2 space-y-2 "+(isToday?"bg-primary/5":"")}>
        <div className="border-b pb-2">
         <p className={"text-xs font-semibold "+(isToday?"text-primary":"")}>{dayLabel(date)}{isToday?" · Today":""}</p>
-        <p className="text-xs text-muted-foreground">{dayShows.length} show{dayShows.length===1?"":"s"}</p>
+        <p className="text-xs text-muted-foreground">{dayShows.length} show{dayShows.length===1?"":"s"}{unmatched.length?" · "+unmatched.length+" function(s) to match":""}</p>
        </div>
        {dayShows.map(show=>{
         const unlinked=isUnlinkedTodayShow(show,joined);
@@ -338,6 +347,16 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
          {(wall==="action"||wall==="review")&&<span className="mt-1 block font-semibold text-amber-600">Airwall note — review</span>}
         </button>;
        })}
+       {unmatched.length>0&&<details className="rounded-md border border-amber-500/70 p-2 text-xs">
+        <summary className="cursor-pointer font-semibold">Functions to match ({unmatched.length})</summary>
+        <div className="mt-2 space-y-2">
+         {unmatched.map((f,i)=><div key={i}>
+          <strong className="break-words">{f.showName}</strong>
+          <p className="text-muted-foreground break-words">{f.rooms.join(", ")}{f.details.length?" · "+f.details.join(" · "):""}</p>
+         </div>)}
+         <p className="text-muted-foreground">No event assigned; verify the EOC or Event Schedule ID before linking.</p>
+        </div>
+       </details>}
        {sheetWalls.map((task,i)=><div key={"sheet-wall-"+i} className="rounded-md border border-amber-500 px-2 py-1 text-xs">
         <strong>Engineering task</strong><p>{task.text}</p>
        </div>)}
@@ -349,7 +368,7 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
      })}
     </div>
    </div>
-   <p className="text-xs text-muted-foreground">Dated Event Schedule and workbook activity takes precedence over incomplete Events catalog date ranges. Document-only airwall notes may apply to a different day; original engineering tasks retain their Excel dates. Verify the EOC and current room setup.</p>
+   <p className="text-xs text-muted-foreground">Functions are grouped under named shows using a matching Event ID or a unique same-day room match; inferred matches say “verify”. Functions without an unambiguous match are separate and do not count as shows. The saved Events catalog and EOCs are never edited by this view. Verify airwall work in the EOC and current room setup.</p>
   </section>
  </section>;
 }
