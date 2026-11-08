@@ -24,3 +24,25 @@ export function matchEventZipToShow(metadata:Pick<EventMetadataResult,"eventId"|
  if(matches.length>1)return {status:"ambiguous"};
  return {status:"matched",show:matches[0]!};
 }
+
+/** Controlled resolution for a ZIP with conflicting secondary document IDs.
+ * Only an unambiguous EOC cover ID and an EXACT matching existing CGC show
+ * can be accepted after a human has reviewed the documents. Multiple EOCs
+ * with different IDs can never be overridden here; split the ZIP instead. */
+export function canAcknowledgeZipIdConflict(
+ metadata:Pick<EventMetadataResult,"eventId"|"evidence">,
+ show:PostConShow|null|undefined
+):boolean{
+ if(!show)return false;
+ const wanted=normalizedEventId(metadata.eventId);
+ if(!wanted)return false;
+ const eocIds=new Set(metadata.evidence
+  .filter(x=>x.field==="eventId"&&x.source.startsWith("EOC cover page:"))
+  .map(x=>normalizedEventId(x.value)).filter(Boolean));
+ if(eocIds.size!==1||!eocIds.has(wanted))return false;
+ const target=normalizedEventId(show.eventId||(/^id:/i.test(show.key)?show.key.slice(3):""));
+ if(target!==wanted)return false;
+ const all=new Set(metadata.evidence.filter(x=>x.field==="eventId")
+  .map(x=>normalizedEventId(x.value)).filter(Boolean));
+ return all.size>1; // This option is ONLY for genuine conflicting evidence.
+}
