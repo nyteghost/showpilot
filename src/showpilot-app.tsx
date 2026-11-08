@@ -116,7 +116,7 @@ export function App() {
         {sections.map(({id,label,Icon})=><button title={label} key={id} className={"sp-nav-item "+(screen===id?"sp-selected":"")} onClick={()=>select(id)}><Icon size={19}/>{expanded&&<span>{label}</span>}</button>)}
         <button title="Settings & AI Providers" className={"sp-nav-item "+(screen==="settings"?"sp-selected":"")} onClick={()=>select("settings")}><Settings2 size={19}/>{expanded&&<span>Settings & AI</span>}</button>
       </div>
-      <div className="sp-sidebar-footer">
+      <div className={"sp-sidebar-footer"+(expanded?" sp-sidebar-footer-open":"")}>
         {expanded&&<ShowPilotCorrectionChat />}
         {expanded&&<span>Cobb Convention Center-Atlanta</span>}
         <button className="sp-icon-button" onClick={()=>setExpanded(v=>!v)} title={expanded?"Collapse sidebar":"Expand sidebar"} aria-label={expanded?"Collapse sidebar":"Expand sidebar"}>
