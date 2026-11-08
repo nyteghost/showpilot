@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Download, Plus, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {ShowPilotRuleReview} from "@/components/showpilot-rule-review";
+import {vendorRuleEvidence} from "@/lib/showpilot-rule-evidence";
 import { cleanStore, DEFAULT_VENDORS, landed, newId, ranked, type Kind, type Offer, type Store } from "@/lib/vendors";
 
 const KEY = "showpilot:vendors:v1";
@@ -98,6 +100,7 @@ export function StandaloneVendors() {
       <Button disabled={!chosen || !vendor.trim() || !price.trim()} size="sm" onClick={addQuote}>Save quote</Button>
     </div>
     {status && <p role="status" className="text-xs text-muted-foreground">{status}</p>}
+    <ShowPilotRuleReview evidence={vendorRuleEvidence(store)}/>
     {!items.length && <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">No {kind === "rent" ? "rental" : "purchase"} items yet.</p>}
     {items.map((item) => {
       const quotes = ranked(item);
