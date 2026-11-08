@@ -5,6 +5,7 @@ import type {PostConShow} from "@/lib/showpilot-postcon";
 import type {AirwallAssessment} from "@/lib/showpilot-today";
 import type {TaskNote} from "@/lib/work-tools";
 import type {WorkbookWallTask} from "@/lib/showpilot-today-sources";
+import type {BallroomTransition} from "@/lib/showpilot-ballroom-inference";
 import {
  addTodayTask,buildingChecklistTasks,checkTodayTask,checklistKey,
  loadTodayChecklist,removeTodayTask,tasksForShow,
@@ -16,10 +17,12 @@ type Props={
  airwalls:Record<string,AirwallAssessment>;
  workbookWalls:readonly WorkbookWallTask[];
  suggestions:readonly TaskNote[];
+ transitions:readonly BallroomTransition[];
 };
 const empty:TodayChecklistState={date:"",done:{},custom:[]};
-export function ShowPilotTodayChecklist({day,shows,airwalls,workbookWalls,suggestions}:Props){
+export function ShowPilotTodayChecklist({day,shows,airwalls,workbookWalls,suggestions,transitions}:Props){
  const [state,setState]=useState<TodayChecklistState>(empty);
+ const [handoffs,setHandoffs]=useState<Record<string,TodayChecklistState>>({});
  const [loading,setLoading]=useState(true);
  const [saving,setSaving]=useState(false);
  const [error,setError]=useState("");
@@ -30,17 +33,18 @@ export function ShowPilotTodayChecklist({day,shows,airwalls,workbookWalls,sugges
  useEffect(()=>{
   let alive=true;
   setLoading(true);setError("");setMessage("");
-  void loadTodayChecklist(day).then(snapshot=>{
-   if(alive){setState(snapshot);setLoading(false);}
+  const days=[...new Set([day,...transitions.filter(t=>day>=t.afterDate&&day<=t.needByDate).map(t=>t.afterDate)])];
+  void Promise.all(days.map(loadTodayChecklist)).then(snapshots=>{
+   if(alive){setState(snapshots.find(s=>s.date===day)??{...empty,date:day});setHandoffs(Object.fromEntries(snapshots.map(s=>[s.date,s])));setLoading(false);}
   }).catch(e=>{
    if(alive){setState({...empty,date:day});setError("Couldn't restore today's checklist: "+String(e));setLoading(false);}
   });
   return ()=>{alive=false};
- },[day]);
+ },[day,transitions]);
  const groups=useMemo(()=>{
   const building={
    scope:"building",title:"Building-wide setup",subtitle:"",
-   tasks:buildingChecklistTasks(day,workbookWalls,suggestions)
+   tasks:buildingChecklistTasks(day,workbookWalls,suggestions,transitions)
   };
   const eventGroups=shows.map(show=>({
    scope:show.key,title:show.showName,
@@ -48,30 +52,32 @@ export function ShowPilotTodayChecklist({day,shows,airwalls,workbookWalls,sugges
    tasks:tasksForShow(show,airwalls[show.key]??{state:"unknown",findings:[]})
   }));
   return [building,...eventGroups];
- },[day,shows,airwalls,workbookWalls,suggestions]);
+ },[day,shows,airwalls,workbookWalls,suggestions,transitions]);
  const withManual=useMemo(()=>groups.map(g=>({
   ...g,
   tasks:[...g.tasks,...state.custom.filter(x=>x.scope===g.scope).map<ChecklistTask>(x=>({
    id:x.id,text:x.text,source:"manual" as const
   }))]
  })),[groups,state.custom]);
- const all=withManual.flatMap(g=>g.tasks.map(task=>({
-  scope:g.scope,id:task.id
- })));
- const completed=all.filter(t=>!!state.done[checklistKey(t.scope,t.id)]).length;
+ const isChecked=(scope:string,task:ChecklistTask)=>!!(task.storageDay&&task.storageDay!==day?
+  handoffs[task.storageDay]?.done[checklistKey(scope,task.id)]:
+  state.done[checklistKey(scope,task.id)]);
+ const all=withManual.flatMap(g=>g.tasks.map(task=>({scope:g.scope,task})));
+ const completed=all.filter(t=>isChecked(t.scope,t.task)).length;
  const total=all.length;
  const work=async(action:()=>Promise<TodayChecklistState>,success:string)=>{
   if(saving||loading)return;
   setSaving(true);setError("");
   try{
    const next=await action();
-   if(next.date===day){setState(next);setMessage(success);}
+   if(next.date===day)setState(next);
+   setHandoffs(old=>({...old,[next.date]:next}));setMessage(success);
   }catch(e){
    setError("Couldn't save checklist change: "+(e instanceof Error?e.message:String(e)));
   }finally{setSaving(false);}
  };
  const toggle=(scope:string,task:ChecklistTask,checked:boolean)=>{
-  void work(()=>checkTodayTask(day,scope,task.id,checked),
+  void work(()=>checkTodayTask(task.storageDay??day,scope,task.id,checked),
    "Saved locally · "+new Date().toLocaleTimeString());
  };
  const addTask=async(e:FormEvent)=>{
@@ -114,8 +120,8 @@ export function ShowPilotTodayChecklist({day,shows,airwalls,workbookWalls,sugges
   </div>
   <div className="grid gap-3 lg:grid-cols-2">
    {withManual.map(g=>{
-    const done=g.tasks.filter(task=>!!state.done[checklistKey(g.scope,task.id)]).length;
-    const visible=g.tasks.filter(task=>showCompleted||!state.done[checklistKey(g.scope,task.id)]);
+    const done=g.tasks.filter(task=>isChecked(g.scope,task)).length;
+    const visible=g.tasks.filter(task=>showCompleted||!isChecked(g.scope,task));
     return <div key={g.scope} className="rounded-lg border p-3 space-y-3">
      <div className="flex items-start justify-between gap-2">
       <div className="min-w-0">
@@ -129,7 +135,7 @@ export function ShowPilotTodayChecklist({day,shows,airwalls,workbookWalls,sugges
      <div className="space-y-2">
       {visible.map(task=>{
        const key=checklistKey(g.scope,task.id);
-       const checked=!!state.done[key];
+       const checked=isChecked(g.scope,task);
        const inputId="today-task-"+encodeURIComponent(day+"|"+key).replace(/%/g,"_");
        return <div key={task.id} className="flex items-start gap-2">
         <input id={inputId} type="checkbox" className="mt-0.5 size-4 shrink-0 accent-emerald-500"
@@ -138,6 +144,7 @@ export function ShowPilotTodayChecklist({day,shows,airwalls,workbookWalls,sugges
          <label htmlFor={inputId} className={"block cursor-pointer break-words text-sm "+(checked?"text-muted-foreground line-through":"")}>{task.text}</label>
          {task.detail&&<p className="mt-0.5 text-xs text-muted-foreground">{task.detail}</p>}
          {task.source==="schedule"&&<p className="text-xs text-amber-600">Dated engineering schedule — verify EOC and room availability</p>}
+         {task.source==="inferred"&&<p className="text-xs text-amber-600">Inferred layout transition — confirm timing and EOC before moving walls</p>}
          {task.source==="eoc"&&<p className="text-xs text-amber-600">Document note — confirm date and timing</p>}
         </div>
         {task.source==="manual"&&<button type="button" disabled={saving||loading}
