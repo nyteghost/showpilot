@@ -20,7 +20,7 @@ jobs:
           SHOWPILOT_BUILD_NUMBER: ${{ github.run_number }}
         run: node scripts/stamp-build-version.mjs
       - run: bun run check
-      - run: node --check desktop/main.cjs && node --check desktop/preload.cjs && node --check desktop/google-calendar.cjs && node --check desktop/ai-vault.cjs && node --check desktop/app-updates.cjs && node --check desktop/showpilot-memory.cjs && node --check desktop/secure-storage.cjs && node --check desktop/portable-updates.cjs
+      - run: node --check desktop/main.cjs && node --check desktop/preload.cjs && node --check desktop/google-calendar.cjs && node --check desktop/ai-vault.cjs && node --check desktop/app-updates.cjs && node --check desktop/showpilot-memory.cjs && node --check desktop/secure-storage.cjs && node --check desktop/portable-updates.cjs && node --check desktop/today-checklist.cjs
       - run: bun test
       - run: bun run build
       - name: Upload offline browser build
