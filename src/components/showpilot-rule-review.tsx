@@ -9,6 +9,11 @@ export function ShowPilotRuleReview({evidence}:{evidence:RuleEvidence}){
  const [result,setResult]=useState<{opinion:string;checks:string[]}|null>(null);
  const [status,setStatus]=useState("");
  const previous=useRef("");
+ const [feedbackRevision,setFeedbackRevision]=useState(0);
+ useEffect(()=>{const refresh=()=>{previous.current="";setFeedbackRevision(v=>v+1);};
+  window.addEventListener("showpilot:rule-feedback-saved",refresh);
+  return ()=>window.removeEventListener("showpilot:rule-feedback-saved",refresh);
+ },[]);
  const safe=useMemo(()=>boundedEvidence(evidence),[evidence.domain,evidence.label,JSON.stringify(evidence.findings)]);
  const fingerprint=JSON.stringify(safe);
  useEffect(()=>subscribeLocalAiRuntimeState(setRuntime),[]);
@@ -26,7 +31,7 @@ export function ShowPilotRuleReview({evidence}:{evidence:RuleEvidence}){
      try{
       const memory=window.showpilotMemory;
       if((await memory.status()).configured){
-       const matches=await memory.search((safe.label+" "+safe.domain).slice(0,130));
+       const matches=await memory.list("User-verified ShowPilot correction");
        verifiedNotes=matches.filter(x=>x.title.startsWith("User-verified ShowPilot correction:"))
         .slice(0,4).map(x=>x.title+": "+x.excerpt);
       }
@@ -40,7 +45,7 @@ export function ShowPilotRuleReview({evidence}:{evidence:RuleEvidence}){
    });
   },900);
   return ()=>{alive=false;window.clearTimeout(delay);};
- },[runtime.status,fingerprint]);
+ },[runtime.status,fingerprint,feedbackRevision]);
  return <div className="rounded-lg border p-3 text-xs" aria-label={"Local AI rule review: "+safe.label}>
   <p className="flex items-center gap-2 font-semibold"><BrainCircuit size={15}/> Rule review · {safe.label}</p>
   <p className="mt-1 text-muted-foreground">Deterministic rules remain authoritative. AI checks for assumptions or omissions but never changes saved results automatically.</p>
