@@ -60,6 +60,17 @@ describe("Airwall intelligence compares actual ballroom layouts across event day
   ];
   expect(inferBallroomTransitions([],rows).transitions).toEqual([]);
  });
+ it("identifies same-event reception as a possible room change instead of a competing show",()=>{
+  const rows=[
+   row("2026-11-14","Reception","Chattahoochee Ballroom (BRFULL)","Reception","41562"),
+   row("2026-11-14","Tower Leadership Dental Impact Summit","Ballroom ABE (BRABE)","Meeting","41562")
+  ];
+  const result=inferBallroomTransitions([],rows);
+  expect(result.warnings.some(w=>w.includes("Reception")&&
+   w.includes("Tower Leadership Dental Impact Summit")&&
+   w.includes("same Event ID"))).toBe(true);
+  expect(result.transitions).toHaveLength(0);
+ });
  it("does not guess a physical layout from overlapping same-day configurations",()=>{
   const rows=[
    row("2026-10-01","Split","Ballroom CDF"),
