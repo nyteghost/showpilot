@@ -496,14 +496,20 @@ async function eventFileSave(input){
  if(named.extension==="webp"&&(bytes.subarray(0,4).toString()!=="RIFF"||bytes.subarray(8,12).toString()!=="WEBP"))throw Error("The file does not appear to be a WebP image.");
  if(["xlsx","docx"].includes(named.extension)&&!["504b0304","504b0506","504b0708"].includes(bytes.subarray(0,4).toString("hex")))
   throw Error("This Word/Excel attachment does not have a valid Office archive header.");
- if(count("SELECT COUNT(*) n FROM event_files WHERE event_key=? AND archived=0",[eventKey])>=200||
-   count("SELECT COUNT(*) n FROM event_files")>=MAX_EVENT_FILE_COUNT)throw Error("The local document limit has been reached.");
- const sha256=digest(bytes),id=crypto.randomUUID(),created=now();
- if(kind==="exhibitor-order"){
-  const existing=queryRows("SELECT id FROM event_files WHERE event_key=? AND sha256=? AND name=? AND kind=? AND archived=0",
-   [eventKey,sha256,named.name,kind])[0];
+ const sha256=digest(bytes);
+ if(kind==="diagram"||kind==="exhibitor-order"){
+  // Identical floor plans commonly occur as Floorplan.pdf / Floorplan[1].pdf.
+  // Keep one original per event even when the duplicate has a different name.
+  const existing=kind==="diagram"
+   ?queryRows("SELECT id FROM event_files WHERE event_key=? AND sha256=? AND kind='diagram' AND archived=0",
+    [eventKey,sha256])[0]
+   :queryRows("SELECT id FROM event_files WHERE event_key=? AND sha256=? AND name=? AND kind=? AND archived=0",
+    [eventKey,sha256,named.name,kind])[0];
   if(existing)return {...eventFileRows(eventKey).find(f=>f.id===existing.id),duplicate:true};
  }
+ if(count("SELECT COUNT(*) n FROM event_files WHERE event_key=? AND archived=0",[eventKey])>=200||
+   count("SELECT COUNT(*) n FROM event_files")>=MAX_EVENT_FILE_COUNT)throw Error("The local document limit has been reached.");
+ const id=crypto.randomUUID(),created=now();
  const record={sha256,extension:named.extension};
  const folder=eventFileDir();
  fs.mkdirSync(folder,{recursive:true,mode:0o700});
@@ -597,8 +603,11 @@ async function eventZipImport(input){
   try{
    const name=file.name;
    const sha=digest(file.bytes);
-   const existing=queryRows("SELECT id FROM event_files WHERE event_key=? AND sha256=? AND name=? AND kind=? AND archived=0",
-    [eventKey,sha,name,file.kind])[0];
+   const existing=file.kind==="diagram"
+    ?queryRows("SELECT id FROM event_files WHERE event_key=? AND sha256=? AND kind='diagram' AND archived=0",
+     [eventKey,sha])[0]
+    :queryRows("SELECT id FROM event_files WHERE event_key=? AND sha256=? AND name=? AND kind=? AND archived=0",
+     [eventKey,sha,name,file.kind])[0];
    if(existing){duplicates.push(name);continue;}
    const record=await eventFileSave({eventKey,kind:file.kind,name,bytes:file.bytes,eocExcerpts:[]});
    imported.push({id:record.id,name:record.name,kind:record.kind,extension:record.extension});
