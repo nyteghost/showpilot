@@ -5,8 +5,8 @@ describe("Event document classification",()=>{
  it("recognizes work orders, EOCs and event diagrams",()=>{
   expect(guessEventFileKind("Event_Order_Confirmation_2026.pdf")).toBe("eoc");
   expect(guessEventFileKind("EOC-42389.pdf")).toBe("eoc");
-  expect(guessEventFileKind("WO 12345.pdf")).toBe("work-order");
-  expect(guessEventFileKind("utility-order-543.xlsx")).toBe("work-order");
+  expect(guessEventFileKind("WO 12345.pdf")).toBe("exhibitor-order");
+  expect(guessEventFileKind("utility-order-543.xlsx")).toBe("exhibitor-order");
   expect(guessEventFileKind("Hall AB floor plan.pdf")).toBe("diagram");
   expect(guessEventFileKind("CGC-layout.dwg")).toBe("diagram");
   expect(guessEventFileKind("additional-contract.docx")).toBe("other");
