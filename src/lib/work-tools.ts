@@ -121,15 +121,21 @@ export function assertNamedScheduleEntries(entries:readonly EventEntry[]):void{
 /** Merges rows per date + space + show + code (earliest start, latest end). */
 export function summarizeEvents(rows: EventRow[], preserveCombinedSpaces = false): EventEntry[] {
   const map = new Map<string, EventEntry>();
+  const parents=new Map<string,string>();
+  for(const row of rows)if(row.eventId&&row.event?.trim()&&!isFunctionOnlyTitle(row.event))parents.set(row.eventId,row.event.trim());
   for (const row of rows) {
     const code = classifyEvent(row);
     if (!code) continue;
     const start = parseReportTime(row.start), end = parseReportTime(row.end);
     for (const space of preserveCombinedSpaces ? [/chattahoochee|brfull/i.test(row.space) ? "BallRoom ABCDEFG" : sheetRowFor(row.space || "Unassigned")] : expandSpace(row.space || "Unassigned")) {
-      const key = JSON.stringify([row.date, space, row.eventId ?? "", row.event || row.description, code]);
+      const showName=(row.event?.trim()&&!isFunctionOnlyTitle(row.event)?row.event.trim():"")||
+       (row.eventId?parents.get(row.eventId):"")||"";
+      const key = JSON.stringify([row.date, space, row.eventId ?? "", showName||row.description, code]);
       const prev = map.get(key);
       if (prev) { prev.start = Math.min(prev.start, start); prev.end = Math.max(prev.end, end); }
-      else map.set(key, { date: row.date, space, code, start, end, title: row.event || row.description, ...(row.eventId ? { eventId: row.eventId } : {}) });
+      else map.set(key, { date: row.date, space, code, start, end,
+       title: showName||row.description, ...(showName?{showName}:{}),
+       ...(row.eventId ? { eventId: row.eventId } : {}) });
     }
   }
   // A meal or meeting inside the same show's day is part of the show; only one after the show ends gets its own line.
@@ -422,8 +428,10 @@ export function weekLayouts(entries: EventEntry[]): WeekLayout[] {
       rows[label] = dates.map((d) => {
         const list = week.filter((e) => e.date === d && e.space === label).sort((a, b) => a.start - b.start);
         if (!list.length) return { text: "", codes: [], signature: "" };
-        const titles = [...new Set(list.map((e) => e.title))];
-        const text = titles.flatMap((title) => [title, ...list.filter((e) => e.title === title).map(entryLabel)]).filter(Boolean).join("\n");
+        // Populate all room cells with the actual parent show, not a function.
+        const names=list.map(e=>({...e,title:(e.showName||e.title).trim()}));
+        const titles = [...new Set(names.map(e=>e.title))];
+        const text = titles.flatMap((title) => [title, ...names.filter((e) => e.title === title).map(entryLabel)]).filter(Boolean).join("\n");
         const signature = JSON.stringify(list.map((e) => [e.title, e.code, e.start, e.end]).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))));
         return { text, codes: [...new Set(list.map((e) => e.code))], signature };
       });
