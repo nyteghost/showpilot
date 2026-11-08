@@ -155,6 +155,14 @@ function readUpdateResult(userData,installedVersion=""){
 function updateLogPath(userData){
  return path.join(userData,"ShowPilot Updates","last-update.log");
 }
+/** Diagnose failures that happen in Electron BEFORE the PowerShell helper
+ * gets far enough to write its own log. Do not record personal directories,
+ * event details or process command lines in this trace. */
+function traceUpdate(paths,message){
+ try{
+  fs.appendFileSync(paths.logPath,new Date().toISOString()+" "+message+"\n",{encoding:"utf8"});
+ }catch{ /* Never abort a verified update solely because logging is denied. */ }
+}
 
 function prepareInstallPaths(version){
  if(process.platform!=="win32"||app.isPackaged!==true)
@@ -194,12 +202,42 @@ function stagePackage(paths){
 }
 function spawnInstall(paths,expectedVersion){
  return new Promise((resolve,reject)=>{
-  const child=spawn("powershell.exe",helperArgs("Install",paths,[
-   "-BackupDir",paths.backupDir,"-AppProcessId",String(process.pid),
-   "-ExpectedVersion",expectedVersion]),
-   {cwd:paths.userData,windowsHide:true,detached:true,stdio:"ignore",shell:false});
-  child.once("error",reject);
-  child.once("spawn",()=>{child.unref();resolve({started:true});});
+  // Capture PowerShell startup / parse / policy errors. Previously detached
+  // stderr was discarded, which left ONLY "Staged ZIP passed ..." in the log.
+  let fd=null,child,settled=false,spawned=false;
+  const failure=error=>{
+   if(settled)return;
+   settled=true;
+   const message=error instanceof Error?error.message:String(error);
+   traceUpdate(paths,"Installer handoff failed before ShowPilot shutdown: "+message);
+   reject(new Error("Windows installer could not start: "+message));
+  };
+  try{
+   fd=fs.openSync(paths.logPath,"a",0o600);
+   child=spawn("powershell.exe",helperArgs("Install",paths,[
+    "-BackupDir",paths.backupDir,"-AppProcessId",String(process.pid),
+    "-ExpectedVersion",expectedVersion]),
+    {cwd:paths.userData,windowsHide:true,detached:true,stdio:["ignore",fd,fd],shell:false});
+   child.once("error",failure);
+   child.once("exit",(code,signal)=>{
+    traceUpdate(paths,"Detached installer exited: code="+code+", signal="+(signal||"none")+".");
+    if(!settled)failure(new Error("PowerShell quit before the install handoff (exit code "+code+"). Check the captured PowerShell error above."));
+   });
+   child.once("spawn",()=>{
+    spawned=true;
+    traceUpdate(paths,"Detached PowerShell installer launched (PID "+child.pid+"); checking early startup.");
+    // Do not close the original app if PowerShell immediately exits due to
+    // IT policy, a missing script or command-line parsing. Give the helper
+    // one second to start before the old process releases its executable.
+    setTimeout(()=>{
+     if(settled)return;
+     settled=true;child.unref();
+     traceUpdate(paths,"Installer is running; requesting ShowPilot shutdown.");
+     resolve({started:true,pid:child.pid});
+    },1000);
+   });
+  }catch(e){failure(e);}
+  finally{if(fd!==null)try{fs.closeSync(fd)}catch{}}
  });
 }
 let updateRunning=false;
@@ -232,6 +270,7 @@ async function installWindowsRelease(sender,release,installedVersion){
    notify(sender,{phase:"downloading",message:"Downloading ShowPilot update…",percent:pct}));
   notify(sender,{phase:"staging",message:"Download verified. Preparing the replacement app…",percent:100});
   await stagePackage(paths);
+  traceUpdate(paths,"Electron confirmed ZIP staging. Preparing detached installer for "+release.version+".");
   try{fs.unlinkSync(paths.zipFile)}catch{}
   // Persist intent before exit: the next launch can show the helper's result,
   // even when the main Electron process is no longer available to report it.
@@ -251,7 +290,10 @@ async function installWindowsRelease(sender,release,installedVersion){
    try{fs.unlinkSync(paths.zipFile)}catch{}
    try{fs.rmSync(paths.stageDir,{recursive:true,force:true})}catch{}
   }
-  if(paths)try{updateResult(paths.userData,"failed",e instanceof Error?e.message:String(e),release.version)}catch{}
+  if(paths){
+   traceUpdate(paths,"Electron updater failed: "+(e instanceof Error?e.message:String(e)));
+   try{updateResult(paths.userData,"failed",e instanceof Error?e.message:String(e),release.version)}catch{}
+  }
   notify(sender,{phase:"error",message:e instanceof Error?e.message:String(e),percent:0});
   throw e;
  }finally{updateRunning=false;}
