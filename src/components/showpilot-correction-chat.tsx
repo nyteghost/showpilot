@@ -39,8 +39,10 @@ export function ShowPilotCorrectionChat(){
     try{
      const status=await window.showpilotMemory.status();
      if(status.configured){
+      const confirmed=await window.showpilotMemory.list("User-verified ShowPilot correction");
+      refs.push(...confirmed.slice(0,4).map(x=>x.title+": "+x.excerpt));
       const found=await window.showpilotMemory.search(content.slice(0,130));
-      refs.push(...found.slice(0,5).map(x=>x.title+": "+x.excerpt));
+      refs.push(...found.slice(0,3).map(x=>x.title+": "+x.excerpt));
      }
     }catch{/* Chat works without native memory. */}
    }
