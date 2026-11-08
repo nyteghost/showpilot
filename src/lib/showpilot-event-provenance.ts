@@ -1,5 +1,6 @@
 import {roomsFromAssignedLine} from "./showpilot-event-discovery";
 import type {Evidence} from "./showpilot-event-discovery";
+import {expandSpace,isCancelledRow,isPendingRow,type EventRow} from "./work-tools";
 
 export type EocRoomCitation={room:string;file:string;page:number;line:string};
 export type UnassignedSpaceCitation={file:string;page:number;line:string};
@@ -36,13 +37,35 @@ export function eocSpaceEvidence(
  }
  return {assigned:assigned.slice(0,75),unassigned:unassigned.slice(0,30)};
 }
+export type ScheduleRoomCitation={room:string;eventId:string;date:string;space:string;functionName:string};
+/** Exact numeric Event ID / approved CGC Event Schedule rows, never a fuzzy
+ * room match to another show. A room can be listed on the schedule yet not
+ * confirmed by the EOC, and this distinction must remain visible. */
+export function roomsFromSavedEventSchedule(rows:readonly EventRow[],eventId:string):ScheduleRoomCitation[]{
+ if(!/^\\d{3,12}$/.test(eventId.trim()))return [];
+ const result:ScheduleRoomCitation[]=[];
+ for(const row of rows){
+  if(row.eventId?.trim()!==eventId||isCancelledRow(row)||isPendingRow(row))continue;
+  const rooms=expandSpace(row.space).filter(room=>/^(?:Hall [A-D]|BallRoom [A-G])$/.test(room));
+  for(const room of rooms){
+   const record={room,eventId,date:row.date,space:row.space,
+    functionName:row.description.slice(0,140)};
+   if(!result.some(x=>x.room===record.room&&x.date===record.date&&
+     x.space===record.space&&x.functionName===record.functionName))
+    result.push(record);
+   if(result.length>=120)return result;
+  }
+ }
+ return result;
+}
 export type RoomOrigin={
- status:"eoc-confirmed"|"zip-assigned"|"mention-only"|"not-traced";
+ status:"eoc-confirmed"|"schedule-listed"|"zip-assigned"|"mention-only"|"not-traced";
  reason:string;
  sources:{source:string;context:string;certainty:"assigned"|"mentioned"|"unknown"}[];
 };
 export function explainSavedRoom(
- room:string,zipEvidence:readonly Evidence[],eoc:readonly EocRoomCitation[]
+ room:string,zipEvidence:readonly Evidence[],eoc:readonly EocRoomCitation[],
+ schedule:readonly ScheduleRoomCitation[]=[]
 ):RoomOrigin{
  const eocFound=eoc.filter(x=>x.room===room);
  const zip=zipEvidence.filter(x=>x.field==="room"&&x.value===room);
@@ -56,6 +79,16 @@ export function explainSavedRoom(
   reason:"The EOC directly assigns this room under a Function Space heading.",
   sources:[...eocFound.map(x=>({source:x.file+" · page "+x.page,context:x.line,certainty:"assigned" as const})),...sources]
  };
+ const scheduled=schedule.filter(x=>x.room===room);
+ if(scheduled.length)return {
+  status:"schedule-listed",
+  reason:"A saved Event Schedule function for this same numeric Event ID lists the room, but the inspected EOC Function Space entries do not independently confirm it. Review which document is current.",
+  sources:[...scheduled.slice(0,10).map(x=>({
+   source:"Event Schedule · "+x.date,
+   context:"Event #"+x.eventId+" · Space: "+x.space+" · Function: "+x.functionName,
+   certainty:"assigned" as const
+  })),...sources]
+ };
  if(zip.some(x=>x.confidence==="assigned"))return {
   status:"zip-assigned",
   reason:"A ZIP document or manifest contains a direct room assignment, but the currently inspected EOC Function Space lines do not independently confirm it.",
@@ -68,7 +101,7 @@ export function explainSavedRoom(
  };
  return {
   status:"not-traced",
-  reason:"This room exists in the saved Events catalog, but there is no traceable direct EOC assignment or ZIP room evidence available. It may originate from an earlier Event Schedule import or manual review. ShowPilot cannot determine its original source from these records.",
+  reason:"This room exists in the saved Events catalog, but no matching direct EOC assignment, saved Event Schedule row, or ZIP room evidence is available. It may originate from older imports or manual review. ShowPilot cannot determine its original source from these records.",
   sources:[]
  };
 }
