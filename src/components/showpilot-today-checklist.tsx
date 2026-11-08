@@ -124,6 +124,8 @@ export function ShowPilotTodayChecklist({day,shows,airwalls,workbookWalls,sugges
       </div>
       <span className="shrink-0 text-xs text-muted-foreground">{done}/{g.tasks.length}</span>
      </div>
+     {g.scope==="building"&&!g.tasks.some(task=>task.id.startsWith("wall-"))&&
+      <p className="text-xs text-muted-foreground">No dated airwall movement was found in the saved engineering schedules for today. Verify the EOC before concluding no changes are required.</p>}
      <div className="space-y-2">
       {visible.map(task=>{
        const key=checklistKey(g.scope,task.id);
@@ -135,7 +137,7 @@ export function ShowPilotTodayChecklist({day,shows,airwalls,workbookWalls,sugges
         <div className="min-w-0 flex-1">
          <label htmlFor={inputId} className={"block cursor-pointer break-words text-sm "+(checked?"text-muted-foreground line-through":"")}>{task.text}</label>
          {task.detail&&<p className="mt-0.5 text-xs text-muted-foreground">{task.detail}</p>}
-         {task.source==="schedule"&&<p className="text-xs text-amber-600">Schedule suggestion — verify the EOC</p>}
+         {task.source==="schedule"&&<p className="text-xs text-amber-600">Dated engineering schedule — verify EOC and room availability</p>}
          {task.source==="eoc"&&<p className="text-xs text-amber-600">Document note — confirm date and timing</p>}
         </div>
         {task.source==="manual"&&<button type="button" disabled={saving||loading}
@@ -161,7 +163,7 @@ export function ShowPilotTodayChecklist({day,shows,airwalls,workbookWalls,sugges
     </select>
     <Button size="sm" type="submit" disabled={loading||saving||!newText.trim()}><Plus size={15}/> Add task</Button>
    </div>
-   <p className="text-xs text-muted-foreground">Standard tasks are suggested operational checks, not confirmed EOC instructions. Items from dated schedules are labeled for verification. Checking an item records your completion, not an automated physical change.</p>
+   <p className="text-xs text-muted-foreground">Building-wide airwall tasks and their follow-up lighting checks only appear when a dated schedule calls for a change. Each requires a separate completion check. Checking a task never controls physical equipment or changes your saved schedules.</p>
   </form>
  </section>;
 }
