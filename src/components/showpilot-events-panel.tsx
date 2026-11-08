@@ -47,9 +47,15 @@ export function ShowPilotEventsPanel({active=true,stagePlanner,floorMaps,openEve
   setSection(next);
   setVisited(v=>v.includes(next)?v:[...v,next]);
  };
- const imported=(key:string)=>{
+ const imported=(key:string,summary?:{maps:number;duplicateMaps:number})=>{
   setSelectedKey(key);setFilesRevision(v=>v+1);selectSection("documents");
-  setMessage("Event ZIP imported. The documents are stored locally under this show.");
+  // Event ID association and document storage happen inside the ZIP
+  // importer. The same saved floor plan is available here and in Floor Maps.
+  setMessage(summary?.maps
+   ?"Event ZIP imported. "+summary.maps+" new floor map(s) attached to this Event ID."+
+    (summary.duplicateMaps?" "+summary.duplicateMaps+" identical duplicate(s) skipped.":"")+
+    " Open Floor Maps to view the saved plan."
+   :"Event ZIP imported. The documents are stored locally under this show.");
  };
  const show=shows.find(s=>s.key===selectedKey);
  useEffect(()=>{
