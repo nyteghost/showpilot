@@ -29,21 +29,49 @@ export function cgcRoomsFromText(text:string):string[]{
  return ROOMS.filter(x=>found.has(x));
 }
 const stage=/^(?:program|move in|move out|general session|breakout session|eoc|event order confirmation|work order)$/i;
-/** The actual show is the SECOND line of an Ungerboeck EOC cover. */
+/** Read the actual show from the cover of an Ungerboeck Event Order
+ * Confirmation. EOC cover values take priority over ZIP filenames.
+ *
+ * Typically:
+ *   Event Order Confirmation
+ *   Hospitality Industry Ministries (41622)
+ *   Fri 11/6/2026 - Fri 11/6/2026
+ *
+ * PDF text extraction may combine the heading and name on one row or wrap the
+ * ID/date range; only the top cover lines are considered, never random dates
+ * later in the event's orders or work instructions.
+ */
 export function parseEocCoverHeader(text:string):{
  showName:string;eventId:string;startDate:string;showDate:string;
 }|null{
- const lines=text.slice(0,18000).split(/\r?\n/).map(x=>x.replace(/\s+/g," ").trim()).filter(Boolean);
- const heading=lines.findIndex((line,i)=>i<32&&/^event\s+order\s+confirmation\s*$/i.test(line));
- if(heading<0)return null;
- const second=lines[heading+1]??"";
- const match=/^(.{3,140}?)\s*\(\s*(\d{3,12})\s*\)\s*$/.exec(second);
- if(!match||/^(?:event order confirmation|supporting documents|work order|program|move in|move out)$/i.test(match[1]!.trim()))return null;
- const third=(lines[heading+2]??"");
- const raw=third.match(/\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}/g)??[];
- const first=raw.length?normalizeEventDate(raw[0]!):"";
- const last=raw.length>=2?normalizeEventDate(raw[raw.length-1]!):first;
- return {showName:match[1]!.trim(),eventId:match[2]!,startDate:first,showDate:last};
+ const lines=text.slice(0,24000).split(/\r?\n/).map(x=>
+  x.replace(/[\u00a0\u202f]/g," ").replace(/\s+/g," ").trim()
+ ).filter(Boolean);
+ const dateRe=/\b(?:\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4})\b/g;
+ for(let i=0;i<Math.min(lines.length,40);i++){
+  const heading=/^event\s+order\s+confirmation\b\s*[:\-]?\s*(.*)$/i.exec(lines[i]!);
+  if(!heading)continue;
+  const inline=heading[1]?.trim()??"";
+  // Usually the show is the next line. Some PDF engines put the cover
+  // title and event name together even though Excel/Acrobat show two rows.
+  const second=inline||lines[i+1]||"";
+  let match=/^(.{3,140}?)\s*\(\s*(\d{3,12})\s*\)\s*$/.exec(second);
+  let nameEnd=i+(inline?0:1);
+  if(!match&&!inline&&/^\(\s*\d{3,12}\s*\)$/.test(lines[i+2]??"")){
+   match=/^(.{3,140}?)\s*\(\s*(\d{3,12})\s*\)\s*$/.exec(second+" "+lines[i+2]);
+   nameEnd=i+2;
+  }
+  if(!match)continue;
+  const showName=match[1]!.trim();
+  if(/^(?:event order confirmation|supporting documents|work order|program|move in|move out)$/i.test(showName))continue;
+  const dateText=[lines[nameEnd+1]??"",lines[nameEnd+2]??""].join(" ");
+  const raw=dateText.match(dateRe)??[];
+  const startDate=raw.length?normalizeEventDate(raw[0]!):"";
+  const showDate=raw.length>=2?normalizeEventDate(raw[1]!):startDate;
+  if(startDate&&showDate&&startDate>showDate)continue;
+  return {showName,eventId:match[2]!,startDate,showDate};
+ }
+ return null;
 }
 /** EOC ZIP names contain mail attachment prefixes: never save those
  * prefixes as the show name. The filename is fallback evidence ONLY. */
