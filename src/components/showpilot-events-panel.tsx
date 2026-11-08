@@ -12,6 +12,8 @@ import type {PostConReport} from "@/lib/showpilot-memory-bridge";
 import {parseZipSchedule,type ZipScheduleEvidence} from "@/lib/showpilot-zip-schedule";
 import {linkedMapDocuments} from "@/lib/showpilot-floor-map-events";
 import {ShowPilotWhy} from "@/components/showpilot-why";
+import {roomsFromSavedEventSchedule,type ScheduleRoomCitation} from "@/lib/showpilot-event-provenance";
+import {activitiesFromReviewProject} from "@/lib/showpilot-today-sources";
 
 const noteTitle=(show:PostConShow)=>"Event Notes: "+show.key.slice(0,110);
 const matches=(eventId:string,name:string,show:PostConShow)=>
@@ -33,6 +35,8 @@ export function ShowPilotEventsPanel({active=true,stagePlanner,floorMaps,openEve
  const [precon,setPrecon]=useState<PreConDraft|null>(null);
  const [postcon,setPostcon]=useState<PostConReport|null>(null);
  const [zipSchedule,setZipSchedule]=useState<ZipScheduleEvidence|null>(null);
+ const [scheduleRooms,setScheduleRooms]=useState<ScheduleRoomCitation[]>([]);
+ const [scheduleRevision,setScheduleRevision]=useState(0);
  const [floorFiles,setFloorFiles]=useState<File[]>([]);
  const [message,setMessage]=useState("");
  const [section,setSection]=useState<EventSection>("overview");
@@ -48,6 +52,21 @@ export function ShowPilotEventsPanel({active=true,stagePlanner,floorMaps,openEve
   setMessage("Event ZIP imported. The documents are stored locally under this show.");
  };
  const show=shows.find(s=>s.key===selectedKey);
+ useEffect(()=>{
+  const listener=()=>setScheduleRevision(n=>n+1);
+  window.addEventListener("showpilot:schedule-autosaved",listener);
+  return ()=>window.removeEventListener("showpilot:schedule-autosaved",listener);
+ },[]);
+ useEffect(()=>{
+  let live=true;setScheduleRooms([]);
+  if(!show?.eventId||!/^\\d{3,12}$/.test(show.eventId))return;
+  void window.showpilotScheduleSession?.load().then(snapshot=>{
+   if(!live||!snapshot)return;
+   const rows=activitiesFromReviewProject(snapshot.project).acceptedRows;
+   setScheduleRooms(roomsFromSavedEventSchedule(rows,show.eventId));
+  }).catch(()=>{if(live)setScheduleRooms([])});
+  return ()=>{live=false};
+ },[show?.key,show?.eventId,scheduleRevision]);
  // A Today card can target an Events record before this tab is mounted.
  // The request is passed as state, so no navigation event is lost.
  useEffect(()=>{
@@ -198,11 +217,14 @@ export function ShowPilotEventsPanel({active=true,stagePlanner,floorMaps,openEve
       <p>This shows the existing Events catalog room list. It can come from an Event Schedule import, your reviewed ZIP, or a manual correction; the catalog does not preserve an original source for every room.</p>
       {show.rooms.split(",").map(room=>room.trim()).filter(Boolean).map(room=>{
        const matched=(zipSchedule?.detected?.evidence??[]).filter(x=>x.field==="room"&&x.value===room);
+       const scheduled=scheduleRooms.filter(x=>x.room===room);
        return <div key={room} className="border-t pt-1">
         <strong>{room}</strong>
+        {scheduled.slice(0,8).map((item,i)=>
+         <p key={"schedule-"+i}><strong>Event Schedule ({item.date}):</strong> Event #{item.eventId} · Space: {item.space} · {item.functionName}</p>)}
         {matched.length?matched.slice(0,4).map((item,i)=>
          <p key={i}><strong>{item.confidence==="assigned"?"Direct ZIP room assignment":item.confidence==="mentioned"?"Unconfirmed mention":"Legacy ZIP evidence"}:</strong> {item.source}{item.context?" — "+item.context:" (exact text not retained)"}</p>
-        ):<p>No room-specific source was retained in this event's latest ZIP review. To verify, open <strong>Event documents → EOC quick reference → Room assignment check</strong>.</p>}
+        ):!scheduled.length?<p>No room-specific ZIP or matching saved Event Schedule source was found. To verify, open <strong>Event documents → EOC quick reference → Room assignment check</strong>.</p>:null}
        </div>;
       })}
      </ShowPilotWhy>
@@ -260,7 +282,7 @@ export function ShowPilotEventsPanel({active=true,stagePlanner,floorMaps,openEve
    </div>}
   </div>
   {section==="documents"&&<div className="space-y-3">
-   {show&&bridge?<ShowPilotEventDocuments key={show.key+":"+filesRevision} show={show} zipSchedule={zipSchedule} onOpenStage={()=>selectSection("stage")} onOpenFloorMaps={()=>void openFloorMaps()}/>
+   {show&&bridge?<ShowPilotEventDocuments key={show.key+":"+filesRevision} show={show} zipSchedule={zipSchedule} scheduleRooms={scheduleRooms} onOpenStage={()=>selectSection("stage")} onOpenFloorMaps={()=>void openFloorMaps()}/>
     :<div className="rounded-xl border p-4 text-sm text-muted-foreground">Choose a show or import Exhibitor Orders / an event ZIP to see its orders, EOCs and diagrams.</div>}
   </div>}
   <div hidden={section!=="precon"}>{visited.includes("precon")&&<PreConPanel focusShow={show}/>}</div>
