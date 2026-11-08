@@ -13,7 +13,7 @@ export type PostConReport={
 };
 export type ShowCatalogRecord={key:string;eventId:string;showName:string;showDate:string;rooms:string;startDate?:string};
 export type EventZipInspection={
- files:{path:string;name:string;bytes:number;kind:EventFileKind}[];
+ files:{path:string;name:string;bytes:number;kind:EventFileKind;sha256?:string}[];
  ignored:string[];manifest:null|{showName:string;eventId:string;startDate:string;showDate:string;rooms:string};totalBytes:number;
 };
 export type EventZipScan={sources:({path:string;format:"text";text:string}|{path:string;format:"pdf";bytes:Uint8Array})[];skipped:string[];manifest:EventZipInspection["manifest"]};
