@@ -15,6 +15,7 @@ const moduleObj={exports:{} as {
  prepareInstallPaths:(v:string)=>unknown;
  updateResult:(dir:string,status:string,message:string,version?:string)=>{status:string;message:string;version:string};
  readUpdateResult:(dir:string,installedVersion?:string)=>{status:string;message:string;version:string}|null;
+ downloadWindowsReleaseToDownloads:(sender:unknown,release:unknown,installedVersion:string)=>Promise<unknown>;
  updateLogPath:(dir:string)=>string;
 }};
 runInNewContext(code,{
@@ -66,6 +67,22 @@ describe("ShowPilot Windows portable one-click updater",()=>{
   expect(()=>updater.assertDownloadUrl("http://github.com/nyteghost/showpilot/releases/download/a/b")).toThrow(/trusted GitHub/);
   expect(updater.officialReleaseAssetUrl(base+zip,tag,zip)).toBe(true);
   expect(updater.officialReleaseAssetUrl(base+zip+"?tampered=1",tag,zip)).toBe(false);
+ });
+ it("never downloads to Downloads outside the packaged Windows app",async()=>{
+  const releaseInfo=updater.releaseAssetsForRun(release(),run,version);
+  await expect(updater.downloadWindowsReleaseToDownloads(null,
+   {...releaseInfo,version},"0.1.309-beta")).rejects.toThrow(/packaged Windows/);
+ });
+ it("wires an independent download-only action without invoking automatic install",()=>{
+  const src=readFileSync(fileURLToPath(new URL("../../desktop/app-updates.cjs",import.meta.url)),"utf8");
+  const preload=readFileSync(fileURLToPath(new URL("../../desktop/preload.cjs",import.meta.url)),"utf8");
+  const screen=readFileSync(fileURLToPath(new URL("../components/showpilot-updates.tsx",import.meta.url)),"utf8");
+  expect(src).toContain('showpilot-update:download');
+  expect(preload).toContain('download:()=>ipcRenderer.invoke("showpilot-update:download")');
+  expect(screen).toContain("Download ZIP to Downloads");
+  expect(screen).toContain("Automatic install (optional)");
+  expect(code).toContain("COPYFILE_EXCL");
+  expect(code).toContain('app.getPath("downloads")');
  });
  it("does not attempt to replace apps during development or on Linux",()=>{
   expect(()=>updater.prepareInstallPaths("0.1.310-beta")).toThrow(/Windows portable/);
