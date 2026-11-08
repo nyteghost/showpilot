@@ -10,6 +10,7 @@ import { ShowPilotAiSettings } from "@/components/showpilot-ai-settings";
 import { GoogleCalendarSettings } from "@/components/showpilot-calendar-settings";
 import { ShowPilotUpdates } from "@/components/showpilot-updates";
 import { ShowPilotMemorySettings } from "@/components/showpilot-memory-settings";
+import { ShowPilotCorrectionChat } from "@/components/showpilot-correction-chat";
 import { ShowPilotDiagnosticsPanel } from "@/components/showpilot-diagnostics-panel";
 import { getLocalAiRuntimeState, subscribeLocalAiRuntimeState, isLocalAiEnabled,enableLocalAi,disableLocalAi,loadLocalModel,localModelCached,localModelOptions } from "@/lib/showpilot-ai-local";
 import showpilotIcon from "./assets/showpilot-approved.webp";
@@ -116,6 +117,7 @@ export function App() {
         <button title="Settings & AI Providers" className={"sp-nav-item "+(screen==="settings"?"sp-selected":"")} onClick={()=>select("settings")}><Settings2 size={19}/>{expanded&&<span>Settings & AI</span>}</button>
       </div>
       <div className="sp-sidebar-footer">
+        {expanded&&<ShowPilotCorrectionChat />}
         {expanded&&<span>Cobb Convention Center-Atlanta</span>}
         <button className="sp-icon-button" onClick={()=>setExpanded(v=>!v)} title={expanded?"Collapse sidebar":"Expand sidebar"} aria-label={expanded?"Collapse sidebar":"Expand sidebar"}>
           {expanded?<PanelLeftClose size={18}/>:<PanelLeftOpen size={18}/>}
