@@ -49,6 +49,7 @@ export function AiTaskAssistant({ entries, tasks, onApprove, scope }:{
  const lastAutoReview=useRef("");
  useEffect(()=>subscribeLocalAiRuntimeState(setRuntime),[]);
  const entryFingerprint=useMemo(()=>JSON.stringify(entries.map(e=>[e.date,e.space,e.code,e.start,e.end,e.title])),[entries]);
+ const tasksFingerprint=useMemo(()=>JSON.stringify(tasks.map(t=>[t.date,t.section,t.text])),[tasks]);
 
  useEffect(()=>{if(!window.showpilotAI)return;void window.showpilotAI.status().then(s=>{
    const p=s.providers.filter((n):n is AiProviderId=>AI_PROVIDERS.some(x=>x.id===n&&x.canGenerate));
@@ -125,11 +126,11 @@ export function AiTaskAssistant({ entries, tasks, onApprove, scope }:{
  // operator enables the model. Never auto-approve its task suggestions.
  useEffect(()=>{
   if(runtime.status!=="ready"||mode!=="local"||!scope||!weeks.length||busy)return;
-  const key=scopeKey+"|"+entryFingerprint+"|"+JSON.stringify(tasks);
+  const key=scopeKey+"|"+entryFingerprint+"|"+tasksFingerprint;
   if(lastAutoReview.current===key)return;
   lastAutoReview.current=key;
   void run();
- },[runtime.status,mode,scopeKey,entryFingerprint,tasks,busy,weeks.length]);
+ },[runtime.status,mode,scopeKey,entryFingerprint,tasksFingerprint,busy,weeks.length]);
  const approve=(s:AiTaskSuggestion)=>{
   const text=(edits[s.id]??s.task.text).trim();
   if(!text){setStatus("Enter a task description before approving.");return;}
