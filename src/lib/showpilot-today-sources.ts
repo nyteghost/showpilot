@@ -43,7 +43,12 @@ function aggregate(items:readonly DailyActivity[]):DailyActivity[]{
  const merged=new Map<string,DailyActivity>();
  for(const row of items){
   if(!safeDate(row.date)||!row.showName.trim()||nonCgc.test(row.showName+" "+row.rooms.join(" ")))continue;
-  const key=row.date+"|"+(row.eventId.trim()?"id:"+row.eventId.trim():"name:"+canonical(row.showName));
+  const identity=row.eventId.trim()?"id:"+row.eventId.trim():"name:"+canonical(row.showName);
+  // Do not merge unrelated clients' identical "Client Arrival" function labels
+  // across different rooms. Those are distinct reviewable source functions.
+  const roomKey=!row.eventId.trim()&&isOperationalFunctionTitle(row.showName)?
+   "|rooms:"+[...roomSet(row.rooms)].sort().join(","):"";
+  const key=row.date+"|"+identity+roomKey;
   const old=merged.get(key);
   if(old){
    for(const room of row.rooms)if(!old.rooms.includes(room))old.rooms.push(room);
