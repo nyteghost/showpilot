@@ -5,7 +5,7 @@ import {Button} from "@/components/ui/button";
 import type {PostConShow} from "@/lib/showpilot-postcon";
 import {stageMentionedInEoc,hallLayoutAttached,eocAttendance} from "@/lib/showpilot-event-highlights";
 import {EVENT_ALLOWED_EXTENSIONS,extractEocFocus,extractEocFromPdf,pdfTextPages,guessEventFileKind,kindTitle,validateEventFile,type EventFileKind,type EventFileRecord,type EocSection,type EocExcerpt} from "@/lib/showpilot-event-assets";
-import {eocSpaceEvidence,explainSavedRoom} from "@/lib/showpilot-event-provenance";
+import {eocSpaceEvidence,explainSavedRoom,type ScheduleRoomCitation} from "@/lib/showpilot-event-provenance";
 import type {ZipScheduleEvidence} from "@/lib/showpilot-zip-schedule";
 
 type Document=EventFileRecord&{available:boolean};
@@ -14,7 +14,7 @@ const focus:EocSection[]=["Event Notes","Engineering","Utility"];
 const displayBytes=(n:number)=>n<1024?String(n)+" B":n<1024**2?String(Math.round(n/1024))+" KB":(n/(1024**2)).toFixed(1)+" MB";
 const mime=(ext:string)=>ext==="pdf"?"application/pdf":ext==="png"?"image/png":ext==="webp"?"image/webp":"image/jpeg";
 
-export function ShowPilotEventDocuments({show,zipSchedule,onOpenStage,onOpenFloorMaps}:{show:PostConShow;zipSchedule?:ZipScheduleEvidence|null;onOpenStage?:()=>void;onOpenFloorMaps?:()=>void}){
+export function ShowPilotEventDocuments({show,zipSchedule,scheduleRooms=[],onOpenStage,onOpenFloorMaps}:{show:PostConShow;zipSchedule?:ZipScheduleEvidence|null;scheduleRooms?:readonly ScheduleRoomCitation[];onOpenStage?:()=>void;onOpenFloorMaps?:()=>void}){
  const bridge=window.showpilotMemory;
  const [files,setFiles]=useState<Document[]>([]);
  const [roomAudit,setRoomAudit]=useState<ReturnType<typeof eocSpaceEvidence>>({assigned:[],unassigned:[]});
@@ -212,7 +212,7 @@ export function ShowPilotEventDocuments({show,zipSchedule,onOpenStage,onOpenFloo
     <div className="flex items-center gap-2">
      <h4 className="font-semibold text-sm">Room assignment check</h4>
      <ShowPilotWhy label="why these rooms are shown">
-      <p>The <strong>Events</strong> room list may combine saved Event Schedule rows, reviewed ZIP metadata, and manually selected rooms. It is not necessarily taken from this EOC.</p>
+      <p>The <strong>Events</strong> room list may combine saved Event Schedule rows, reviewed ZIP metadata, and manually selected rooms. It is not necessarily taken from this EOC. When a matching numeric Event ID is present in a saved schedule, the explanation shows its precise date, function, and Space field.</p>
       <p>To confirm rooms, ShowPilot reads the original EOC PDF's <strong>Function Space</strong> fields. Text such as <strong>No Space Assigned</strong> does not assign Hall C, Hall D, or any other room.</p>
       <p>A ZIP filename or a casual reference to a hall is only a mention, not proof of a booking. Previous imports might not have retained exact text provenance.</p>
      </ShowPilotWhy>
@@ -222,9 +222,10 @@ export function ShowPilotEventDocuments({show,zipSchedule,onOpenStage,onOpenFloo
     {roomAudit.unassigned.length>0&&<p className="text-xs text-muted-foreground">{roomAudit.unassigned.length} EOC Function Space line(s) say <strong>No Space Assigned</strong>. These do not establish any room.</p>}
     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
      {catalogRooms.map(room=>{
-      const origin=explainSavedRoom(room,roomEvidence,roomAudit.assigned);
+      const origin=explainSavedRoom(room,roomEvidence,roomAudit.assigned,scheduleRooms);
       const status=roomAuditLoading?"Checking EOC…":
        origin.status==="eoc-confirmed"?"EOC Function Space confirmed":
+       origin.status==="schedule-listed"?"Event Schedule lists room — EOC unconfirmed":
        origin.status==="zip-assigned"?"ZIP assignment — verify EOC":
        origin.status==="mention-only"?"Mention only — unverified":
        "Not established by the inspected EOC";
