@@ -3,6 +3,7 @@ import {CalendarDays,ChevronLeft,ChevronRight,FileText,FolderOpen,RefreshCw,Aler
 import {Button} from "@/components/ui/button";
 import {ShowPilotTodayChecklist} from "@/components/showpilot-today-checklist";
 import {ShowPilotWhy} from "@/components/showpilot-why";
+import {getLocalAiRuntimeState,subscribeLocalAiRuntimeState,explainBallroomWarningsLocally,type BallroomAiNote} from "@/lib/showpilot-ai-local";
 import {reconcileAirwallDay} from "@/lib/showpilot-today-checklist";
 import {inferBallroomTransitions} from "@/lib/showpilot-ballroom-inference";
 import type {EventRow} from "@/lib/work-tools";
@@ -44,6 +45,11 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
  const [reviewRows,setReviewRows]=useState<EventRow[]>([]);
  const [workbookWalls,setWorkbookWalls]=useState<WorkbookWallTask[]>([]);
  const [sourceWarnings,setSourceWarnings]=useState<string[]>([]);
+ const [aiRuntime,setAiRuntime]=useState(getLocalAiRuntimeState);
+ const [aiNotes,setAiNotes]=useState<BallroomAiNote[]>([]);
+ const [aiReviewState,setAiReviewState]=useState("");
+ useEffect(()=>subscribeLocalAiRuntimeState(setAiRuntime),[]);
+
  const [uploadBusy,setUploadBusy]=useState(false);
  const uploadPicker=useRef<HTMLInputElement>(null);
  const [details,setDetails]=useState<Record<string,Details>>({});
@@ -56,6 +62,21 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
  const dates=useMemo(()=>daysOfWeek(week),[week]);
  const joined=useMemo(()=>combineTodaySources(shows,scheduleActivities),[shows,scheduleActivities]);
  const inferredLayouts=useMemo(()=>inferBallroomTransitions(scheduleActivities,reviewRows,shows),[scheduleActivities,reviewRows,shows]);
+ const inferenceWarnings=inferredLayouts.warnings.join("\\n");
+ useEffect(()=>{
+  if(!active||aiRuntime.status!=="ready"||!inferenceWarnings){
+   setAiNotes([]);setAiReviewState("");return;
+  }
+  let alive=true;
+  setAiNotes([]);setAiReviewState("Local AI analyzing booking warnings…");
+  void explainBallroomWarningsLocally(inferredLayouts.warnings).then(notes=>{
+   if(alive){setAiNotes(notes);setAiReviewState(notes.length?"Local AI review — advisory only":"Local AI found no validated notes.");}
+  }).catch(e=>{
+   if(alive){setAiReviewState("Local AI could not interpret these warnings: "+(e instanceof Error?e.message:String(e)));}
+  });
+  return ()=>{alive=false;};
+ },[active,aiRuntime.status,inferenceWarnings]);
+
  const currentShows=useMemo(()=>joined.shows.filter(show=>showHasActivityOnDay(show,today,joined))
   .sort((a,b)=>a.showName.localeCompare(b.showName)),[joined,today]);
  const currentWeekShows=useMemo(()=>joined.shows.filter(show=>
@@ -233,7 +254,14 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
   {warning&&<p role="alert" className="rounded-lg border border-amber-500 p-3 text-sm">{warning}</p>}
   {message&&<p role="status" className="rounded-lg border p-3 text-sm">{message}</p>}
   {(sourceWarnings.length>0||inferredLayouts.warnings.length>0)&&<div className="rounded-lg border border-amber-500 p-3 text-xs" role="status">
-   {[...sourceWarnings,...inferredLayouts.warnings].map((warning,i)=><p key={i}>{warning}</p>)}
+   {sourceWarnings.map((warning,i)=><p key={"source"+i}>{warning}</p>)}
+   {inferredLayouts.warnings.map((warning,i)=><div key={"infer"+i} className="border-t border-amber-500/30 py-2">
+    <p>{warning}</p>
+    {aiNotes.filter(note=>note.warningIndex===i).map(note=>
+     <p key={note.warningIndex} className="mt-1 text-muted-foreground"><strong>Local AI suggestion (not verified):</strong> {note.interpretation} <strong>Check:</strong> {note.check}</p>)}
+   </div>)}
+   {aiReviewState&&<p className="mt-2 font-medium" role="status">{aiReviewState}</p>}
+   <p className="mt-2 text-muted-foreground">Only confirmed Event IDs and reviewed scheduling evidence can change deterministic rules. AI never edits source bookings or issues wall-move orders.</p>
   </div>}
   <div className="grid gap-3 sm:grid-cols-3">
    <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Actual shows on today's date</p>
