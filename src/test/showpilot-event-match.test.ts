@@ -21,6 +21,21 @@ describe("Event Schedule and ZIP Event ID linking",()=>{
   expect(matchEventZipToShow(meta("42389",["42389","53820"]),shows).status).toBe("conflicting-ids");
   expect(normalizedEventId("001234")).toBe("001234"); // Do not discard leading zeroes.
  });
+ it("does not let #tes or other alphabetic placeholders block a real numeric EOC ID",()=>{
+  const metadata={
+   eventId:"42389",
+   evidence:[
+    {field:"eventId" as const,value:"42389",source:"EOC cover page: Event Order Confirmation - Internal (2).pdf"},
+    {field:"eventId" as const,value:"tes",source:"Event Order Confirmation - Internal (2).pdf"},
+    {field:"eventId" as const,value:"42389",source:"ZIP filename (fallback)"}
+   ]
+  };
+  expect(matchEventZipToShow(metadata,shows)).toEqual({status:"matched",show:shows[0]});
+  expect(canAcknowledgeZipIdConflict(metadata,shows[0])).toBe(false);
+  expect(matchEventZipToShow(meta("tes",["tes"]),shows).status).toBe("missing-id");
+  expect(matchEventZipToShow(meta("42389",["42389","53820"]),shows).status)
+   .toBe("conflicting-ids");
+ });
  it("rejects ambiguous catalog duplicates rather than choosing arbitrarily",()=>{
   expect(matchEventZipToShow(meta("42389"),[...shows,{...shows[0]!,key:"name:duplicate"}]).status).toBe("ambiguous");
  });
