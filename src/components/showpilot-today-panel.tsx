@@ -50,6 +50,22 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
  const [aiNotes,setAiNotes]=useState<BallroomAiNote[]>([]);
  const [aiReviewState,setAiReviewState]=useState("");
  const [feedbackRevision,setFeedbackRevision]=useState(0);
+ const [findingsDismissed,setFindingsDismissed]=useState(false);
+ const [aiRefreshRevision,setAiRefreshRevision]=useState(0);
+ const clearReview=()=>{
+  setFindingsDismissed(true);
+  setAiNotes([]);
+  setAiReviewState("");
+ };
+ const refreshAiReview=()=>{
+  setFindingsDismissed(false);
+  setAiNotes([]);
+  setAiReviewState("");
+  setAiRefreshRevision(v=>v+1);
+  // Re-read locally saved EOCs, schedule and engineering workbook before review.
+  refresh(v=>v+1);
+ };
+
  useEffect(()=>{
   const refresh=()=>setFeedbackRevision(v=>v+1);
   window.addEventListener("showpilot:rule-feedback-saved",refresh);
@@ -80,7 +96,7 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
 
  const inferenceWarnings=ruleFindings.join("\\n");
  useEffect(()=>{
-  if(!active||aiRuntime.status!=="ready"||!inferenceWarnings){
+  if(!active||findingsDismissed||aiRuntime.status!=="ready"||!inferenceWarnings){
    setAiNotes([]);setAiReviewState("");return;
   }
   let alive=true;
@@ -103,7 +119,7 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
    if(alive){setAiReviewState("Local AI could not interpret these warnings: "+(e instanceof Error?e.message:String(e)));}
   });
   return ()=>{alive=false;};
- },[active,aiRuntime.status,inferenceWarnings,feedbackRevision]);
+ },[active,aiRuntime.status,inferenceWarnings,feedbackRevision,findingsDismissed,aiRefreshRevision]);
 
  const currentShows=useMemo(()=>joined.shows.filter(show=>showHasActivityOnDay(show,today,joined))
   .sort((a,b)=>a.showName.localeCompare(b.showName)),[joined,today]);
@@ -281,7 +297,17 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
   </div>
   {warning&&<p role="alert" className="rounded-lg border border-amber-500 p-3 text-sm">{warning}</p>}
   {message&&<p role="status" className="rounded-lg border p-3 text-sm">{message}</p>}
-  {(sourceWarnings.length>0||ruleFindings.length>0)&&<div className="rounded-lg border border-amber-500 p-3 text-xs" role="status">
+  {(sourceWarnings.length>0||ruleFindings.length>0)&&<div className="rounded-lg border border-amber-500 p-3 text-xs" role="region" aria-label="Rule findings and Local AI review">
+   <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+    <div className="font-semibold">{findingsDismissed?"Review cleared from view":"Rule findings and Local AI review"}</div>
+    <div className="flex flex-wrap gap-2">
+     <Button size="sm" variant="outline" disabled={loading} onClick={refreshAiReview}>
+      <RefreshCw size={14}/>{loading?"Refreshing…":"Refresh AI Review"}
+     </Button>
+     <Button size="sm" variant="outline" disabled={findingsDismissed} onClick={clearReview}>Clear</Button>
+    </div>
+   </div>
+   {findingsDismissed?<p role="status" className="text-muted-foreground">Findings hidden. Nothing was deleted. Refresh AI Review to show and recheck the latest saved data.</p>:<>
    {sourceWarnings.map((warning,i)=><p key={"source"+i}>{warning}</p>)}
    {ruleFindings.map((finding,i)=><div key={"rule"+i} className="border-t border-amber-500/30 py-2">
     <p>{finding}</p>
@@ -290,7 +316,8 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
    </div>)}
    {aiReviewState&&<p className="mt-2 font-medium" role="status">{aiReviewState}</p>}
    <p className="mt-2 text-muted-foreground">Independent AI review covers currently detected rule findings. It does not change approved bookings, physical setup work or EOC records. Other tools have separate review paths.</p>
-  </div>}
+   </>}
+  </div>
   <div className="grid gap-3 sm:grid-cols-3">
    <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Actual shows on today's date</p>
     <strong className="text-2xl tabular-nums">{currentShows.length}</strong></div>
