@@ -5,6 +5,7 @@
  * oversized files, duplicate paths, bad CRCs and excessive compression ratios.
  */
 const zlib=require("node:zlib");
+const crypto=require("node:crypto");
 const MAX_ZIP=150*1024*1024;
 const MAX_UNPACKED=220*1024*1024;
 const MAX_ENTRIES=120;
@@ -119,7 +120,15 @@ function inspect(input){
   if(!ALLOWED.has(ext)){ignored.push(entry.path);continue;}
   if(entry.uncompressed===0){ignored.push(entry.path);continue;}
   // A nested directory must remain visible to prevent ambiguous names.
-  files.push({path:entry.path,name:base,bytes:entry.uncompressed,kind:classify(entry.path)});
+  const kind=classify(entry.path);
+  // Fingerprint diagrams for a trustworthy content-duplicate preview.
+  // ZIPs often contain floorplan.pdf and floorplan[1].pdf that are identical.
+  // Decode only validated, bounded diagram entries; never write ZIP paths.
+  const sha256=kind==="diagram"
+   ?crypto.createHash("sha256").update(decodeEntry(parsed.bytes,entry)).digest("hex")
+   :undefined;
+  files.push({path:entry.path,name:base,bytes:entry.uncompressed,kind,
+   ...(sha256?{sha256}:{})});
  }
  if(!files.length)throw Error("This ZIP has no supported work orders, EOCs, diagrams or other documents.");
  return {files,ignored,manifest,totalBytes:files.reduce((n,f)=>n+f.bytes,0)};
@@ -180,6 +189,12 @@ function reviewSources(input){
  for(const f of ranked){
   const extension=f.name.split(".").pop().toLowerCase();
   if(sources.length>=28||total>48*1024*1024){skipped.push(f.path);continue;}
+  // A floor map is a diagram, NOT Event ID/room evidence. Numeric booth
+  // labels and layout notes must not accidentally change EOC metadata.
+  if(f.kind==="diagram"){
+   sources.push({path:f.path,format:"text",text:""});
+   continue;
+  }
   if(["pdf","docx","xlsx","xls","csv","txt"].includes(extension)){
    if(f.bytes.length>12*1024*1024){skipped.push(f.path);continue;}
    total+=f.bytes.length;
