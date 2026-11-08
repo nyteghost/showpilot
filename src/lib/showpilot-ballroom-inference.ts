@@ -97,6 +97,10 @@ function fromCatalog(shows:readonly PostConShow[]):Owner[]{
  }
  return out;
 }
+/** Function descriptions are not automatically independent show names. */
+const functionTitle=/^(?:move\s*(?:in|out)|program|reception|after[ -]?party(?:\s+reception)?|break(?:out)?\s+session|room\s+(?:turn|refresh|change)|registration|meeting|lunch|dinner|breakfast|coffee|general\s+session|keynote|awards?\s+ceremony|hosted\s+bar|sponsor\s+marketplace|all\s+day\s+beverage|welcome|networking)\b/i;
+const isFunctionLabel=(name:string)=>functionTitle.test(name.trim());
+
 const compareGroups=(a:readonly string[],b:readonly string[])=>a.join("|")===b.join("|");
 /** Explain exactly which shows require incompatible groups on a given date.
  * A same-show overlap can be a timed room refresh, not a simultaneous booking. */
@@ -114,11 +118,19 @@ function overlappingGroupWarnings(day:string,owners:readonly Owner[],source:Ball
    const [a,aShows]=entries[i]!,[b,bShows]=entries[j]!;
    const shared=[...a].filter(letter=>b.includes(letter)).join("");
    if(!shared)continue;
+   const an=[...aShows].sort(),bn=[...bShows].sort();
+   const functionRows=[...an,...bn].some(isFunctionLabel);
+   const sameEvent=owners.some(x=>x.group===a&&
+    owners.some(y=>y.group===b&&x.owner===y.owner&&x.owner.startsWith("id:")));
+   const explanation=sameEvent?
+    "Both configurations are linked to the same Event ID; this is potentially an intra-event room change, not competing shows.":
+    functionRows?
+    "At least one name is a function description, not a verified standalone show. It may belong to the same event. Confirm the parent EOC and start/end times.":
+    "These physical configurations cannot coexist; they may be successive bookings or a planned room refresh. Verify occupancy and handoff times.";
    warnings.push(day+" ("+source+"): "+
-    [...aShows].sort().join(", ")+" [Ballroom "+a+"] and "+
-    [...bShows].sort().join(", ")+" [Ballroom "+b+"] both use "+
-    "ballroom section"+(shared.length>1?"s ":" ")+[...shared].join(", ")+
-    ". They cannot be configured simultaneously. This may be a timed room refresh or room change; check function start/end times and the EOC.");
+    an.join(", ")+" [Ballroom "+a+"] and "+
+    bn.join(", ")+" [Ballroom "+b+"] both use ballroom section"+
+    (shared.length>1?"s ":" ")+[...shared].join(", ")+". "+explanation);
   }
  }
  return warnings;
