@@ -42,7 +42,7 @@ export type ScheduleRoomCitation={room:string;eventId:string;date:string;space:s
  * room match to another show. A room can be listed on the schedule yet not
  * confirmed by the EOC, and this distinction must remain visible. */
 export function roomsFromSavedEventSchedule(rows:readonly EventRow[],eventId:string):ScheduleRoomCitation[]{
- if(!/^\\d{3,12}$/.test(eventId.trim()))return [];
+ if(!/^\d{3,12}$/.test(eventId.trim()))return [];
  const result:ScheduleRoomCitation[]=[];
  for(const row of rows){
   if(row.eventId?.trim()!==eventId||isCancelledRow(row)||isPendingRow(row))continue;
