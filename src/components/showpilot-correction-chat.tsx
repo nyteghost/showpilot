@@ -50,11 +50,15 @@ export function ShowPilotCorrectionChat(){
     if(!bridge?.showCatalogDeleteSelected)throw Error("Event deletion requires the portable desktop app.");
     const result=await bridge.showCatalogDeleteSelected({records:pendingDelete});
     setPendingDelete([]);
-    await loadDurableShowCatalog();
-    window.dispatchEvent(new Event("showpilot:postcon-catalog"));
     setHistory(previous=>[...previous,{role:"assistant" as const,
      content:"Deleted "+result.deleted+" event catalog record"+(result.deleted===1?"":"s")+
       ". A backup was created first; EOCs, attachments and saved workbooks were not deleted."}].slice(-12));
+    try{
+     await loadDurableShowCatalog();
+     window.dispatchEvent(new Event("showpilot:postcon-catalog"));
+    }catch(error){
+     setMessage("The records were deleted, but the Events screen did not refresh: "+String(error));
+    }
    }catch(error){
     setPendingDelete([]);
     setMessage("No records deleted: "+(error instanceof Error?error.message:String(error))+
