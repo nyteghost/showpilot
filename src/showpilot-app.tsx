@@ -3,7 +3,7 @@ import {
   CalendarDays, CalendarClock, Layers3, Store, Map, FolderOpen,
   LayoutDashboard, Menu, Moon, Sun, ChevronRight, PanelLeftClose, PanelLeftOpen, Settings2
 } from "lucide-react";
-import { ShowServicesTools, type WorkTabId } from "@/components/work-tools";
+import { ShowServicesTools, type WorkTabId, type OpenEventRequest } from "@/components/work-tools";
 import { BackupPanel } from "@/components/showpilot-backup";
 import { ShowPilotLocalFoundation } from "@/components/showpilot-local-foundation";
 import { ShowPilotAiSettings } from "@/components/showpilot-ai-settings";
@@ -16,6 +16,7 @@ import showpilotIcon from "./assets/showpilot-approved.webp";
 
 type Screen = "dashboard" | "settings" | WorkTabId;
 const sections: { id: WorkTabId; label: string; desc: string; Icon: typeof CalendarDays; note: string }[] = [
+  {id:"today",label:"Today",desc:"Today’s events, EOCs, airwall work and an easy weekly overview",Icon:Sun,note:"Daily operations"},
   {id:"events",label:"Event Schedule",desc:"Import Ungerboeck reports, plan engineering coverage and export Excel",Icon:CalendarDays,note:"Reports & staffing"},
   {id:"eventhub",label:"Events",desc:"Show notes, work orders, EOCs, event diagrams and Pre/Post-Con information",Icon:FolderOpen,note:"Central show records"},
   {id:"shifts",label:"My Shifts",desc:"Read, edit and export your personal shifts to Google Calendar",Icon:CalendarClock,note:"Calendar tools"},
@@ -44,6 +45,7 @@ export function App() {
   const [dark,setDark] = useState(()=>saved("showpilot:theme","light")==="dark");
   const [expanded,setExpanded] = useState(()=>saved("showpilot:sidebar","true")!=="false");
   const [mobileOpen,setMobileOpen] = useState(false);
+  const [openEventRequest,setOpenEventRequest]=useState<OpenEventRequest|null>(null);
   const [localAiRuntime,setLocalAiRuntime] = useState(getLocalAiRuntimeState);
 
   useEffect(()=>{
@@ -56,8 +58,17 @@ export function App() {
 
   useEffect(()=>{
     const open=(event:Event)=>{
-      const tab=(event as CustomEvent<{tab?:string}>).detail?.tab;
-      if(tab==="events"){setLastWorkTab("events");setScreen("events");setMobileOpen(false);}
+      const detail=(event as CustomEvent<{tab?:string;eventKey?:string;section?:string}>).detail;
+      const tab=detail?.tab;
+      if(tab&&sections.some(s=>s.id===tab)){
+        if(tab==="eventhub"&&detail?.eventKey){
+          setOpenEventRequest(previous=>({
+            key:detail.eventKey!,section:detail.section==="overview"?"overview":"documents",
+            revision:(previous?.revision??0)+1
+          }));
+        }
+        setLastWorkTab(tab as WorkTabId);setScreen(tab as WorkTabId);setMobileOpen(false);
+      }
     };
     window.addEventListener("showpilot:navigate",open);
     return ()=>window.removeEventListener("showpilot:navigate",open);
@@ -119,7 +130,7 @@ export function App() {
           : null
         }
         {lastWorkTab && <div hidden={!current}>
-          <section className="sp-panel"><ShowServicesTools selectedTab={lastWorkTab} hideTabBar page venueOnly /></section>
+          <section className="sp-panel"><ShowServicesTools selectedTab={lastWorkTab} openEventRequest={openEventRequest} hideTabBar page venueOnly /></section>
         </div>}
       </main>
       <footer className="sp-footer">ShowPilot v{__APP_VERSION__} · Cobb Convention Center-Atlanta · {__APP_VERSION__.includes("-beta") ? "Beta" : "Main"} channel</footer>
