@@ -1,10 +1,9 @@
-import type {EventRow,EventEntry,TaskNote} from "./work-tools";
-import {summarizeEvents,isCancelledRow,isPendingRow,airwallTasks} from "./work-tools";
+import type {TaskNote} from "./work-tools";
+import {summarizeEvents,isCancelledRow,isPendingRow,airwallTasks,formatMinutes} from "./work-tools";
 import {scopeShowPilotRows} from "./showpilot-venue";
 import {applyReview,parseReviewProject,type ReviewProject} from "./showpilot-review";
 import {postConShowsFromReportRows} from "./showpilot-postcon";
 import type {PostConShow} from "./showpilot-postcon";
-import {todayIso} from "./showpilot-today";
 
 /** Dated activity is not the same as a catalog start/end date. Catalog ranges
  * can be incomplete or historical, while the engineering schedule may include
@@ -17,12 +16,10 @@ export type DailyActivity={
 };
 export type WorkbookWallTask={date:string;section:"HALLS"|"BALLROOM";text:string;source:"engineering-workbook"};
 export type WorkbookActivityResult={activities:DailyActivity[];airwalls:WorkbookWallTask[];warnings:string[]};
-export type TodayJoined={shows:PostConShow[];activeDates:Record<string,string[]>;origin:Record<string,DailyActivity["source"]>;unlinkedKeys:string[]};
+export type TodayJoined={shows:PostConShow[];activeDates:Record<string,string[]>;origin:Record<string,DailyActivity["source"]>;daily:Record<string,Record<string,string[]>>;unlinkedKeys:string[]};
 const ISO=/^\d{4}-\d{2}-\d{2}$/;
 const nonCgc=/\b(?:CEPAC|cobb energy|performing arts)\b/i;
-const normalize=(s:string)=>s.normalize("NFKC").replace(/\s+/g," ").trim().toLowerCase();
-const canonical=(s:string)=>normalize(s).replace(/[^a-z0-9]/g,"");
-const groups=Array.from("ABCDEFG");
+const canonical=(s:string)=>s.normalize("NFKC").replace(/\s+/g," ").trim().toLowerCase().replace(/[^a-z0-9]/g,"");
 function safeDate(s:string):boolean{
  return ISO.test(s)&&!Number.isNaN(new Date(s+"T12:00:00Z").getTime());
 }
@@ -65,7 +62,7 @@ export function activitiesFromReviewProject(project:ReviewProject):{activities:D
    [entry.space]:[];
   if(!rooms.length)continue;
   items.push({date:entry.date,eventId:entry.eventId??"",showName:label,rooms,
-   source:"event-schedule",details:[entry.code]});
+   source:"event-schedule",details:[entry.code+" "+formatMinutes(entry.start)+"–"+formatMinutes(entry.end)]});
  }
  // Include only actionable dated schedule-generated airwall suggestions.
  const airwalls=airwallTasks(accepted);
@@ -78,6 +75,7 @@ export function combineTodaySources(
  const shows=catalog.filter(s=>!nonCgc.test(s.showName+" "+s.rooms)).map(s=>({...s}));
  const activeDates:Record<string,string[]>={};
  const origin:Record<string,DailyActivity["source"]>={};
+ const daily:Record<string,Record<string,string[]>>={};
  const unlinkedKeys:string[]=[];
  const byId=new Map<string,PostConShow[]>();
  const byName=new Map<string,PostConShow[]>();
@@ -107,10 +105,12 @@ export function combineTodaySources(
    old.rooms=[...rooms].join(", ");
   }
   (activeDates[key]??=[]).push(activity.date);
+  const day=(daily[key]??={})[activity.date]??=[];
+  for(const detail of activity.details)if(!day.includes(detail))day.push(detail);
   if(activity.source==="event-schedule"||!origin[key])origin[key]=activity.source;
  }
  for(const key of Object.keys(activeDates))activeDates[key]=[...new Set(activeDates[key])].sort();
- return {shows,activeDates,origin,unlinkedKeys};
+ return {shows,activeDates,origin,daily,unlinkedKeys};
 }
 export function showHasActivityOnDay(show:PostConShow,date:string,joined:TodayJoined):boolean{
  // If actual dated rows exist, prefer those over potentially stale range
