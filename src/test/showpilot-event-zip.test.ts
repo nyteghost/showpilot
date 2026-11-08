@@ -47,7 +47,7 @@ describe("Secure event ZIP import",()=>{
   ]);
   const preview=zip.inspect(bundle);
   expect(preview.manifest).toMatchObject({showName:"Front Row Card Show",rooms:"Hall A, Hall B"});
-  expect(preview.files.map(f=>f.kind).sort()).toEqual(["diagram","eoc","work-order"]);
+  expect(preview.files.map(f=>f.kind).sort()).toEqual(["diagram","eoc","exhibitor-order"]);
   expect(preview.ignored).toEqual(["unrelated.exe"]);
   const extracted=zip.contents(bundle);
   expect(extracted.files.map(f=>f.path)).toEqual(preview.files.map(f=>f.path));
