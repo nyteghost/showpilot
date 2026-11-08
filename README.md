@@ -1,5 +1,7 @@
 # ShowPilot
 
+> **Continuing development in a new AI chat?** Read [AGENTS.md](AGENTS.md) and [ShowPilot continuity issue #2](https://github.com/nyteghost/showpilot/issues/2). Say **“Remember Yourself”** and ask the assistant to read those sources to recover decisions, active tasks and code/build status.
+
 **Cobb Convention Center-Atlanta | Show Services Operations Suite**
 
 ShowPilot is a professional, work-focused application for convention-center event planning, engineering schedules, stage/deck setup, floor maps, shift calendars, and vendor comparisons. It was originally developed as the Work Tools portion of Pixel Pals, but has its own codebase, portable Windows and Linux desktop applications, and release channels. **This repository is ShowPilot only, not Pixel Pals.**
