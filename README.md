@@ -8,6 +8,12 @@ ShowPilot is a professional, work-focused application for convention-center even
 
 **Current status:** Active beta. Use real work documents carefully, review automatically generated assignments and stage layouts before acting on them, and retain originals/backups. The packaged desktop applications do not require Node.js, Bun, Ollama, or Git on the destination computer.
 
+## Required show names in engineering exports
+
+Every populated Hall or Ballroom schedule cell must begin with its **parent event/show name**, followed by the activity code and time. Activity labels such as `Exhibitor Move-In`, `Move Out`, and `Move In Exhibitors` are **not** show names. Imported Ungerboeck Event Schedule group headers and Event IDs are used to restore authoritative parent names, including in an older saved review when the original rows are available. An unresolved function-only label prevents export and displays the affected date, space and Event ID for correction; ShowPilot does not invent a show name.
+
+After installing the updated beta, reopen the saved Event Schedule review or reimport the source Event Schedule XLSX, verify the proposed events, then use **Download week (fresh layout)** to regenerate the file. Previously downloaded XLSX files cannot update themselves.
+
 ## Windows updater: download to Downloads
 
 In **Settings & AI → App Updates**, choose `beta` or `main` and click **Check for Updates**.
