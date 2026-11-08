@@ -39,7 +39,7 @@ export function ShowPilotTodayChecklist({day,shows,airwalls,workbookWalls,sugges
  },[day]);
  const groups=useMemo(()=>{
   const building={
-   scope:"building",title:"Building-wide setup",
+   scope:"building",title:"Building-wide setup",subtitle:"",
    tasks:buildingChecklistTasks(day,workbookWalls,suggestions)
   };
   const eventGroups=shows.map(show=>({
@@ -51,7 +51,7 @@ export function ShowPilotTodayChecklist({day,shows,airwalls,workbookWalls,sugges
  },[day,shows,airwalls,workbookWalls,suggestions]);
  const withManual=useMemo(()=>groups.map(g=>({
   ...g,
-  tasks:[...g.tasks,...state.custom.filter(x=>x.scope===g.scope).map(x=>({
+  tasks:[...g.tasks,...state.custom.filter(x=>x.scope===g.scope).map<ChecklistTask>(x=>({
    id:x.id,text:x.text,source:"manual" as const
   }))]
  })),[groups,state.custom]);
@@ -120,7 +120,7 @@ export function ShowPilotTodayChecklist({day,shows,airwalls,workbookWalls,sugges
      <div className="flex items-start justify-between gap-2">
       <div className="min-w-0">
        <h4 className="break-words text-sm font-semibold">{g.title}</h4>
-       {"subtitle" in g&&g.subtitle&&<p className="break-words text-xs text-muted-foreground">{g.subtitle}</p>}
+       {g.subtitle&&<p className="break-words text-xs text-muted-foreground">{g.subtitle}</p>}
       </div>
       <span className="shrink-0 text-xs text-muted-foreground">{done}/{g.tasks.length}</span>
      </div>
