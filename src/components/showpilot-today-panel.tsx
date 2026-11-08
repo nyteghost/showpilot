@@ -2,6 +2,8 @@ import {useEffect,useMemo,useRef,useState} from "react";
 import {CalendarDays,ChevronLeft,ChevronRight,FileText,FolderOpen,RefreshCw,AlertTriangle,Layers3} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import {ShowPilotTodayChecklist} from "@/components/showpilot-today-checklist";
+import {ShowPilotWhy} from "@/components/showpilot-why";
+import {reconcileAirwallDay} from "@/lib/showpilot-today-checklist";
 import {inferBallroomTransitions} from "@/lib/showpilot-ballroom-inference";
 import type {EventRow} from "@/lib/work-tools";
 import {loadDurableShowCatalog,type PostConShow} from "@/lib/showpilot-postcon";
@@ -60,6 +62,7 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
   dates.some(date=>showHasActivityOnDay(show,date,joined))),[joined,dates]);
  const todayChanges=useMemo(()=>scheduledWallChanges(suggestions,today),[suggestions,today]);
  const todayWorkbookWalls=useMemo(()=>workbookWalls.filter(t=>t.date===today),[workbookWalls,today]);
+ const todayWallPlan=useMemo(()=>reconcileAirwallDay(today,todayWorkbookWalls,todayChanges,inferredLayouts.transitions),[today,todayWorkbookWalls,todayChanges,inferredLayouts.transitions]);
  const todayUnmatched=useMemo(()=>joined.unlinkedFunctions.filter(f=>f.date===today),[joined,today]);
  const todayAirwalls=useMemo(()=>Object.fromEntries(currentShows.map(show=>[
    show.key,details[show.key]?.airwalls??emptyAirwalls
@@ -308,20 +311,44 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
     <p key={i} className="text-xs">{f.showName} · {f.rooms.join(", ")}{f.details.length?" · "+f.details.join(" · "):""}</p>
    )}</div>
   </details>}
-  <section className="space-y-3" aria-label="Scheduled airwall changes today">
-   <h3 className="flex items-center gap-2 font-semibold"><AlertTriangle size={18}/> Airwall changes suggested for today</h3>
-   {(todayChanges.length>0||todayWorkbookWalls.length>0||inferredLayouts.transitions.some(t=>today>=t.afterDate&&today<=t.needByDate))?<div className="rounded-lg border border-amber-500 p-3 space-y-1">
-    {inferredLayouts.transitions.filter(t=>today>=t.afterDate&&today<=t.needByDate).map(t=><p key={t.id} className="text-sm">
-     <strong>Inferred airwall handoff:</strong> Make {t.target} and verify lighting — after {t.afterDate}, before {t.needByDate}. Confirm the source EOC and access window.
-    </p>)}
-    {todayWorkbookWalls.map((task,i)=><p key={"workbook-"+i} className="text-sm">
-     <strong>Engineering workbook:</strong> {task.text} ({task.section==="HALLS"?"Halls":"Ballrooms"}) — verify before moving
-    </p>)}
-    {todayChanges.map((task,i)=><p key={"suggestion-"+i} className="text-sm">
-     <strong>Schedule suggestion:</strong> {wallTaskLabel(task)} — check layout before moving
-    </p>)}
-    <p className="text-xs text-muted-foreground">Workbook tasks retain their original dated Excel instructions. Other suggestions come from the locally saved Event Schedule. Confirm room configuration and timing in the EOC.</p>
-   </div>:<p className="rounded-lg border p-3 text-sm text-muted-foreground">No dated airwall-change suggestion is available from the last saved Event Schedule. This is not confirmation that no walls need moving.</p>}
+  <section className="space-y-3" aria-label="Airwall setup decisions today">
+   <h3 className="flex items-center gap-2 font-semibold"><AlertTriangle size={18}/> Airwall setup plan for today</h3>
+   {(todayWallPlan.tasks.length>0||todayWallPlan.review.length>0)?
+    <div className="rounded-lg border border-amber-500 p-3 space-y-2">
+     <p className="text-xs text-muted-foreground">One plan reconciles the engineering workbook, Event Schedule and inferred room transitions. Multiple sources do not automatically mean multiple wall moves.</p>
+     {todayWallPlan.tasks.filter(t=>!t.id.endsWith("-lighting")).map(task=>
+      <div key={task.id} className="rounded-md border p-2 text-sm">
+       <div className="flex items-center gap-1">
+        <strong className="flex-1">{task.source==="inferred"?"Next inferred change":"Dated engineering instruction"}: {task.text}</strong>
+        <ShowPilotWhy label={task.text}>
+         <p>{task.detail||"Based on the saved engineering schedule."}</p>
+         <p>Verify the current partition position, EOC and safe handoff time before moving anything.</p>
+        </ShowPilotWhy>
+       </div>
+       <p className="text-xs text-muted-foreground">Verify the lighting zones after completing the wall change.</p>
+      </div>)}
+     {todayWallPlan.review.length>0&&
+      <details className="rounded-md border border-amber-500/70 p-2 text-xs">
+       <summary className="cursor-pointer font-semibold">
+        {todayWallPlan.review.some(x=>x.kind==="conflict")?
+         "Conflicting configurations — review before moving":"Other configurations — planning ahead"}
+        {" ("+todayWallPlan.review.length+")"}
+       </summary>
+       {todayWallPlan.review.map(item=>
+        <div key={item.id} className="mt-2 space-y-1 border-t pt-2">
+         <div className="flex items-center gap-1">
+          <strong>{item.target}</strong>
+          <ShowPilotWhy label={item.target}>
+           <p>{item.reason}</p>
+           {item.sources.map((source,i)=><p key={i}>{source}</p>)}
+          </ShowPilotWhy>
+         </div>
+         <p>{item.reason}</p>
+        </div>)}
+      </details>}
+     <p className="text-xs text-muted-foreground">Future or contradictory room requirements remain visible for review, but are not extra immediate checkboxes. EOC instructions and occupancy establish the safe time.</p>
+    </div>:
+    <p className="rounded-lg border p-3 text-sm text-muted-foreground">No dated airwall-change instruction or inferred transition was found. Verify the EOC and actual room setup before concluding no move is needed.</p>}
   </section>
   <section className="space-y-3" aria-label="Easy seven-day event view">
    <div className="flex flex-wrap items-center justify-between gap-3">
@@ -342,7 +369,7 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
       const wallChanges=scheduledWallChanges(suggestions,date);
       const unmatched=joined.unlinkedFunctions.filter(f=>f.date===date);
       const sheetWalls=workbookWalls.filter(t=>t.date===date);
-      const plannedMoves=inferredLayouts.transitions.filter(t=>date>=t.afterDate&&date<=t.needByDate);
+      const dayWallPlan=reconcileAirwallDay(date,sheetWalls,wallChanges,inferredLayouts.transitions);
       const isToday=date===today;
       return <div key={date} className={"min-h-52 p-2 space-y-2 "+(isToday?"bg-primary/5":"")}>
        <div className="border-b pb-2">
@@ -374,18 +401,25 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
          <p className="text-muted-foreground">No event assigned; verify the EOC or Event Schedule ID before linking.</p>
         </div>
        </details>}
-       {plannedMoves.map(t=><div key={t.id} className="rounded-md border border-amber-500 px-2 py-1 text-xs">
-        <strong>Airwall setup window</strong>
-        <p>Make {t.target}</p><p>Then verify lighting</p>
-        <p className="text-muted-foreground">After {t.afterDate}, before {t.needByDate}; verify EOC and room availability.</p>
-       </div>)}
-       {sheetWalls.map((task,i)=><div key={"sheet-wall-"+i} className="rounded-md border border-amber-500 px-2 py-1 text-xs">
-        <strong>Engineering task</strong><p>{task.text}</p>
-       </div>)}
-       {wallChanges.map((task,i)=><div key={"wall-"+i} className="rounded-md border border-amber-500 px-2 py-1 text-xs">
-        <strong>Airwall suggestion</strong><p>{wallTaskLabel(task)}</p>
-       </div>)}
-       {!dayShows.length&&!wallChanges.length&&!sheetWalls.length&&!plannedMoves.length&&<p className="text-xs text-muted-foreground">No saved events</p>}
+       {dayWallPlan.tasks.filter(t=>!t.id.endsWith("-lighting")).map(task=>
+        <div key={task.id} className="rounded-md border border-amber-500 px-2 py-1 text-xs">
+         <div className="flex items-center gap-1">
+          <strong className="flex-1">{task.source==="inferred"?"Next inferred setup":"Dated setup"}</strong>
+          <ShowPilotWhy label={task.text}><p>{task.detail}</p></ShowPilotWhy>
+         </div>
+         <p>{task.text}</p><p className="text-muted-foreground">Then verify lighting zones.</p>
+        </div>)}
+       {dayWallPlan.review.length>0&&<details className="rounded-md border border-amber-500/60 p-2 text-xs">
+        <summary className="cursor-pointer font-semibold">
+         {dayWallPlan.review.some(x=>x.kind==="conflict")?"Conflicting setups":"Later setups"} ({dayWallPlan.review.length})
+        </summary>
+        {dayWallPlan.review.map(item=><div key={item.id} className="mt-2">
+         <strong>{item.target}</strong>
+         <p className="text-muted-foreground">{item.reason}</p>
+         <ShowPilotWhy label={item.target}>{item.sources.map((source,i)=><p key={i}>{source}</p>)}</ShowPilotWhy>
+        </div>)}
+       </details>}
+       {!dayShows.length&&!dayWallPlan.tasks.length&&!dayWallPlan.review.length&&<p className="text-xs text-muted-foreground">No saved events</p>}
       </div>;
      })}
     </div>
