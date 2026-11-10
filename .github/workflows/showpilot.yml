@@ -2,7 +2,7 @@ name: ShowPilot standalone checks
 run-name: "ShowPilot ${{ github.ref_name }} build #${{ github.run_number }}"
 on:
   push:
-    branches: [main, beta]
+    branches: [main, beta, claude]
   workflow_dispatch:
 concurrency:
   group: showpilot-${{ github.ref_name }}-validation
