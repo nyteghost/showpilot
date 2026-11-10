@@ -9,22 +9,34 @@ function parseClock(raw: string): { min: number; mer: "a" | "p" | null } | null 
   const m = raw.trim().toLowerCase().match(/^(\d{1,2})(?::(\d{2}))?\s*(a|am|p|pm)?\.?$/);
   if (!m) return null;
   const h = Number(m[1]);
-  if (h > 23) return null;
+  if (h > 23 || Number(m[2] ?? 0) > 59) return null;
   return { min: (h % 12) * 60 + Number(m[2] ?? 0), mer: m[3] ? (m[3][0] as "a" | "p") : null };
 }
 
 /** Converts a schedule cell like "9a-6p", "7am-5pm", "8:30am-4:30" into start/end minutes. End may exceed 1440 for overnight. */
-export function parseShift(cell: string): { start: number; end: number } | null {
-  const m = cell.replace(/\s+/g, "").match(/^(\d{1,2}(?::\d{2})?(?:am|pm|a|p)?)[-–](\d{1,2}(?::\d{2})?(?:am|pm|a|p)?)$/i);
-  if (!m) return null;
-  const a = parseClock(m[1] ?? ""), b = parseClock(m[2] ?? "");
-  if (!a || !b) return null;
-  let start = a.min + (a.mer === "p" ? 720 : 0);
-  if (a.mer === null && a.min < 6 * 60) start += 720; // "2-10:30p" → 2pm
-  let end = b.min + (b.mer === "p" ? 720 : 0);
-  if (b.mer === null && end <= start) end += 720;
-  if (end <= start) end += 1440; // overnight
-  return { start, end };
+export function shiftAnnotations(raw:string):string[]{
+ const flags:string[]=[];
+ if(/\+\s*$/.test(raw))flags.push("Extended (+)");
+ if(/\(\s*TBD\s*\)/i.test(raw))flags.push("Tentative (TBD)");
+ return flags;
+}
+export function parseShift(cell:string):{start:number;end:number}|null {
+ // Normalize only unambiguous typographic variants; do not guess a missing
+ // endpoint, an invalid meridiem, or an uncertain handwritten correction.
+ const cleaned=cell.trim()
+  .replace(/\s*\+\s*$/,"").replace(/\(\s*TBD\s*\)\s*$/i,"")
+  .replace(/[–—]/g,"-").replace(/;/g,":").replace(/\s+/g,"")
+  .replace(/\b(\d{1,2})(\d{2})(am|pm|a|p)\b/gi,"$1:$2$3");
+ const m=cleaned.match(/^(\d{1,2}(?::\d{2})?(?:am|pm|a|p)?)-(\d{1,2}(?::\d{2})?(?:am|pm|a|p)?)$/i);
+ if(!m)return null;
+ const a=parseClock(m[1]??""),b=parseClock(m[2]??"");
+ if(!a||!b)return null;
+ let start=a.min+(a.mer==="p"?720:0);
+ if(a.mer===null&&a.min<360)start+=720;
+ let end=b.min+(b.mer==="p"?720:0);
+ if(b.mer===null&&end<=start)end+=720;
+ if(end<=start)end+=1440;
+ return {start,end};
 }
 
 /** When an event has no move-out line, the guessed move out runs this long after the show ends. */
@@ -266,8 +278,12 @@ export const escalatorLabel = (h: { start: number; end: number }) => `${formatMi
 
 // ---------- my shifts ----------
 /** id: stable across edits, so pushing again updates the same calendar event instead of adding a copy. note: optional text added to the event description. */
-export type Shift = { date: string; start: number; end: number; raw: string; id?: string; note?: string };
+export type Shift = { date: string; start: number; end: number; raw: string; id?: string; note?: string; reviewed?: boolean };
 
+/** Mark suspicious clock data; the operator must explicitly confirm it. */
+export function shiftNeedsReview(s:Shift):boolean{
+ return !s.reviewed&&(s.end-s.start<120||s.end-s.start>840);
+}
 /** Google event ids use only a-v and 0-9. Derived from the original date and start so re-reading the same sheet gives the same ids. */
 export const shiftId = (date: string, start: number): string => `ppshift${date.replace(/\D/g, "")}s${start}`;
 export const newShiftId = (rand: () => number = Math.random): string => `ppadd${Math.floor(rand() * 1e12).toString(32).padStart(8, "0")}`;
