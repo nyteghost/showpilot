@@ -9,7 +9,7 @@ This is a **separate test branch** based on `beta`. It is not the production app
 4. Extract the archive to a **separate folder** (e.g. `ShowPilot-Claude-Test`). Do not overwrite `beta` or `main`. Do not migrate or delete the existing appdata.
 5. Start the portable app and work from **copies** of your monthly workbook and Event Schedule report.
 
-The test package has an isolated `-claude` version suffix, but Electron user-data locations might still be shared with beta because the app ID is unchanged. **Back up ShowPilot user data and avoid destructive operations or live Google Calendar sync during testing.** Prefer exporting sample `.ics` files, not syncing to a live calendar.
+The test package has an isolated `-claude` version suffix and uses a separate **ShowPilot-Claude-Test** Electron user-data directory. Beta/main SQLite, Native Memory and credentials are not loaded by this test build. Still keep your production backups and avoid live Google Calendar sync during testing. Experimental in-app updates are disabled; download subsequent claude builds from GitHub Actions.
 
 ## Implemented experiments (as of this checkpoint)
 - Detect the actual ordered CGC Hall/Ballroom section at a moved row offset; keep other-venue rows excluded.
