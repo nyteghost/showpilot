@@ -25,8 +25,28 @@ function store(items) {
 function requireStorage() {
   if(!secureStorageAvailable(safeStorage))failure(secureStorageRequirement()+" API key was NOT saved.");
 }
+/** Corrupt encrypted settings must not make the entire AI Settings screen fail.
+ * This reports no credentials and requires explicit operator recovery. */
 function status() {
-  return {available:secureStorageAvailable(safeStorage),providers:Object.keys(vault())};
+  try {
+    const available=secureStorageAvailable(safeStorage);
+    return {available,providers:Object.keys(vault()),needsReset:false};
+  } catch {
+    return {available:false,providers:[],needsReset:true,
+      message:"Saved AI credentials are unreadable. Reset the damaged vault to reconnect providers. Your encrypted file will be preserved as a backup."};
+  }
+}
+function resetCorruptVault(confirmation){
+  if(confirmation!=="RESET")failure("Type RESET to confirm credential-vault recovery.");
+  // This operation is ONLY for damaged vaults. Working credentials are never reset.
+  try{vault();}catch(error){
+    const file=KEY_FILE();
+    if(!fs.existsSync(file))failure("There is no damaged credential vault to reset.");
+    const archive=file+".corrupt-"+Date.now().toString(36)+"-"+require("node:crypto").randomBytes(4).toString("hex");
+    fs.renameSync(file,archive); // Encrypted contents preserved for recovery.
+    return status();
+  }
+  failure("Credentials are readable; reset is unnecessary.");
 }
 function readKey(provider) {
   if(!PROVIDERS.has(provider))failure("Unknown AI provider.");
@@ -107,6 +127,7 @@ async function suggest(provider,context) {
 }
 function setupAiIpc() {
   ipcMain.handle("showpilot-ai:status",()=>status());
+  ipcMain.handle("showpilot-ai:reset-corrupt",(_,confirmation)=>resetCorruptVault(confirmation));
   ipcMain.handle("showpilot-ai:save",(_,provider,key)=>{
     if(!PROVIDERS.has(provider)||typeof key!=="string"||key.length<12||key.length>500||/\s/.test(key))failure("Select a provider and enter a valid-looking key.");
     requireStorage();const v=vault();v[provider]=safeStorage.encryptString(key).toString("base64");store(v);
@@ -118,4 +139,4 @@ function setupAiIpc() {
   });
   ipcMain.handle("showpilot-ai:suggest",(_,provider,context)=>suggest(provider,context));
 }
-module.exports={setupAiIpc};
+module.exports={setupAiIpc,status,resetCorruptVault};
