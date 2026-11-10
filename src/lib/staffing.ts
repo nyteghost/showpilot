@@ -63,7 +63,8 @@ export function airwallMinutes(section: string, text: string): number {
 }
 const spacesOf = (section: string, text: string): string[] => {
   if (/full ballroom/i.test(text)) return "ABCDEFG".split("").map((c) => `BallRoom ${c}`);
-  const letters = new Set(text.replace(/make|hall|ballroom/gi, "").replace(/[^A-G]/g, "").split(""));
+  const command=text.replace(/^(?:AM|PM):\s*/i,"").replace(/\s*\(resulting[\s\S]*$/i,"");
+  const letters = new Set(command.replace(/make|hall|ballroom/gi, "").replace(/[^A-G]/g, "").split(""));
   return [...letters].filter(Boolean).sort().map((c) => `${section === "HALLS" ? "Hall" : "BallRoom"} ${c}`);
 };
 /** When an air wall job can start: 30-90 min after a ballroom move-out begins, right after a show ends, or mid-morning when the rooms are unused that day. */
@@ -80,7 +81,7 @@ export function airwallStart(task: { date: string; section: string; text: string
   return { start: endOf(last), latest: endOf(last), why: `Rooms are in use until ${formatMinutes(endOf(last))}.` };
 }
 export function airwallHolds(tasks: { date: string; section: string; text: string }[], entries: EventEntry[]): Hold[] {
-  return tasks.filter((t) => /^make /i.test(t.text)).map((t) => { const w = airwallStart(t, entries); return { date: t.date, start: w.start, end: w.start + airwallMinutes(t.section, t.text), n: 2, text: t.text }; });
+  return tasks.filter((t) => /^(?:(?:AM|PM):\s*)?make /i.test(t.text)).map((t) => { const w = airwallStart(t, entries); return { date: t.date, start: w.start, end: w.start + airwallMinutes(t.section, t.text), n: 2, text: t.text }; });
 }
 
 export type Avail = { off: boolean; fixed?: { start: number; end: number } };
