@@ -1,5 +1,6 @@
 import {describe,it,expect} from "vitest";
 import ExcelJS from "exceljs";
+import {Readable} from "node:stream";
 import {isExactCgcEngineeringTemplate,findWeekDateRow,eventsWorkbook} from "../lib/work-files";
 
 const labels=[
@@ -75,7 +76,7 @@ describe("Claude CGC-only safety during template re-dating",()=>{
    singleWeek:"2026-11-23",preserveTemplateLayout:true,retargetTemplateWeek:true
   });
   const output=new ExcelJS.Workbook();
-  await output.xlsx.load(Buffer.from(await blob.arrayBuffer()));
+  await output.xlsx.read(Readable.from([new Uint8Array(await blob.arrayBuffer())]));
   const sheet=output.getWorksheet("Week #1")!;
   expect(sheet.getCell("B58").value).toBeNull();
   expect(sheet.getCell("B74").value).toBe("Other venue entry must remain unchanged");
