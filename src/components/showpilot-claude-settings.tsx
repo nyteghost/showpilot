@@ -38,7 +38,7 @@ export function ClaudeStaffingSettingsPanel({value,onChange}:{
       }}/>{day}
      </label>
     })}
-    <label className="flex flex-wrap items-center gap-1 text-muted-foreground">Usual weekdays:
+    <span className="flex flex-wrap items-center gap-1 text-muted-foreground">Usual weekdays:
      {DAYS.map((day,index)=>{
       const checked=(value.usualWeekdaysByName[person.name]??person.baseline?.weekdays??[]).includes(index);
       return <label key={day} className="inline-flex items-center gap-1">
@@ -49,7 +49,7 @@ export function ClaudeStaffingSettingsPanel({value,onChange}:{
        }}/>{day}
       </label>;
      })}
-    </label>
+    </span>
     <label className="flex items-center gap-1">Aliases:
       <input className="w-52 rounded border border-border bg-background p-1" aria-label={person.name+" aliases"}
        placeholder="Alternate names, comma separated" value={(value.aliasesByName[person.name]??[]).join(", ")}
