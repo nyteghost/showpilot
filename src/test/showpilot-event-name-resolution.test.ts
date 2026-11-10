@@ -1,5 +1,5 @@
 import {describe,it,expect} from "vitest";
-import {resolveScheduleEventNames} from "../lib/showpilot-event-name-resolution";
+import {resolveScheduleEventNames,resolveEventRowNames} from "../lib/showpilot-event-name-resolution";
 import {weekLayouts,assertNamedScheduleEntries,type EventRow,type EventEntry} from "../lib/work-tools";
 import type {PostConShow} from "../lib/showpilot-postcon";
 
@@ -51,6 +51,14 @@ describe("event name attribution in reviewed engineering schedules",()=>{
   ];
   const result=resolveScheduleEventNames([missingId],[],catalog);
   expect(result.unresolved).toBe(1);
+ });
+ it("uses an attached Event ID name in Today hall/ballroom warning evidence",()=>{
+  const unknown=row("99002","","2026-11-16");
+  const known=show("99002","Fictional Lantern Conference");
+  expect(resolveEventRowNames([unknown],[known])[0]?.event).toBe("Fictional Lantern Conference");
+  expect(resolveEventRowNames([row("99002","Verified Source Name","2026-11-16")],[known])[0]?.event)
+   .toBe("Verified Source Name");
+  expect(resolveEventRowNames([row("99001","","2026-11-16")],[known])[0]?.event).toBe("");
  });
  it("keeps independently verified show names when restored without source records",()=>{
   const original={...entry("99002","Fictional Lantern Conference 2026","2026-11-16"),
