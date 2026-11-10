@@ -7,7 +7,7 @@ import {Input} from "@/components/ui/input";
 
 const WEEKDAYS=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 const readClock=(value:string)=>{
- const match=/^(\\d{2}):(\\d{2})$/.exec(value);
+ const match=/^(\d{2}):(\d{2})$/.exec(value);
  if(!match)return null;
  const hours=Number(match[1]),minutes=Number(match[2]);
  return hours<=23&&minutes<=59?hours*60+minutes:null;
