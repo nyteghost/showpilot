@@ -5,11 +5,11 @@ import type {StaffingPolicy} from "./staffing";
  * and included in ShowPilot's allowlisted work backup. */
 export const CLAUDE_POLICY_KEY="showpilot:claude:staffing-policy:v1";
 const days=z.array(z.number().int().min(0).max(6)).max(7);
-const isoDay=z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/).refine(value=>{
+const isoDay=z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value=>{
  const d=new Date(value+"T12:00:00Z");
  return !Number.isNaN(d.getTime())&&d.toISOString().slice(0,10)===value;
 },"Enter a real calendar date.");
-const personName=z.string().trim().min(2).max(90).refine(x=>!/[<>\\x00-\\x1f]/.test(x));
+const personName=z.string().trim().min(2).max(90).refine(x=>!/[<>\x00-\x1f]/.test(x));
 export const CustomSchedulePersonSchema=z.object({
  name:personName,
  badge:z.string().trim().max(30).default(""),
