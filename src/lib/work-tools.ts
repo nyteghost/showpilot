@@ -519,6 +519,43 @@ export function weekLayouts(entries: EventEntry[], includeWeekStarts:readonly st
 }
 
 
+/** A missing function-day is not proof of a booked hold. Show only reviewed
+ * candidates and NEVER feed these automatically into the exported schedule. */
+export type PossibleRoomHold={
+ date:string;space:string;eventId:string;showName:string;reason:string
+};
+export function possibleRoomHolds(rows:readonly EventRow[]):PossibleRoomHold[]{
+ const byBooking=new Map<string,{days:Set<string>;space:string;eventId:string;showName:string}>();
+ for(const r of rows){
+  if(!r.eventId||r.level<=1||!r.date||/cepac|cobb energy|performing arts/i.test(r.space))continue;
+  for(const space of expandSpace(r.space)){
+   if(!/^(?:Hall [A-D]|BallRoom [A-G])$/.test(space))continue;
+   const key=r.eventId+"|"+space;
+   const found=byBooking.get(key)??{days:new Set<string>(),space,eventId:r.eventId,showName:r.event?.trim()||""};
+   found.days.add(r.date);
+   if(!found.showName&&r.event?.trim())found.showName=r.event.trim();
+   byBooking.set(key,found);
+  }
+ }
+ const holds:PossibleRoomHold[]=[];
+ for(const group of byBooking.values()){
+  const days=[...group.days].sort();
+  if(days.length<2)continue;
+  let day=days[0]!;
+  const last=days[days.length-1]!;
+  while(day<last&&holds.length<120){
+   const next=new Date(day+"T12:00:00Z");next.setUTCDate(next.getUTCDate()+1);
+   day=next.toISOString().slice(0,10);
+   if(day>=last)break;
+   if(group.days.has(day))continue;
+   holds.push({date:day,space:group.space,eventId:group.eventId,
+    showName:group.showName||"Unnamed booking",
+    reason:"VERIFY possible room hold: same Event ID uses this room before and after this date; confirm with EOC before adding MI/hold."});
+  }
+ }
+ return holds.sort((a,b)=>a.date.localeCompare(b.date)||a.space.localeCompare(b.space)).slice(0,120);
+}
+
 // ---------- task suggestions ----------
 export type TaskNote = { date: string; section: "HALLS" | "BALLROOM"; text: string };
 
