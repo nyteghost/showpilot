@@ -1,5 +1,5 @@
 import {describe,it,expect} from "vitest";
-import {dayNeed,readStaffBlockAvailability,planWeeks} from "../lib/staffing";
+import {dayNeed,readStaffBlockAvailability,planWeeks,weekdayCombinations} from "../lib/staffing";
 import {weekLayouts,type EventEntry} from "../lib/work-tools";
 const show:EventEntry={date:"2026-11-16",space:"Hall A",code:"S",start:600,end:960,
  title:"Fictional Lantern Expo",showName:"Fictional Lantern Expo",
@@ -34,6 +34,14 @@ describe("Claude reviewed staffing evidence",()=>{
   const dates=weekLayouts([{...show,bookingStart:360,bookingEnd:1439}]);
   expect(dates[0]!.cgc[0]).toBe("6a-11:59p");
   expect(weekLayouts([],["2026-11-16"])[0]!.cgc[0]).toBe("DARK");
+ });
+ it("bounds combinatorial search at seven weekdays and preserves old tie order",()=>{
+  expect(weekdayCombinations(["M","T","W","Th"],2)).toEqual([
+   ["M","T"],["M","W"],["M","Th"],["T","W"],["T","Th"],["W","Th"]
+  ]);
+  expect(weekdayCombinations([1,2,3],0)).toEqual([[]]);
+  expect(weekdayCombinations([1,2,3],4)).toEqual([]);
+  expect(weekdayCombinations(Array.from({length:8},(_,i)=>i),3)).toThrow(/at most seven days/);
  });
  it("generates all seven dates for a selected week with zero event lines",()=>{
   const weeks=weekLayouts([],["2026-11-16"]);
