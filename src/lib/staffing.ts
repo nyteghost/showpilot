@@ -355,7 +355,23 @@ const isOffDay = (m: Staff, date: string, entries: EventEntry[]) => {
   const powerDay = entries.some((e) => e.date === date && e.code !== "MO?" && POWER_HEAVY.test(e.title));
   return !!m.offWeekdays?.includes(weekday(date)) && !(powerDay && m.powerDays?.includes(weekday(date)));
 };
-const combos = <T,>(list: T[], k: number): T[][] => (k <= 0 ? [[]] : list.flatMap((x, i) => combos(list.slice(i + 1), k - 1).map((rest) => [x, ...rest])));
+/** Enumerate possible days in a Monday–Sunday week, never an unbounded roster.
+ * Lexicographic order matches the original recursive picker, preserving ties. */
+export function weekdayCombinations<T>(list:readonly T[], k:number):T[][]{
+  if(list.length>7)throw Error("Staffing combination search may contain at most seven days.");
+  if(!Number.isInteger(k)||k<0||k>list.length)return [];
+  if(k===0)return [[]];
+  const indices=Array.from({length:k},(_,i)=>i),out:T[][]=[];
+  while(true){
+    out.push(indices.map(i=>list[i]!));
+    let pos=k-1;
+    while(pos>=0&&indices[pos]===list.length-k+pos)pos--;
+    if(pos<0)break;
+    indices[pos]!++;
+    for(let j=pos+1;j<k;j++)indices[j]=indices[j-1]!+1;
+  }
+  return out;
+}
 const coverOf = (p: DayPlan,policy:StaffingPolicy={}) => effCover(p.assignments,policy);
 const gapsOf = (p: DayPlan,policy:StaffingPolicy={}): DayPlan["gaps"] => {
   const cover = coverOf(p,policy), out: DayPlan["gaps"] = [];
@@ -414,7 +430,7 @@ function topUp(plans: DayPlan[], staff: Staff[], avail: Record<string, Record<st
     const k = Math.min(cand.length, Math.ceil((WEEK_HOURS - total) / 8));
     if (k <= 0) continue;
     let best: { pick: number[]; score: number } | null = null;
-    for (const pick of combos(cand, k)) {
+    for (const pick of weekdayCombinations(cand, k)) {
       const busy = plans.map((_, i) => have[i]! > 0 || pick.includes(i));
       const offs = busy.filter((b) => !b).length;
       const pairOff = busy.some((b, i) => !b && !busy[(i + 1) % 7]);
