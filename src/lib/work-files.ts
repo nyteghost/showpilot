@@ -243,7 +243,7 @@ const serialToIso = (n: number):string|null => {
 
 /** Reads every "Week #" sheet and returns the shifts in the named person's row. */
 export type UnreadableShift={sheet:string;date:string;raw:string};
-export async function readScheduleWorkbook(file: File, name = DEFAULT_SCHEDULE_NAME): Promise<{ shifts: Shift[]; people: string[]; unreadable:UnreadableShift[]; warnings:string[] }> {
+export async function readScheduleWorkbook(file: File, name = DEFAULT_SCHEDULE_NAME,weekOverrides:Record<string,string>={}): Promise<{ shifts: Shift[]; people: string[]; unreadable:UnreadableShift[]; warnings:string[] }> {
   const XLSX = await import("xlsx");
   const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
   const shifts: Shift[] = [];
@@ -251,15 +251,39 @@ export async function readScheduleWorkbook(file: File, name = DEFAULT_SCHEDULE_N
   const unreadable:UnreadableShift[]=[];
   const warnings:string[]=[];
   const target = name.trim().toLowerCase();
+  const usedWeeks=new Map<string,string>();
   for (const sheetName of wb.SheetNames) {
     if (!/week/i.test(sheetName)) continue;
     const grid = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[sheetName]!, { header: 1, raw: true, defval: "" });
     const dayRow = grid.findIndex((r) => String(r[1]).trim().toUpperCase() === "MON");
     if (dayRow < 0) continue;
     const found=scanWeekDateRow((row,col)=>grid[row]?.[col-1],dayRow);
-    if(!found){warnings.push(sheetName+": no verified Monday–Sunday dates were found within five rows after the header. Check Extra/date formulas.");continue;}
-    const dates=found.dates;
-    for (let r = found.row + 1; r < grid.length; r++) {
+    const override=weekOverrides[sheetName]?.trim()??"";
+    let dates=found?.dates??[];
+    if(override){
+     const start=new Date(override+"T12:00:00Z");
+     if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(override)||Number.isNaN(start.getTime())||
+        start.toISOString().slice(0,10)!==override||start.getUTCDay()!==1){
+      warnings.push(sheetName+": operator override must be a valid Monday ISO date.");continue;
+     }
+     dates=Array.from({length:7},(_,i)=>{const next=new Date(start);next.setUTCDate(start.getUTCDate()+i);return next.toISOString().slice(0,10);});
+     warnings.push(sheetName+": dates manually corrected to week of "+override+". Source XLSX was not modified.");
+    }
+    if(!dates.length){warnings.push(sheetName+": no verified Monday–Sunday dates were found within five rows after the header. Check Extra/date formulas.");continue;}
+    const previous=usedWeeks.get(dates[0]!);
+    if(previous&&previous!==sheetName)warnings.push(sheetName+": duplicates the dates in "+previous+"; check stale Extra formulas.");
+    usedWeeks.set(dates[0]!,sheetName);
+    for(const header of grid.slice(0,dayRow)){
+     for(let c=0;c<header.length-1;c++){
+      const kind=String(header[c]??"").trim().replace(/:$/,"").toUpperCase();
+      if(kind!=="FROM"&&kind!=="TO")continue;
+      const actual=cellDate(header[c+1]);
+      const expected=kind==="FROM"?dates[0]:dates[6];
+      if(actual&&actual!==expected)
+       warnings.push(sheetName+": "+kind+" header "+actual+" disagrees with verified date row "+expected+". Check Extra or correct the week start before syncing.");
+     }
+    }
+    for (let r = (found?.row??dayRow+1) + 1; r < grid.length; r++) {
       const cells = grid[r] ?? [];
       const label=String(cells[0]??"").trim();
       const next=String(grid[r+1]?.[0]??"").trim();
