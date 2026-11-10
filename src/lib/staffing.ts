@@ -11,12 +11,13 @@ export type StaffingPolicy={
  managerRegularLine?:boolean;
  managerMayWorkAlone?:boolean;
  preferredDaysOffByName?:Record<string,number[]>;
+ aliasesByName?:Record<string,string[]>;
  usualWeekdaysByName?:Record<string,number[]>;
  maxDays?:number;
 };
 export const DEFAULT_STAFFING_POLICY:Required<StaffingPolicy>={
  coverBookingClose:true, attendanceThreshold:null,
- respectExistingOff:true,managerRegularLine:false,managerMayWorkAlone:false,preferredDaysOffByName:{},usualWeekdaysByName:{},maxDays:5
+ respectExistingOff:true,managerRegularLine:false,managerMayWorkAlone:false,preferredDaysOffByName:{},usualWeekdaysByName:{},aliasesByName:{},maxDays:5
 };
 const hours = (list: [number, number][]) => list.map(([a, b]) => ({ start: a * 60, end: b * 60 }));
 const EVENING = hours([[12, 20.5], [12.5, 21], [13, 21.5], [13.5, 22], [14, 22.5], [14.5, 23], [15, 23.5], [15.5, 24]]);
