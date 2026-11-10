@@ -11,6 +11,10 @@ import {summarizeEvents,expandSpace,weekLayouts,parseShift,type EventEntry} from
 import {planWeeks,SHOW_STAFF,MARK_FLEX,type DayPlan} from "../src/lib/staffing";
 import {scopeShowPilotRows} from "../src/lib/showpilot-venue";
 
+if(process.argv.includes("--help")){
+ console.log("Local-only schedule agreement: bun scripts/claude-agreement.ts --report /path/to/event-report.xlsx --published /path/to/published-week-folders");
+ process.exit(0);
+}
 function arg(flag:string){const i=process.argv.indexOf(flag);return i<0?"":process.argv[i+1]??"";}
 const report=arg("--report"),folder=arg("--published");
 if(!report||!folder){console.error("Supply --report /local/path.xlsx and --published /local/folder");process.exit(2);}
