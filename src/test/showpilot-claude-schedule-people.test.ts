@@ -60,6 +60,15 @@ describe("Schedule People: roster + reviewed daily changes",()=>{
   const fixed=planWeeks([monday],[event],{[extra.name]:{[monday]:{off:false,fixed:{start:420,end:930}}}},SHOW_STAFF,[],setting);
   expect(fixed.find(p=>p.date===monday)!.assignments.find(a=>a.name===extra.name)?.start).toBe(420);
  });
+ it("refuses to silently insert extra staff into an approved master with no staff row",async()=>{
+  const master=await eventsWorkbook([event],undefined,[],{singleWeek:monday});
+  const original=new File([new Uint8Array(await master.arrayBuffer())],"copied-master.xlsx");
+  const policy={...DEFAULT_CLAUDE_SETTINGS,extraPeople:[extra],
+   dayOverrides:[{date:monday,name:extra.name,action:"shift" as const,start:480,end:990}]};
+  await expect(eventsWorkbook([event],original,[],{
+   singleWeek:monday,preserveTemplateLayout:true,planning:policy
+  })).rejects.toThrow(/no staffing row.*Fictional Example Engineer/);
+ });
  it("fresh-layout export shows added staff, while a removed default person disappears from its new roster",async()=>{
   const policy={...DEFAULT_CLAUDE_SETTINGS,extraPeople:[extra],excludedPeople:[SHOW_STAFF[0]!.name],
    dayOverrides:[{date:monday,name:extra.name,action:"shift" as const,start:480,end:990}]};
