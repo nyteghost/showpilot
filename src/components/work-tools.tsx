@@ -3,6 +3,7 @@ import { Briefcase, CalendarClock, CalendarDays, CalendarPlus, CalendarSync, Fol
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {ShowPilotRuleReview} from "@/components/showpilot-rule-review";
+import {activeExportMaster,canUseExportMaster} from "@/lib/showpilot-export-template-choice";
 import {shiftRuleEvidence,calendarRuleEvidence,eventScheduleRuleEvidence,exportRuleEvidence} from "@/lib/showpilot-rule-evidence";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -343,8 +344,8 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
     aiScope?.view==="month"?"selected month":aiScope?.view==="day"?"selected day":"full report";
   const fileSuffix=(scope:string)=>scope.replace(/[^a-zA-Z0-9_-]/g,"-");
   type ExportFormat="original"|"approved";
-  const selectedTemplate:ExportFormat=previewKind==="original"&&source?.existing?"original":"approved";
-  const masterTemplateMissing=selectedTemplate==="approved"&&masterTemplateState!=="saved";
+  const selectedTemplate:ExportFormat=activeExportMaster(previewKind,Boolean(source?.existing));
+  const masterTemplateMissing=!canUseExportMaster(selectedTemplate,Boolean(source?.existing),masterTemplateState);
   // Preview and Download share exactly the same generator.
   async function makeSelectedWorkbook(kind:ExportFormat):Promise<{blob:Blob;period:string;week:boolean}>{
     if(!aiScope)throw new Error("Choose a Month, Week or Day in Edit Schedule first.");
@@ -559,7 +560,7 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
             </details>
           )}
           <div className="flex flex-wrap items-center gap-2">
-            {entries.length>0 && <label className="flex items-center gap-2 text-sm">Original template
+            {entries.length>0&&(source?.existing||window.showpilotLocal) && <label className="flex items-center gap-2 text-sm">Original template
               <select value={selectedTemplate} onChange={e=>setPreviewKind(e.target.value as "original"|"approved")}
                 className="rounded border bg-background px-2 py-1.5" aria-label="Choose the exact engineering template">
                 {source?.existing && <option value="original">Uploaded Excel workbook</option>}
