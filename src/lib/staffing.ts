@@ -324,12 +324,12 @@ export function readStaffBlockAvailability(
 ):{availability:Avail|null; notes:string[]}{
  const cells=[nameRow,badgeRow,titleRow].map(x=>x.trim());
  const notes=cells.filter((x,i)=>i===2&&!!x);
- const leave=cells.find(x=>/^(?:pto|sick|vac(?:ation)?|fmla|bereave(?:ment)?|holiday|leave)(?:\\s|$|[:(])/i.test(x));
+ const leave=cells.find(x=>/^(?:pto|sick|vac(?:ation)?|fmla|bereave(?:ment)?|holiday|leave)(?:\s|$|[:(])/i.test(x));
  if(leave)return {availability:{off:true},notes};
  const fixed=readAvail(cells[0]??"");
  if(fixed)return {availability:fixed,notes};
  if(respectHumanOff&&cells.some(x=>/^off$/i.test(x)))return {availability:{off:true},notes};
- const service=titleRow.trim().match(/^SD:\\s*(.+)$/i);
+ const service=titleRow.trim().match(/^SD:\s*(.+)$/i);
  if(service){
   const shift=parseShift(service[1]??"");
   if(shift)return {availability:{off:false,fixed:shift},notes};
