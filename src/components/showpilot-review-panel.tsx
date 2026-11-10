@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { possibleRoomHolds, entryLabel, formatMinutes, type EventCode, type EventEntry, type EventRow, type TaskNote } from "@/lib/work-tools";
+import { possibleRoomHolds,possibleActivityOnlyOccupancy, entryLabel, formatMinutes, type EventCode, type EventEntry, type EventRow, type TaskNote } from "@/lib/work-tools";
 import {type ReviewDateScope,availableReviewMonths,availableReviewWeeks,reviewMatchesDay,reviewMatchesMonth,reviewMatchesWeek,reviewMonthLabel,reviewWeekStart,reviewWeekLabel,selectedReviewMonth,selectedReviewWeek,shiftReviewWeek} from "@/lib/showpilot-review-months";
 import {
   applyReview, emptyReviewDraft, validEntry, type ReviewDraft, type ReviewLine,
@@ -33,7 +33,7 @@ export function ScheduleReview({
   initialScope?: ReviewDateScope|null;
 }) {
   const reviewRef = useRef<HTMLElement>(null);
-  const roomHoldReviews=useMemo(()=>possibleRoomHolds(originalRows),[originalRows]);
+  const roomHoldReviews=useMemo(()=>[...possibleRoomHolds(originalRows),...possibleActivityOnlyOccupancy(originalRows)], [originalRows]);
   useEffect(()=>{
     if (!conflictTarget) return;
     setMode("review");setView("week");setWeekChoice(reviewWeekStart(conflictTarget.date) ?? "");setDate(conflictTarget.date);
@@ -156,7 +156,7 @@ export function ScheduleReview({
       <div className="rounded-lg bg-muted p-2"><strong className="block text-lg">{changes}</strong><span className="text-xs">Reviewed changes in view</span></div>
     </div>
     {roomHoldReviews.length>0&&<details className="rounded-lg border border-amber-500/60 p-3 text-xs">
-      <summary className="cursor-pointer font-semibold">VERIFY: {roomHoldReviews.length} possible booking room hold(s) need EOC review</summary>
+      <summary className="cursor-pointer font-semibold">VERIFY: {roomHoldReviews.length} possible booking/occupied-room candidate(s) need EOC review</summary>
       <p className="mt-2 text-muted-foreground">No holds are added to the schedule automatically. Confirm the event and space in its EOC, then add a reviewed MI/hold only if verified.</p>
       <div className="mt-2 max-h-52 overflow-y-auto">
        {roomHoldReviews.slice(0,60).map(x=><p key={x.eventId+"|"+x.date+"|"+x.space} className="border-t border-border py-1">
