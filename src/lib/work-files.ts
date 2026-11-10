@@ -262,7 +262,7 @@ export async function readScheduleWorkbook(file: File, name = DEFAULT_SCHEDULE_N
     let dates=found?.dates??[];
     if(override){
      const start=new Date(override+"T12:00:00Z");
-     if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(override)||Number.isNaN(start.getTime())||
+     if(!/^\d{4}-\d{2}-\d{2}$/.test(override)||Number.isNaN(start.getTime())||
         start.toISOString().slice(0,10)!==override||start.getUTCDay()!==1){
       warnings.push(sheetName+": operator override must be a valid Monday ISO date.");continue;
      }
