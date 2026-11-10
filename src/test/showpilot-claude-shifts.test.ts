@@ -61,6 +61,15 @@ describe("Claude shift-date and parsing audit",()=>{
   expect(corrected.warnings.join(" ")).toContain("manually corrected");
   expect((await readScheduleWorkbook(file,"Sample Operator",{"Week #1":"2026-11-24"})).shifts).toEqual([]);
  });
+ it("allows a configured name alias without silently choosing a different employee",async()=>{
+  const book=datesWithSpacer(),ws=book.getWorksheet("Week #1")!;
+  ws.getCell("A7").value="Sample Aliased Employee";
+  ws.getCell("B7").value="7a-3:30p";
+  const file=new File([new Uint8Array(await book.xlsx.writeBuffer())],"test.xlsx");
+  expect((await readScheduleWorkbook(file,"Sample Operator")).shifts).toEqual([]);
+  const result=await readScheduleWorkbook(file,"Sample Operator",{},["Sample Aliased Employee"]);
+  expect(result.shifts[0]?.date).toBe("2026-11-16");
+ });
  it("recognizes on-call and blank-badge staff blocks as people",async()=>{
   const book=datesWithSpacer(),ws=book.getWorksheet("Week #1")!;
   ws.getCell("A10").value="Sample On Call";
