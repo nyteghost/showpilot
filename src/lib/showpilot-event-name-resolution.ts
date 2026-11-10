@@ -23,6 +23,29 @@ function topName(names:readonly string[]):string{
  return [...counts.values()].sort((a,b)=>b.count-a.count||b.name.length-a.name.length)[0]?.name??"";
 }
 
+/** Give Today rule checks the same verified parent event names as the
+ * reviewed weekly export. Exact Event ID only; never infer ownership from
+ * an overlapping room or arbitrary function title. */
+export function resolveEventRowNames(
+ rows:readonly EventRow[],shows:readonly PostConShow[]
+):EventRow[]{
+ const byId=new Map<string,string[]>();
+ for(const show of shows){
+  const name=realShowName(show.showName),id=show.eventId?.trim();
+  if(id&&name)byId.set(id,[...(byId.get(id)??[]),name]);
+ }
+ for(const row of rows){
+  const name=realShowName(row.event),id=row.eventId?.trim();
+  if(id&&name)byId.set(id,[...(byId.get(id)??[]),name]);
+ }
+ return rows.map(row=>{
+  const current=realShowName(row.event),id=row.eventId?.trim();
+  if(current||!id)return {...row};
+  const match=topName(byId.get(id)??[]);
+  return match?{...row,event:match}:{...row};
+ });
+}
+
 export type NamedScheduleResult={entries:EventEntry[];restored:number;unresolved:number};
 /** Restore the booked parent show in imported, restored, and reviewed entries.
  * The verified local event catalog is consulted for exact Event IDs even if
