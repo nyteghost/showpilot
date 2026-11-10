@@ -223,7 +223,11 @@ export async function describeSheet(file: File): Promise<string> {
   return out.join("\n");
 }
 
-const serialToIso = (n: number) => new Date(Math.round((n - 25569) * 86400000)).toISOString().slice(0, 10);
+const serialToIso = (n: number):string|null => {
+ if(!Number.isFinite(n)||n<42005||n>73415)return null;
+ const date=new Date(Math.round((n-25569)*86400000));
+ return Number.isNaN(date.getTime())?null:date.toISOString().slice(0,10);
+};
 
 /** Reads every "Week #" sheet and returns the shifts in the named person's row. */
 export async function readScheduleWorkbook(file: File, name = DEFAULT_SCHEDULE_NAME): Promise<{ shifts: Shift[]; people: string[] }> {
@@ -521,14 +525,36 @@ export function fitRows(ws: XSheet) {
 }
 
 function cellDate(v: unknown): string | null {
-  const x = v && typeof v === "object" && "result" in (v as object) ? (v as { result: unknown }).result : v;
-  if (x instanceof Date) return x.toISOString().slice(0, 10);
-  if (typeof x === "number") return serialToIso(x);
-  if (typeof x === "string") {
-    const iso=/^(\d{4})-(\d{2})-(\d{2})$/.exec(x.trim());
-    if(iso&&!Number.isNaN(Date.parse(x+"T12:00:00Z")))return x.trim();
-  }
-  return null;
+ const x=v&&typeof v==="object"&&"result" in (v as object)?(v as {result:unknown}).result:v;
+ let iso:string|null=null;
+ if(x instanceof Date)iso=Number.isNaN(x.getTime())?null:x.toISOString().slice(0,10);
+ else if(typeof x==="number")iso=serialToIso(x);
+ else if(typeof x==="string"&&/^\d{4}-\d{2}-\d{2}$/.test(x.trim()))iso=x.trim();
+ if(!iso||iso<"2015-01-01"||iso>"2100-12-31")return null;
+ const date=new Date(iso+"T12:00:00Z");
+ return Number.isNaN(date.getTime())||date.toISOString().slice(0,10)!==iso?null:iso;
+}
+function scanWeekDateRow(get:(row:number,col:number)=>unknown,dayRow:number):{row:number;dates:string[]}|null{
+ for(let row=dayRow+1;row<=dayRow+5;row++){
+  const dates=Array.from({length:7},(_,i)=>cellDate(get(row,i+2)));
+  if(dates.some(d=>!d))continue;
+  const seven=dates as string[];
+  const monday=new Date(seven[0]+"T12:00:00Z");
+  if(monday.getUTCDay()!==1)continue;
+  if(seven.some((d,i)=>{const next=new Date(monday);next.setUTCDate(monday.getUTCDate()+i);return next.toISOString().slice(0,10)!==d;}))continue;
+  return {row,dates:seven};
+ }
+ return null;
+}
+/** Scan the five rows after MON for seven valid, weekday-aligned dates. */
+export function findWeekDateRow(ws:XSheet,dayRow:number):{row:number;dates:string[]}|null{
+ return scanWeekDateRow((row,col)=>ws.getRow(row).getCell(col).value,dayRow);
+}
+function formulaWeekRow(ws:XSheet,dayRow:number):number|null{
+ for(let row=dayRow+1;row<=dayRow+5;row++){
+  if(Array.from({length:7},(_,i)=>ws.getRow(row).getCell(i+2).value).every(v=>!!v&&typeof v==="object"&&"formula" in v))return row;
+ }
+ return null;
 }
 
 /** The approved CGC workbook sometimes stores its Week dates as formulas
