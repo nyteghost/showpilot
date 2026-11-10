@@ -30,6 +30,11 @@ describe("Claude reviewed staffing evidence",()=>{
    off:false,fixed:{start:720,end:1020}
   });
  });
+ it("uses verified event booking hours for proposed building-hours text",()=>{
+  const dates=weekLayouts([{...show,bookingStart:360,bookingEnd:1439}]);
+  expect(dates[0]!.cgc[0]).toBe("6a-11:59p");
+  expect(weekLayouts([],["2026-11-16"])[0]!.cgc[0]).toBe("DARK");
+ });
  it("generates all seven dates for a selected week with zero event lines",()=>{
   const weeks=weekLayouts([],["2026-11-16"]);
   expect(weeks).toHaveLength(1);
