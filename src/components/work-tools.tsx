@@ -7,7 +7,7 @@ import {shiftRuleEvidence,calendarRuleEvidence,eventScheduleRuleEvidence,exportR
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { KeepAliveTabContent } from "@/components/showpilot-keep-alive-tab";
-import { buildIcs, DEFAULT_SCHEDULE_NAME, editShift, entryLabel, formatMinutes, googleCalendarLink, isIsoDate, minutesToTime, newShiftId, nextMondayIso, parsePastedShifts, shiftLabel, airwallTasks, isCancelledRow, isPendingRow, sharedSpaces, expandSpace, summarizeEvents, attachShowNames, taskSuggestions, timeToMinutes, withShiftIds, type EventEntry, type EventRow, type Shift, type TaskNote } from "@/lib/work-tools";
+import { buildIcs, DEFAULT_SCHEDULE_NAME, editShift, entryLabel, formatMinutes, googleCalendarLink, isIsoDate, minutesToTime, newShiftId, nextMondayIso, parsePastedShifts, shiftLabel, shiftNeedsReview, airwallTasks, isCancelledRow, isPendingRow, sharedSpaces, expandSpace, summarizeEvents, attachShowNames, taskSuggestions, timeToMinutes, withShiftIds, type EventEntry, type EventRow, type Shift, type TaskNote } from "@/lib/work-tools";
 import { StandaloneVendors } from "@/components/showpilot-vendors";
 import { FloorMapPanel } from "@/components/floor-map-panel";
 import { scopeShowPilotRows } from "@/lib/showpilot-venue";
@@ -592,11 +592,15 @@ function ShiftsTab() {
   const setName = (n: string) => { setNameRaw(n); try { localStorage.setItem("pixelpals:work-name", n); } catch { /* ignore */ } };
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [status, setStatus] = useState("");
+  const [unreadable,setUnreadable]=useState<{sheet:string;date:string;raw:string}[]>([]);
+  const [shiftWarnings,setShiftWarnings]=useState<string[]>([]);
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("Mark Work");
   const [removed, setRemoved] = useState<string[]>([]);
   const [editing, setEditing] = useState<number | null>(null);
-  const edit = (i: number, change: Parameters<typeof editShift>[1]) => setShifts((list) => list.map((x, n) => (n === i ? editShift(x, change) : x)));
+  const edit = (i: number, change: Parameters<typeof editShift>[1]) => setShifts((list) => list.map((x, n) => (n === i ? {...editShift(x, change),reviewed:false} : x)));
+  const usableShifts=shifts.filter(s=>!shiftNeedsReview(s));
+  const pendingShifts=shifts.filter(shiftNeedsReview);
   const drop = (i: number) => {
     const gone = shifts[i];
     if (gone?.id) setRemoved((r) => [...new Set([...r, gone.id!])]);
@@ -613,15 +617,17 @@ function ShiftsTab() {
     setFile(f); setStatus("Reading…");
     try {
       const { readScheduleWorkbook } = await import("@/lib/work-files");
-      const { shifts, people } = await readScheduleWorkbook(f, who);
-      setShifts(withShiftIds(shifts)); setRemoved([]); setEditing(null);
-      setStatus(shifts.length ? `${shifts.length} shifts for ${who}.` : `No shifts found for “${who}”. Names on sheet: ${people.slice(0, 12).join(", ")}`);
+      const { shifts, people,unreadable,warnings } = await readScheduleWorkbook(f, who);
+      setShifts(withShiftIds(shifts));setUnreadable(unreadable);setShiftWarnings(warnings);
+      setRemoved([]);setEditing(null);
+      setStatus(shifts.length ? `${shifts.length} shifts for ${who}.` : `No shifts found for “${who}”. Names on sheet: ${people.slice(0,12).join(", ")}`);
     } catch (e) { setStatus(`Could not read that workbook: ${(e as Error).message}`); }
   }
-  const ics = () => import("@/lib/work-files").then((m) => m.downloadBlob(new Blob([buildIcs(shifts, title.trim() || "Mark Work")], { type: "text/calendar" }), "my-shifts.ics"));
+  const ics = () => import("@/lib/work-files").then((m) => m.downloadBlob(new Blob([buildIcs(usableShifts, title.trim() || "Mark Work")], { type: "text/calendar" }), "my-shifts.ics"));
   const [pasted, setPasted] = useState("");
   const [weekStart, setWeekStart] = useState(nextMondayIso);
   function readPasted() {
+    setUnreadable([]);setShiftWarnings([]);
     const list = parsePastedShifts(pasted, weekStart, name);
     setShifts(withShiftIds(list)); setRemoved([]); setEditing(null);
     setStatus(list.length ? `${list.length} shifts for ${name}.` : `No shifts found — make sure the first line starts with “${name}” and the times look like 9a-6p.`);
@@ -653,6 +659,14 @@ function ShiftsTab() {
         </div>
       </details>
       {status && <p className={`text-sm ${/^Could not|^No shifts/.test(status) ? "text-destructive" : ""}`} role="status">{status}</p>}
+      {shiftWarnings.length>0&&<div role="alert" className="rounded border border-amber-500 p-2 text-xs"><strong>Date-row warnings:</strong>{shiftWarnings.map((w,i)=><p key={i}>{w}</p>)}</div>}
+      {unreadable.length>0&&<div role="alert" className="rounded border border-amber-500 p-2 text-xs">
+       <strong>{unreadable.length} unreadable shift cell(s) — review and add manually:</strong>
+       {unreadable.slice(0,30).map((u,i)=><p key={i}>{u.sheet} · {u.date} · {u.raw}</p>)}
+      </div>}
+      {pendingShifts.length>0&&<p role="alert" className="rounded border border-amber-500 p-2 text-xs">
+       {pendingShifts.length} shift(s) are outside the 2–14 hour review range. They are excluded from calendar export/sync until you explicitly confirm their time below. Check AM/PM first.
+      </p>}
       {shifts.length>0&&<ShowPilotRuleReview evidence={shiftRuleEvidence(shifts,removed.length)}/>}
       {shifts.length>0&&<ShowPilotRuleReview evidence={calendarRuleEvidence(shifts,title,"google")}/>}
       {shifts.length>0&&<ShowPilotRuleReview evidence={calendarRuleEvidence(shifts,title,"ics")}/>}
@@ -663,9 +677,9 @@ function ShiftsTab() {
             <Input id="shift-title" value={title} maxLength={120} onChange={(e) => setTitle(e.target.value)} className="w-48" />
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" onClick={ics} disabled={!shifts.length}><Download className="size-4" /> Download all (.ics)</Button>
-            <UpdateInGoogle shifts={shifts} title={title.trim() || "Mark Work"} onStatus={setStatus} />
-            <AddAllToCalendar onDownload={() => void ics()} shifts={shifts} title={title.trim() || "Mark Work"} remove={removed} onPushed={() => setRemoved([])} onStatus={setStatus} />
+            <Button size="sm" onClick={ics} disabled={!usableShifts.length}><Download className="size-4" /> Download all (.ics)</Button>
+            <UpdateInGoogle shifts={usableShifts} title={title.trim() || "Mark Work"} onStatus={setStatus} />
+            <AddAllToCalendar onDownload={() => void ics()} shifts={usableShifts} title={title.trim() || "Mark Work"} remove={removed} onPushed={() => setRemoved([])} onStatus={setStatus} />
             <Button size="sm" variant="outline" onClick={add}>Add a shift</Button>
           </div>
           {removed.length > 0 && <p className="text-xs text-muted-foreground">{removed.length} removed shift{removed.length === 1 ? "" : "s"} will be omitted from the next .ics export; already imported Google Calendar events are not deleted automatically by either Google sync or .ics export.</p>}
@@ -674,10 +688,11 @@ function ShiftsTab() {
             {shifts.map((s, i) => (
               <li key={s.id ?? `${s.date}-${i}`} className="rounded border border-border px-2 py-1">
                 <div className="flex items-center justify-between gap-2">
-                  <span>{dayLabel(s.date)} · <span className="font-mono">{shiftLabel(s)}</span>{s.note ? <span className="text-muted-foreground"> · {s.note}</span> : null}</span>
+                  <span>{dayLabel(s.date)} · <span className="font-mono">{shiftLabel(s)}</span>{s.note ? <span className="text-muted-foreground"> · {s.note}</span> : null}{shiftNeedsReview(s)?<span className="ml-2 text-amber-600">Check this shift</span>:null}</span>
                   <span className="flex items-center gap-2">
                     <button type="button" className="text-primary underline" aria-expanded={editing === i} onClick={() => setEditing(editing === i ? null : i)}>{editing === i ? "Done" : "Edit"}</button>
-                    <a href={googleCalendarLink(s, title.trim() || "Mark Work")} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary underline"><CalendarPlus className="size-4" /> Google</a>
+                    {!shiftNeedsReview(s)&&<a href={googleCalendarLink(s, title.trim() || "Mark Work")} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary underline"><CalendarPlus className="size-4" /> Google</a>}
+                    {shiftNeedsReview(s)&&<button type="button" className="text-primary underline" onClick={()=>setShifts(list=>list.map((item,n)=>n===i?{...item,reviewed:true}:item))}>Confirm time</button>}
                   </span>
                 </div>
                 {editing === i && (
