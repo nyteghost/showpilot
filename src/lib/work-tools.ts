@@ -681,6 +681,30 @@ export function airwallTasks(rows: EventRow[]): TaskNote[] {
   return [...merged.values()].sort((a, b) => a.date.localeCompare(b.date) || a.text.localeCompare(b.text));
 }
 
+/** An explanatory, EOC-reviewable representation of the intended room
+ * configuration. Never orders physical wall movements automatically. */
+export function detailedAirwallTask(task:TaskNote,rows:readonly EventRow[]):TaskNote{
+ if(!/^(?:make\s+|(?:AM|PM):\s*make\s+)/i.test(task.text))return task;
+ const relevant=rows.filter(r=>{
+  const place=letters(r.space??"");
+  return place?.section===task.section&&r.date>=task.date&&
+   (new Date(r.date+"T12:00:00Z").getTime()-new Date(task.date+"T12:00:00Z").getTime())<=7*86400000;
+ }).sort((a,b)=>a.date.localeCompare(b.date)||parseReportTime(a.start)-parseReportTime(b.start));
+ if(!relevant.length)return task;
+ const targetDay=relevant[0]!.date;
+ const sameDate=relevant.filter(r=>r.date===targetDay);
+ const first=Math.min(...sameDate.map(r=>parseReportTime(r.start)));
+ const period=first>=720?"PM":"AM";
+ const shapes=[...new Set(sameDate.map(r=>letters(r.space??"")?.group).filter((x):x is string=>!!x))];
+ const lettersUsed=new Set(shapes.join(""));
+ const all=task.section==="HALLS"?"ABCD":"ABCDEFG";
+ const unknown=[...all].filter(x=>!lettersUsed.has(x));
+ const full=[...shapes,...unknown.map(x=>x+"?")].join("/");
+ const clean=task.text.replace(/^(?:(?:AM|PM):\s*)?/i,"");
+ return {...task,text:period+": "+clean+" (resulting "+(task.section==="HALLS"?"hall":"ballroom")+
+  " sections "+full+"; VERIFY EOC before moving walls)"};
+}
+
 /** Rooms with more than one event on the same day, so the person can see when shows share space. */
 export function sharedSpaces(entries: EventEntry[]): string[] {
   const map = new Map<string, Set<string>>();
