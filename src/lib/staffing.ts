@@ -2,7 +2,20 @@
 // Rules: at least 1 engineer for any show, at least 2 at all times for a big show (2+ halls) on the days it is here.
 import { formatMinutes, parseShift, type EventEntry } from "./work-tools";
 
-export type Staff = { name: string; badge: string; title: string; patterns?: { start: number; end: number }[]; offWeekdays?: number[]; baseline?: { weekdays: number[]; pattern: { start: number; end: number } }; lastResort?: number[]; powerDays?: number[]; /** Never the only engineer on during a show. */ notAlone?: boolean; /** Weekdays (Mon = 0) this person can take a later shift to cover a gap, instead of pulling in someone on a day they like off. Only used as a fallback. */ flexDays?: number[] };
+export type Staff = { preferredWeekdays?:number[]; preferredDaysOff?:number[]; maxDays?:number; name: string; badge: string; title: string; patterns?: { start: number; end: number }[]; offWeekdays?: number[]; baseline?: { weekdays: number[]; pattern: { start: number; end: number } }; lastResort?: number[]; powerDays?: number[]; /** Never the only engineer on during a show. */ notAlone?: boolean; /** Weekdays (Mon = 0) this person can take a later shift to cover a gap, instead of pulling in someone on a day they like off. Only used as a fallback. */ flexDays?: number[] };
+/** Reviewable scheduling options; no attendance threshold or manager coverage is assumed. */
+export type StaffingPolicy={
+ coverBookingClose?:boolean;
+ attendanceThreshold?:number|null;
+ respectExistingOff?:boolean;
+ managerRegularLine?:boolean;
+ managerMayWorkAlone?:boolean;
+ maxDays?:number;
+};
+export const DEFAULT_STAFFING_POLICY:Required<StaffingPolicy>={
+ coverBookingClose:true, attendanceThreshold:null,
+ respectExistingOff:true,managerRegularLine:false,managerMayWorkAlone:false,maxDays:5
+};
 const hours = (list: [number, number][]) => list.map(([a, b]) => ({ start: a * 60, end: b * 60 }));
 const EVENING = hours([[12, 20.5], [12.5, 21], [13, 21.5], [13.5, 22], [14, 22.5], [14.5, 23], [15, 23.5], [15.5, 24]]);
 export const SHOW_STAFF: Staff[] = [
@@ -14,7 +27,7 @@ export const SHOW_STAFF: Staff[] = [
 ];
 /** Mark (manager, 9-hour days, usually 9a-6p) takes a later 9-hour shift on Mon/Tue so Edison can keep those days off. */
 export const MARK_FLEX: Staff = { name: "Mark Brown", badge: "603", title: "Show Srvc Manager", patterns: hours([[9, 18], [10, 19], [11, 20], [12, 21], [13, 22], [14, 23], [15, 24]]), flexDays: [0, 1] };
-export const ON_CALL: Staff = { name: "Jontee King", badge: "On-Call", title: "On-Call Show Srvc Eng", patterns: hours([[17, 22], [17, 23], [17, 24]]) }; // only 5p-10p, 5p-11p or 5p-12a
+export const ON_CALL: Staff = { name: "Jontee King", badge: "On-Call", title: "On-Call Show Srvc Eng", patterns: hours([[17, 22], [17, 22.5], [17, 23], [17, 24]]) }; // only 5p-10p, 5p-11p or 5p-12a
 export const OPS_ASSISTANT = { name: "Jacquline Dixon", badge: "615", title: "Ops Assistant" };
 /** Shows heavy on power (lots of 60 / 30 amp orders): Madjid works Tue and Wed for these. */
 export const POWER_HEAVY = /gordon|c-?store|convenience/i;
@@ -83,7 +96,7 @@ const label = (m: number) => formatMinutes(m);
 export const shiftText = (a: { start: number; end: number }) => `${label(a.start)}-${label(a.end)}`;
 
 /** People needed per half hour on one day. */
-export function dayNeed(entries: EventEntry[], date: string): number[] {
+export function dayNeed(entries: EventEntry[], date: string, policy:StaffingPolicy=DEFAULT_STAFFING_POLICY): number[] {
   const need = new Array<number>(SLOTS).fill(0);
   const day = entries.filter((e) => e.date === date && e.code !== "MO?");
   const mark = (start: number, end: number, n: number) => {
@@ -97,6 +110,17 @@ export function dayNeed(entries: EventEntry[], date: string): number[] {
   for (const list of byEvent.values()) {
     const halls = new Set(list.filter((e) => /^Hall /.test(e.space)).map((e) => e.space));
     if (halls.size >= 2) mark(Math.min(...list.map((e) => e.start)), Math.max(...list.map((e) => (e.code === "Arr" ? e.start + 30 : endOf(e)))), 2);
+    // Venue booking hours outlive individual scheduled functions. At least one
+    // engineer remains until the confirmed booking close; never infer a close.
+    if(policy.coverBookingClose!==false){
+      const close=Math.max(0,...list.map(e=>e.bookingEnd??0));
+      const last=Math.max(...list.map(e=>endOf(e)));
+      if(close>last && close<=1440)mark(last,close,1);
+    }
+    const threshold=policy.attendanceThreshold;
+    if(typeof threshold==="number"&&Number.isFinite(threshold)&&threshold>0 &&
+       list.some(e=>(e.attendance??0)>=threshold))
+      mark(Math.min(...list.map(e=>e.start)),Math.max(...list.map(endOf)),2);
   }
   return need;
 }
@@ -123,7 +147,7 @@ const range = (slots: number[]) => {
 
 /** Fills each day's needs from the staff, keeping fixed shifts and days off, 5 working days each. */
 export function planWeek(
-  dates: string[], entries: EventEntry[], staff: Staff[] = SHOW_STAFF, avail: Record<string, Record<string, Avail>> = {}, onCall: Staff | null = ON_CALL, holds: Hold[] = [],
+  dates: string[], entries: EventEntry[], staff: Staff[] = SHOW_STAFF, avail: Record<string, Record<string, Avail>> = {}, onCall: Staff | null = ON_CALL, holds: Hold[] = [], policy:StaffingPolicy=DEFAULT_STAFFING_POLICY,
 ): DayPlan[] {
   const pool = staff === SHOW_STAFF ? [...staff, MARK_FLEX] : staff; // Mark is only a fallback for gaps
   const worked = new Map<string, number>(pool.map((s) => [s.name, 0]));
@@ -132,13 +156,21 @@ export function planWeek(
   for (const s of staff) for (const d of dates) if (avail[s.name]?.[d]?.fixed || avail[s.name]?.[d]?.off) worked.set(s.name, worked.get(s.name)! + 1); // paid leave counts as one of the 5 days
   const plans: DayPlan[] = [];
   for (const date of dates) {
-    const need = dayNeed(entries, date);
+    const need = dayNeed(entries, date, policy);
     for (const h of holds) if (h.date === date) for (let i = 0; i < SLOTS; i++) if (h.start < (i + 1) * 30 && h.end > i * 30) need[i] = Math.max(need[i]!, h.n);
     const day = entries.filter((e) => e.date === date && e.code !== "MO?");
     const medium = mediumSlots(entries, date);
     const powerDay = day.some((e) => POWER_HEAVY.test(e.title));
     const offDay = (m: Staff) => !!m.offWeekdays?.includes(weekday(date)) && !(powerDay && m.powerDays?.includes(weekday(date)));
     const notes: string[] = [];
+    if(policy.coverBookingClose!==false){
+      const bookings=day.filter(e=>e.bookingEnd!==undefined && e.bookingEnd>endOf(e));
+      if(bookings.length){
+        const latest=Math.max(...bookings.map(e=>e.bookingEnd!));
+        notes.push("Booking-close coverage: at least 1 engineer through "+label(latest)+
+         " after the last function, based on the source Event Schedule booking end. Review actual building close with management.");
+      }
+    }
     const assignments: DayPlan["assignments"] = [];
     const busy = new Set<string>();
     const add = (name: string, start: number, end: number, fixed: boolean, reason: string) => {
@@ -429,12 +461,12 @@ function topUpDesk(plans: DayPlan[], avail: Record<string, Record<string, Avail>
 }
 
 /** Plans whole Mon-Sun weeks (so the five-day limit and days off are per week) and notes anyone without two days off in a row. */
-export function planWeeks(dates: string[], entries: EventEntry[], avail: Record<string, Record<string, Avail>> = {}, staff: Staff[] = SHOW_STAFF, holds: Hold[] = []): DayPlan[] {
+export function planWeeks(dates: string[], entries: EventEntry[], avail: Record<string, Record<string, Avail>> = {}, staff: Staff[] = SHOW_STAFF, holds: Hold[] = [],policy:StaffingPolicy=DEFAULT_STAFFING_POLICY): DayPlan[] {
   const mondays = [...new Set(dates.map((d) => { const t = new Date(`${d}T12:00:00Z`); t.setUTCDate(t.getUTCDate() - weekday(d)); return t.toISOString().slice(0, 10); }))].sort();
   const out: DayPlan[] = [];
   for (const m of mondays) {
     const week = Array.from({ length: 7 }, (_, i) => { const t = new Date(`${m}T12:00:00Z`); t.setUTCDate(t.getUTCDate() + i); return t.toISOString().slice(0, 10); });
-    const plans = planWeek(week, entries, staff, avail, ON_CALL, holds);
+    const plans = planWeek(week, entries, staff, avail, ON_CALL, holds, policy);
     trimToFive(plans, staff, avail);
     topUp(plans, staff, avail, entries);
     topUpDesk(plans, avail);
