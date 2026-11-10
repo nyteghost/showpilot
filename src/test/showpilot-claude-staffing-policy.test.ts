@@ -1,5 +1,5 @@
 import {describe,it,expect} from "vitest";
-import {dayNeed,readStaffBlockAvailability,planWeeks,weekdayCombinations} from "../lib/staffing";
+import {dayNeed,readStaffBlockAvailability,planWeeks,planWeek,weekdayCombinations} from "../lib/staffing";
 import {weekLayouts,type EventEntry} from "../lib/work-tools";
 const show:EventEntry={date:"2026-11-16",space:"Hall A",code:"S",start:600,end:960,
  title:"Fictional Lantern Expo",showName:"Fictional Lantern Expo",
@@ -42,6 +42,17 @@ describe("Claude reviewed staffing evidence",()=>{
   expect(weekdayCombinations([1,2,3],0)).toEqual([[]]);
   expect(weekdayCombinations([1,2,3],4)).toEqual([]);
   expect(weekdayCombinations(Array.from({length:8},(_,i)=>i),3)).toThrow(/at most seven days/);
+ });
+ it("suggests an on-call shift for an uncovered evening regardless of which regular staff worked",()=>{
+  const evening={...show,start:1020,end:1320,bookingEnd:undefined};
+  const onCall={name:"Fictional Backup",badge:"OC",title:"On-call",
+   patterns:[{start:1020,end:1350}]};
+  const [day]=planWeek(["2026-11-16"],[evening],[],{},onCall,[],{coverBookingClose:false});
+  expect(day!.assignments).toHaveLength(0);
+  expect(day!.notes).toEqual(expect.arrayContaining([
+   expect.stringContaining("Suggestion: on-call Fictional Backup")
+  ]));
+  expect(day!.notes.join(" ")).toContain("operator approval required");
  });
  it("generates all seven dates for a selected week with zero event lines",()=>{
   const weeks=weekLayouts([],["2026-11-16"]);
