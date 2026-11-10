@@ -243,7 +243,7 @@ const serialToIso = (n: number):string|null => {
 
 /** Reads every "Week #" sheet and returns the shifts in the named person's row. */
 export type UnreadableShift={sheet:string;date:string;raw:string};
-export async function readScheduleWorkbook(file: File, name = DEFAULT_SCHEDULE_NAME,weekOverrides:Record<string,string>={}): Promise<{ shifts: Shift[]; people: string[]; unreadable:UnreadableShift[]; warnings:string[] }> {
+export async function readScheduleWorkbook(file: File, name = DEFAULT_SCHEDULE_NAME,weekOverrides:Record<string,string>={},aliases:readonly string[]=[]): Promise<{ shifts: Shift[]; people: string[]; unreadable:UnreadableShift[]; warnings:string[] }> {
   const XLSX = await import("xlsx");
   const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
   const shifts: Shift[] = [];
@@ -296,7 +296,7 @@ export async function readScheduleWorkbook(file: File, name = DEFAULT_SCHEDULE_N
        (!next&&/engineer|supervisor|manager|technician|assistant|director|chief|operations|show service/i.test(title))
       );
       if(person)people.add(label);
-      if(label.toLowerCase()!==target)continue;
+      if(label.toLowerCase()!==target&&!aliases.some(a=>a.trim().toLowerCase()===label.toLowerCase()))continue;
       for (let c = 1; c <= 7; c++) {
         const raw=String(cells[c]??"").trim();
         const date=dates[c-1];
@@ -654,7 +654,7 @@ function engineerCell(plans: Map<string, DayPlan>, name: string, date: string): 
   return managed ? { top: "", mid: "OFF" } : null;
 }
 
-function mergeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans: Map<string, DayPlan> = new Map(), preserveTemplateLayout = false): boolean {
+function mergeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans: Map<string, DayPlan> = new Map(), preserveTemplateLayout = false,aliasesByName:Record<string,string[]>={}): boolean {
   const dayRow=scheduleDayHeaderRow(ws);
   if (!dayRow) return false;
   const cols = new Map<string, number>();
@@ -672,6 +672,8 @@ function mergeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans
    return value;
   };
   ws.eachRow((row, n) => { const l = canonicalLabel(String(row.getCell(1).value ?? "")); if (l && !byLabel.has(l)) byLabel.set(l, n); });
+  for(const [name,aliases] of Object.entries(aliasesByName))if(!byLabel.has(name.toLowerCase()))
+   for(const alias of aliases){const row=byLabel.get(alias.trim().toLowerCase());if(row){byLabel.set(name.toLowerCase(),row);break;}}
   // Pin Hall and Ballroom rows to the verified CGC section. A lower
   // other-venue section may repeat the word "Ballroom".
   const cgcRows=cgcTemplateRows(ws);
@@ -907,13 +909,15 @@ export async function eventsWorkbook(entries: EventEntry[], existing?: File, tas
     for(let c=2;c<=8;c++)cols.set(weekRow.dates[c-2]!,c);
     ws.eachRow((row, i) => {
       const name = String(row.getCell(1).value ?? "").trim();
-      if (!ENGINEER_ROSTER.some((p) => p.name.toLowerCase() === name.toLowerCase())) return;
+      const canonical=ENGINEER_ROSTER.find(p=>p.name.toLowerCase()===name.toLowerCase()||
+       (options.planning?.aliasesByName?.[p.name]??[]).some(a=>a.trim().toLowerCase()===name.toLowerCase()))?.name;
+      if(!canonical)return;
       for (const [d, c] of cols) {
         const t = (x: { text?: string; value?: unknown }) => x.text ?? String(x.value ?? "");
         const n=t(row.getCell(c)),b=t(ws.getRow(i+1).getCell(c)),note=t(ws.getRow(i+2).getCell(c));
         const info=readStaffBlockAvailability(n,b,note,options.planning?.respectExistingOff!==false);
-        if(info.availability)(avail[name]??={})[d]=info.availability;
-        for(const label of info.notes)if(label)sourceStaffNotes.push({date:d,name,text:label.slice(0,200)});
+        if(info.availability)(avail[canonical]??={})[d]=info.availability;
+        for(const label of info.notes)if(label)sourceStaffNotes.push({date:d,name:canonical,text:label.slice(0,200)});
       }
     });
   }
@@ -923,7 +927,7 @@ export async function eventsWorkbook(entries: EventEntry[], existing?: File, tas
   for(const note of sourceStaffNotes)plans.get(note.date)?.notes.push(note.name+": "+note.text+" (operator workbook note)");
   let n = sheets.length;
   for (const w of weeks) {
-    if (sheets.some((s) => mergeWeekSheet(s, w, tasks, plans,!!options.preserveTemplateLayout))) continue;
+    if (sheets.some((s) => mergeWeekSheet(s, w, tasks, plans,!!options.preserveTemplateLayout,options.planning?.aliasesByName))) continue;
     if(existing)throw new Error("The exact engineering template has no worksheet for week "+w.monday+". A differently formatted worksheet will not be generated.");
     writeWeekSheet(wb.addWorksheet(`Week #${++n}`), w, tasks, plans);
   }
