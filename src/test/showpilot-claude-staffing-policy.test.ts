@@ -41,7 +41,7 @@ describe("Claude reviewed staffing evidence",()=>{
   ]);
   expect(weekdayCombinations([1,2,3],0)).toEqual([[]]);
   expect(weekdayCombinations([1,2,3],4)).toEqual([]);
-  expect(weekdayCombinations(Array.from({length:8},(_,i)=>i),3)).toThrow(/at most seven days/);
+  expect(()=>weekdayCombinations(Array.from({length:8},(_,i)=>i),3)).toThrow(/at most seven days/);
  });
  it("suggests an on-call shift for an uncovered evening regardless of which regular staff worked",()=>{
   const evening={...show,start:1020,end:1320,bookingEnd:undefined};
