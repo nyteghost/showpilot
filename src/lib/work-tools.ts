@@ -133,6 +133,28 @@ export function assertNamedScheduleEntries(entries:readonly EventEntry[]):void{
 /** Merges rows per date + space + show + code (earliest start, latest end). */
 export function summarizeEvents(rows: EventRow[], preserveCombinedSpaces = false): EventEntry[] {
   const map = new Map<string, EventEntry>();
+  const occupied=new Map<string,{start:number;end:number}>();
+  // Neutral function lines extend actual room occupancy but do not create
+  // their own show line. Never join different Event IDs or unrelated shows.
+  const occupancyKey=(date:string,space:string,eventId:string|undefined,name:string)=>
+   JSON.stringify([date,space,eventId||"name:"+name.trim().toLowerCase()]);
+  for(const row of rows){
+   if(row.level<=1||classifyEvent(row)!==null||!row.space.trim())continue;
+   if(!/^\d{1,2}:\d{2}\s*[AP]M$/i.test(row.start.trim())||
+      !/^\d{1,2}:\d{2}\s*[AP]M$/i.test(row.end.trim()))continue;
+   const start=parseReportTime(row.start),end=parseReportTime(row.end);
+   if(end<=start)continue; // A point marker cannot establish hours by itself.
+   const parent=(row.event?.trim()&&!isFunctionOnlyTitle(row.event)?row.event.trim():"");
+   if(!row.eventId&&!parent)continue;
+   const spaces=preserveCombinedSpaces?
+    [/chattahoochee|brfull/i.test(row.space)?"BallRoom ABCDEFG":sheetRowFor(row.space)]:
+    expandSpace(row.space);
+   for(const space of spaces){
+    const key=occupancyKey(row.date,space,row.eventId,parent);
+    const previous=occupied.get(key);
+    occupied.set(key,previous?{start:Math.min(previous.start,start),end:Math.max(previous.end,end)}:{start,end});
+   }
+  }
   const parents=new Map<string,string>();
   for(const row of rows)if(row.eventId&&row.event?.trim()&&!isFunctionOnlyTitle(row.event))parents.set(row.eventId,row.event.trim());
   for (const row of rows) {
@@ -151,7 +173,12 @@ export function summarizeEvents(rows: EventRow[], preserveCombinedSpaces = false
     }
   }
   // A meal or meeting inside the same show's day is part of the show; only one after the show ends gets its own line.
-  const all = [...map.values()];
+  const all=[...map.values()];
+  for(const e of all){
+   if(e.code!=="S")continue;
+   const span=occupied.get(occupancyKey(e.date,e.space,e.eventId,e.showName||e.title));
+   if(span){e.start=Math.min(e.start,span.start);e.end=Math.max(e.end,span.end);}
+  }
   // The report names each line separately (Registration, Expo, Coffee Bar...), so lines of one booking match by its event ID.
   const same = (a: EventEntry, b: EventEntry) => a.date === b.date && a.space === b.space && a.eventId === b.eventId && (a.eventId !== undefined || a.title === b.title);
   const kept: EventEntry[] = [];
@@ -203,6 +230,7 @@ export function summarizeEvents(rows: EventRow[], preserveCombinedSpaces = false
 }
 
 export function entryLabel(e: EventEntry) {
+  if(e.end<=e.start)return `${e.code} at ${formatMinutes(e.start)} (VERIFY marker)`;
   if (e.code === "MO?") return `MO? ${formatMinutes(e.start)}-${formatMinutes(e.end)}`;
   if (e.code === "Arr") return `Client Arr ${formatMinutes(e.start)}`;
   return `${e.code} ${formatMinutes(e.start)}-${formatMinutes(e.end)}`;
