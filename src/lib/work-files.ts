@@ -165,25 +165,30 @@ export async function readEventSheet(file: File): Promise<EventRow[] | null> {
   const header=firstRows[headerRow]!;
   const col=(name:string)=>header.findIndex(v=>v.toLowerCase()===name.toLowerCase())+1;
   const cStart=col("Start Time"),cEnd=col("End Time"),cDesc=col("Description"),cSpace=col("Space"),
-    cId=col("Event ID"),cStatus=col("Status - Event"),cEvent=col("Event");
+    cId=col("Event ID"),cStatus=col("Status - Event"),cEvent=col("Event"),
+    cBookedStart=col("Start Time - Event"),cBookedEnd=col("End Time - Event"),
+    cAttendance=col("Contracted Attendance");
   const grouped=newer||(!legacy&&cId>0&&cStatus>0&&col("Start Time - Event")>0);
   if(!legacy&&!grouped)return null;
   if(!cStart||!cEnd||!cDesc||!cSpace)return null;
   const rows:EventRow[]=[];
   const parentById=new Map<string,string>();
-  let day="",eventName="";
+  let day="",eventName="",parentAttendance=0;
   ws.eachRow((row,n)=>{
     if(n<=headerRow+1)return;
     const left=[1,2,3].map(c=>text(row.getCell(c).value)).filter(Boolean);
     const parsed=left.map(eventScheduleDate).find(Boolean)??"";
-    if(parsed){day=parsed;eventName="";return;}
+    if(parsed){day=parsed;eventName="";parentAttendance=0;return;}
     const start=clock(row.getCell(cStart).value);
     if(!start) {
       // A group title is generally in A or B; its attendance summary is at
       // the far right. Wrapped text inside Description is not a group title.
       const first=text(row.getCell(1).value)||text(row.getCell(2).value);
-      if(first&&first!==day&&!eventScheduleDate(first)&&!text(row.getCell(cDesc).value)&&!text(row.getCell(cSpace).value))
+      if(first&&first!==day&&!eventScheduleDate(first)&&!text(row.getCell(cDesc).value)&&!text(row.getCell(cSpace).value)){
         eventName=first;
+        const att=cAttendance?Number(text(row.getCell(cAttendance).value)):0;
+        parentAttendance=Number.isFinite(att)&&att>0?att:0;
+      }
       return;
     }
     if(!day)return;
@@ -191,9 +196,16 @@ export async function readEventSheet(file: File): Promise<EventRow[] | null> {
     const status=cStatus?text(row.getCell(cStatus).value):"";
     const parent=((cEvent?text(row.getCell(cEvent).value):"")||eventName).trim();
     if(id&&parent)parentById.set(id,parent);
+    const bookedStart=cBookedStart?clock(row.getCell(cBookedStart).value):"";
+    const bookedEnd=cBookedEnd?clock(row.getCell(cBookedEnd).value):"";
+    const rawAttendance=cAttendance?Number(text(row.getCell(cAttendance).value)):0;
+    const attendance=Number.isFinite(rawAttendance)&&rawAttendance>0?rawAttendance:parentAttendance;
     rows.push({level:2,usage:"",start,end:clock(row.getCell(cEnd).value),
       description:text(row.getCell(cDesc).value),space:text(row.getCell(cSpace).value),
       event:parent,
+      ...(bookedStart?{bookingStart:bookedStart}:{}),
+      ...(bookedEnd?{bookingEnd:bookedEnd}:{}),
+      ...(attendance>0?{attendance}:{}),
       ...(id?{eventId:id}:{}),...(status?{status}:{}),date:day});
   });
   // Recover a missing group heading from another function with the same Event ID.
