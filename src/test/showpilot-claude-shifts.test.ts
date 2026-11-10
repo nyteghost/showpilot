@@ -1,0 +1,45 @@
+import {describe,it,expect} from "vitest";
+import ExcelJS from "exceljs";
+import {parseShift,shiftNeedsReview} from "../lib/work-tools";
+import {readScheduleWorkbook} from "../lib/work-files";
+
+function datesWithSpacer(){
+ const book=new ExcelJS.Workbook(),ws=book.addWorksheet("Week #1");
+ for(let i=0;i<7;i++)ws.getRow(4).getCell(i+2).value=
+  ["MON","TUE","WED","THU","FRI","SAT","SUN"][i]!;
+ ws.getRow(5).getCell(2).value=1500;
+ ws.getRow(5).getCell(3).value=5500;
+ for(let i=0;i<7;i++)ws.getRow(6).getCell(i+2).value=25569+Date.UTC(2026,10,16+i)/86400000;
+ ws.getRow(7).getCell(1).value="Sample Operator";
+ ws.getRow(8).getCell(1).value="999";
+ return book;
+}
+describe("Claude shift-date and parsing audit",()=>{
+ it("parses supported annotations and punctuation without inventing times",()=>{
+  expect(parseShift("3pm-11:30pm+")).toMatchObject({start:900,end:1410});
+  expect(parseShift("8am-5pm(TBD)")).toMatchObject({start:480,end:1020});
+  expect(parseShift("9a—7p")).toMatchObject({start:540,end:1140});
+  expect(parseShift("7a-3;30p")).toMatchObject({start:420,end:930});
+  expect(parseShift("3p-1130p")).toMatchObject({start:900,end:1410});
+  expect(parseShift("7am-TBD")).toBeNull();
+ });
+ it("does not silently lose unreadable user shift cells",async()=>{
+  const book=datesWithSpacer(),ws=book.getWorksheet("Week #1")!;
+  ws.getCell("B7").value="3pm-11:30pm+";
+  ws.getCell("C7").value="7am-TBD";
+  ws.getCell("D7").value="OFF";
+  const bytes=await book.xlsx.writeBuffer();
+  const file=new File([new Uint8Array(bytes)],"synthetic-schedule.xlsx");
+  const result=await readScheduleWorkbook(file,"Sample Operator");
+  expect(result.shifts[0]?.date).toBe("2026-11-16");
+  expect(result.shifts[0]?.note).toMatch(/\+/);
+  expect(result.unreadable).toEqual(expect.arrayContaining([
+   expect.objectContaining({sheet:"Week #1",date:"2026-11-17",raw:"7am-TBD"})
+  ]));
+  expect(result.shifts.some(s=>s.date.startsWith("1904"))).toBe(false);
+ });
+ it("marks implausible shifts for explicit confirmation before calendar output",()=>{
+  expect(shiftNeedsReview({date:"2026-11-16",start:1200,end:2580,raw:"8pm-7pm"})).toBe(true);
+  expect(shiftNeedsReview({date:"2026-11-16",start:480,end:1020,raw:"8a-5p"})).toBe(false);
+ });
+});
