@@ -241,8 +241,10 @@ export async function readScheduleWorkbook(file: File, name = DEFAULT_SCHEDULE_N
     const grid = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[sheetName]!, { header: 1, raw: true, defval: "" });
     const dayRow = grid.findIndex((r) => String(r[1]).trim().toUpperCase() === "MON");
     if (dayRow < 0) continue;
-    const dates = grid[dayRow + 1] ?? [];
-    for (let r = dayRow + 2; r < grid.length; r++) {
+    const found=scanWeekDateRow((row,col)=>grid[row]?.[col-1],dayRow);
+    if(!found)continue;
+    const dates=found.dates;
+    for (let r = found.row + 1; r < grid.length; r++) {
       const cells = grid[r] ?? [];
       const label = String(cells[0] ?? "").trim();
       const next = String(grid[r + 1]?.[0] ?? "").trim();
@@ -251,9 +253,9 @@ export async function readScheduleWorkbook(file: File, name = DEFAULT_SCHEDULE_N
       for (let c = 1; c <= 7; c++) {
         const raw = String(cells[c] ?? "").trim();
         const time = parseShift(raw);
-        const d = dates[c];
-        if (!time || typeof d !== "number") continue;
-        shifts.push({ date: serialToIso(d), ...time, raw });
+        const d = dates[c-1];
+        if (!time || !d) continue;
+        shifts.push({ date:d, ...time, raw });
       }
     }
   }
@@ -600,7 +602,9 @@ function mergeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans
   const dayRow=scheduleDayHeaderRow(ws);
   if (!dayRow) return false;
   const cols = new Map<string, number>();
-  for (let c = 2; c <= 8; c++) { const d = cellDate(ws.getRow(dayRow + 1).getCell(c).value); if (d) cols.set(d, c); }
+  const weekRow=findWeekDateRow(ws,dayRow);
+  if(!weekRow)return false;
+  for(let c=2;c<=8;c++)cols.set(weekRow.dates[c-2]!,c);
   if (!w.dates.some((d) => cols.has(d))) return false;
   const byLabel = new Map<string, number>();
   ws.eachRow((row, n) => { const l = String(row.getCell(1).value ?? "").trim().toLowerCase(); if (l && !byLabel.has(l)) byLabel.set(l, n); });
@@ -721,7 +725,8 @@ export async function validateApprovedTemplate(file: File, entries: EventEntry[]
  for(const ws of wb.worksheets.filter(s=>/week/i.test(s.name))){
   const dayRow=scheduleDayHeaderRow(ws);
   if(!dayRow)continue;
-  for(let c=2;c<=8;c++){const d=cellDate(ws.getRow(dayRow+1).getCell(c).value);if(d)covered.add(d);}
+  const weekRow=findWeekDateRow(ws,dayRow);
+  if(weekRow)for(const date of weekRow.dates)covered.add(date);
  }
  // A template with formula-only dates is valid as a layout. When exporting
  // one selected week, make a COPY and stamp date values into its seven cells.
@@ -786,7 +791,7 @@ export async function eventsWorkbook(entries: EventEntry[], existing?: File, tas
       const matches=wb.worksheets.filter(ws=>{
         if(!/week/i.test(ws.name))return false;
         const header=scheduleDayHeaderRow(ws);
-        return header>0&&cellDate(ws.getRow(header+1).getCell(2).value)===options.singleWeek;
+        return header>0&&findWeekDateRow(ws,header)?.dates[0]===options.singleWeek;
       });
       if(matches.length>1)throw new Error("Multiple template worksheets use the selected week; select a unique master workbook.");
       // Only the explicitly chosen APPROVED master can be re-dated. Uploaded
@@ -799,13 +804,14 @@ export async function eventsWorkbook(entries: EventEntry[], existing?: File, tas
       const originalPrintArea=selected.pageSetup.printArea;
       const header=scheduleDayHeaderRow(selected);
       if(!header)throw new Error("Template date header is missing.");
+      const foundDates=findWeekDateRow(selected,header);
+      const dateRow=foundDates?.row||(retarget?formulaWeekRow(selected,header):null);
+      if(!dateRow)throw new Error("Template dates must be consecutive Monday–Sunday or seven blank formula dates in an approved retarget copy.");
       const dates=retarget?weekDates(options.singleWeek):null;
       if(retarget)clearRetargetedEventGrid(selected);
-      // Use explicit dates in the EXPORTED COPY. Week templates can link to
-      // Extra via uncached Excel formulas; those cannot survive removing Extra.
       for(let col=2;col<=8;col++){
-        const cell=selected.getRow(header+1).getCell(col);
-        const iso=dates?.[col-2]??cellDate(cell.value);
+        const cell=selected.getRow(dateRow).getCell(col);
+        const iso=dates?.[col-2]??foundDates?.dates[col-2]??cellDate(cell.value);
         if(!iso)throw new Error("The template date "+cell.address+" has no cached value. Choose the approved master to re-date the selected week.");
         const style={...cell.style};
         cell.value=toDate(iso);
@@ -825,9 +831,11 @@ export async function eventsWorkbook(entries: EventEntry[], existing?: File, tas
   const avail: Record<string, Record<string, Avail>> = {};
   for (const ws of sheets) {
     const dayRow=scheduleDayHeaderRow(ws);
-    if (!dayRow) continue;
-    const cols = new Map<string, number>();
-    for (let c = 2; c <= 8; c++) { const d = cellDate(ws.getRow(dayRow + 1).getCell(c).value); if (d) cols.set(d, c); }
+    if(!dayRow)continue;
+    const weekRow=findWeekDateRow(ws,dayRow);
+    if(!weekRow)continue;
+    const cols=new Map<string,number>();
+    for(let c=2;c<=8;c++)cols.set(weekRow.dates[c-2]!,c);
     ws.eachRow((row, i) => {
       const name = String(row.getCell(1).value ?? "").trim();
       if (!ENGINEER_ROSTER.some((p) => p.name === name)) return;
