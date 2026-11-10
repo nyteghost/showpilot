@@ -12,9 +12,9 @@ describe("Claude C14: reviewed wall configuration detail",()=>{
   expect(detailed.text).toMatch(/^PM: Make ABE\/CDFG/);
   expect(detailed.text).toContain("sections ABE/CDFG");
   expect(detailed.text).toContain("VERIFY EOC");
-  expect(airwallHolds([detailed],[])).toEqual([expect.objectContaining({
-   date:task.date,section:undefined,n:2,text:detailed.text
-  })].map(x=>({date:x.date,start:480,end:570,n:2,text:x.text})));
+  expect(airwallHolds([detailed],[])).toEqual([{
+   date:task.date,start:480,end:570,n:2,text:detailed.text
+  }]);
  });
  it("does not invent the configuration of unobserved room sections",()=>{
   const task:TaskNote={date:"2026-11-16",section:"HALLS",text:"Make Hall AB"};
