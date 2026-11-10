@@ -526,6 +526,9 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
               {exportBusy?"Exporting…":"Download "+currentExportLabel+" (original layout)"}</Button>}
             {entries.length>0&&aiScope?.view==="week"&&<Button size="sm" variant="outline" disabled={exportBusy}
               onClick={()=>void exportFreshWeek()}><Download className="size-4"/> Download week (fresh layout)</Button>}
+            {entries.length>0&&aiScope?.view==="week"&&<Button size="sm" variant="outline" disabled={exportBusy}
+              title="Use your saved approved blank/master workbook and preserve its formulas, colors and staff rows"
+              onClick={()=>void exportSelected("approved")}><Download className="size-4"/> Download week (saved master template)</Button>}
             {exportStatus&&<p role="status" className="w-full text-xs text-muted-foreground">{exportStatus}</p>}
           </div>
           <ClaudeStaffingSettingsPanel value={claudePolicy} onChange={changeClaudePolicy}/>
