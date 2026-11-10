@@ -5,7 +5,7 @@ import {eventsWorkbook,validateApprovedTemplate} from "@/lib/work-files";
 import type {EventEntry} from "@/lib/work-tools";
 Object.defineProperty(globalThis,"Blob",{value:NodeBlob,configurable:true});
 Object.defineProperty(globalThis,"File",{value:NodeFile,configurable:true});
-const entry=(date:string,title:string):EventEntry=>({date,space:"Hall A",code:"S",start:480,end:1020,title,eventId:"12345"});
+const entry=(date:string,title:string):EventEntry=>({date,space:"Hall A",code:"S",start:480,end:1020,title,showName:title,eventId:"12345"});
 
 describe("approved master with formula-only dates: selected week export",()=>{
  it("copies the original CGC layout, stamps selected dates, preserves PTO, and removes stale show text",async()=>{
