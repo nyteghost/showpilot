@@ -578,6 +578,10 @@ function mergeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans
   if (!w.dates.some((d) => cols.has(d))) return false;
   const byLabel = new Map<string, number>();
   ws.eachRow((row, n) => { const l = String(row.getCell(1).value ?? "").trim().toLowerCase(); if (l && !byLabel.has(l)) byLabel.set(l, n); });
+  // Pin Hall and Ballroom rows to the verified CGC section. A lower
+  // other-venue section may repeat the word "Ballroom".
+  const cgcRows=cgcTemplateRows(ws);
+  if(cgcRows)for(const [label,row] of cgcRows)byLabel.set(label,row);
   if(preserveTemplateLayout){
     // Read-only merge geometry: two distinct shows may not share one master cell.
     // The caller must update the source workbook or resolve the room conflict.
@@ -704,14 +708,30 @@ export async function validateApprovedTemplate(file: File, entries: EventEntry[]
 /** The uploaded engineering workbook—not the fresh exporter—is authoritative.
  * Refuse a layout mismatch rather than silently rebuilding the design.
  */
-export function isExactCgcEngineeringTemplate(ws:XSheet):boolean {
- const row=(n:number)=>String(ws.getRow(n).getCell(1).value??"").trim().toUpperCase();
- return [
-  [54,"HALLS"],[55,"HALL A"],[56,"HALL B"],[57,"HALL C"],[58,"HALL D"],
-  [59,"TASKS"],[60,"BALLROOM"],[61,"BALLROOM A"],[62,"BALLROOM B"],
-  [63,"BALLROOM E"],[64,"BALLROOM G"],[65,"BALLROOM C"],[66,"BALLROOM D"],
-  [67,"BALLROOM F"],[68,"TASKS"],[69,"LOCATION"]
- ].every(([n,name])=>row(Number(n))===name);
+/** The CGC engineering section moves when staffing rows are inserted.
+ * Require the complete ordered sequence to avoid matching CEPAC/other-venue rows. */
+const CGC_SECTION_LABELS=[
+ "HALLS","HALL A","HALL B","HALL C","HALL D","TASKS","BALLROOM",
+ "BALLROOM A","BALLROOM B","BALLROOM E","BALLROOM G",
+ "BALLROOM C","BALLROOM D","BALLROOM F","TASKS","LOCATION"
+] as const;
+function cgcTemplateRows(ws:XSheet):Map<string,number>|null{
+ const label=(n:number)=>String(ws.getRow(n).getCell(1).value??"")
+  .replace(/\s+/g," ").trim().toUpperCase();
+ for(let start=1;start<=ws.rowCount-CGC_SECTION_LABELS.length+1;start++){
+  if(label(start)!=="HALLS")continue;
+  const matches=CGC_SECTION_LABELS.every((expected,i)=>label(start+i)===expected);
+  if(!matches)continue;
+  const rows=new Map<string,number>();
+  CGC_SECTION_LABELS.forEach((name,i)=>{
+   rows.set(name==="TASKS"?(i<6?"HALLS TASKS":"BALLROOM TASKS"):name.toLowerCase(),start+i);
+  });
+  return rows;
+ }
+ return null;
+}
+export function isExactCgcEngineeringTemplate(ws:XSheet):boolean{
+ return cgcTemplateRows(ws)!==null;
 }
 
 /** Builds the weekly engineering workbook (Week #1, #2 …) or, given an existing schedule, fills its event rows. */
