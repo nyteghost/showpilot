@@ -858,7 +858,7 @@ export async function eventsWorkbook(entries: EventEntry[], existing?: File, tas
   }
   const sheets = wb.worksheets.filter((ws) => /^Week\s*#\d+$/i.test(ws.name));
   if(existing && (!sheets.length || sheets.some(ws=>!isExactCgcEngineeringTemplate(ws))))
-    throw new Error("The uploaded workbook is not the original engineering template. Choose the 11 November 2026 workbook with HALLS in row 54 and BALLROOM in row 60.");
+    throw new Error("The uploaded workbook is missing the ordered CGC HALLS and BALLROOM sections. Check the Hall A–D, Ballroom A–G, Tasks and LOCATION labels; section row numbers may vary.");
   // PTO and shifts you already typed into the engineer rows are read first, so the plan works around them.
   const avail: Record<string, Record<string, Avail>> = {};
   for (const ws of sheets) {
