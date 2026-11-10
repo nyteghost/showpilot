@@ -1,5 +1,5 @@
 // Browser-only file readers for work tools. Libraries load on demand.
-import { planWeeks, airwallHolds, needText, shiftText, workedHours, readAvail, SHOW_STAFF, ON_CALL, type Avail, type DayPlan } from "./staffing";
+import { planWeeks, airwallHolds, needText, shiftText, workedHours, readAvail, SHOW_STAFF, ON_CALL, readStaffBlockAvailability, type StaffingPolicy, type Avail, type DayPlan } from "./staffing";
 import { BALLROOM_ROWS, ENGINEER_ROSTER, HALL_ROWS, assertNamedScheduleEntries, weekLayouts, mondayOf as mondayIso, expandSpace, type WeekLayout, type TaskNote, DEFAULT_SCHEDULE_NAME, parseShift, shiftAnnotations, reportDateToIso, type EventEntry, type EventRow, type Shift } from "./work-tools";
 
 import {readShowPilotEventSchedulePages, eventScheduleDate, type SchedulePdfPage} from "./showpilot-event-schedule";
@@ -798,7 +798,7 @@ export function isExactCgcEngineeringTemplate(ws:XSheet):boolean{
 }
 
 /** Builds the weekly engineering workbook (Week #1, #2 …) or, given an existing schedule, fills its event rows. */
-export async function eventsWorkbook(entries: EventEntry[], existing?: File, tasks: TaskNote[] = [], options: {singleWeek?:string;preserveTemplateLayout?:boolean;retargetTemplateWeek?:boolean} = {}): Promise<Blob> {
+export async function eventsWorkbook(entries: EventEntry[], existing?: File, tasks: TaskNote[] = [], options: {singleWeek?:string;preserveTemplateLayout?:boolean;retargetTemplateWeek?:boolean;planning?:StaffingPolicy} = {}): Promise<Blob> {
   const module = await import("exceljs");
   const ExcelJS = module.default ?? module;
   const wb: XWorkbook = new ExcelJS.Workbook();
@@ -812,7 +812,7 @@ export async function eventsWorkbook(entries: EventEntry[], existing?: File, tas
     ". Review the source room labels; the uploaded engineering template has no Other Spaces section.");
   // Expand a combined hall such as "Hall AB" to existing Hall A and Hall B.
   const sheetEntries = entries.flatMap(e => expandSpace(e.space).map(space => ({ ...e, space })));
-  const weeks = weekLayouts(sheetEntries);
+  const weeks = weekLayouts(sheetEntries,options.singleWeek?[options.singleWeek]:[]);
   if (existing) await wb.xlsx.load(await existing.arrayBuffer());
   if(options.singleWeek){
     if(!/^\d{4}-\d{2}-\d{2}$/.test(options.singleWeek))throw new Error("Invalid selected week.");
@@ -861,6 +861,7 @@ export async function eventsWorkbook(entries: EventEntry[], existing?: File, tas
     throw new Error("The uploaded workbook is missing the ordered CGC HALLS and BALLROOM sections. Check the Hall A–D, Ballroom A–G, Tasks and LOCATION labels; section row numbers may vary.");
   // PTO and shifts you already typed into the engineer rows are read first, so the plan works around them.
   const avail: Record<string, Record<string, Avail>> = {};
+  const sourceStaffNotes:{date:string;name:string;text:string}[]=[];
   for (const ws of sheets) {
     const dayRow=scheduleDayHeaderRow(ws);
     if(!dayRow)continue;
@@ -870,16 +871,20 @@ export async function eventsWorkbook(entries: EventEntry[], existing?: File, tas
     for(let c=2;c<=8;c++)cols.set(weekRow.dates[c-2]!,c);
     ws.eachRow((row, i) => {
       const name = String(row.getCell(1).value ?? "").trim();
-      if (!ENGINEER_ROSTER.some((p) => p.name === name)) return;
+      if (!ENGINEER_ROSTER.some((p) => p.name.toLowerCase() === name.toLowerCase())) return;
       for (const [d, c] of cols) {
         const t = (x: { text?: string; value?: unknown }) => x.text ?? String(x.value ?? "");
-        const a = readAvail(t(row.getCell(c))) ?? (/^[a-z]/i.test(t(ws.getRow(i + 1).getCell(c)).trim()) && !/^off$/i.test(t(ws.getRow(i + 1).getCell(c)).trim()) ? readAvail(t(ws.getRow(i + 1).getCell(c))) : null);
-        if (a) (avail[name] ??= {})[d] = a;
+        const n=t(row.getCell(c)),b=t(ws.getRow(i+1).getCell(c)),note=t(ws.getRow(i+2).getCell(c));
+        const info=readStaffBlockAvailability(n,b,note,options.planning?.respectExistingOff!==false);
+        if(info.availability)(avail[name]??={})[d]=info.availability;
+        for(const label of info.notes)if(label)sourceStaffNotes.push({date:d,name,text:label.slice(0,200)});
       }
     });
   }
-  const dates = [...new Set(entries.map((e) => e.date))].sort();
-  const plans = new Map(planWeeks(dates, sheetEntries, avail, undefined, airwallHolds(tasks, sheetEntries)).map((p) => [p.date, p] as const));
+  const dates = [...new Set(weeks.flatMap(w=>w.dates))].sort();
+  const plans = new Map(planWeeks(dates, sheetEntries, avail, undefined, airwallHolds(tasks, sheetEntries),options.planning).map((p) => [p.date, p] as const));
+  // Preserve operator-entered title-row notes in the reviewable Staffing Why.
+  for(const note of sourceStaffNotes)plans.get(note.date)?.notes.push(note.name+": "+note.text+" (operator workbook note)");
   let n = sheets.length;
   for (const w of weeks) {
     if (sheets.some((s) => mergeWeekSheet(s, w, tasks, plans,!!options.preserveTemplateLayout))) continue;
