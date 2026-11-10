@@ -8,6 +8,14 @@ const { setupMemoryIpc } = require("./showpilot-memory.cjs");
 const {setupLocalIntelligenceIpc}=require("./local-intelligence.cjs");
 const {setupDiagnosticsIpc}=require("./showpilot-diagnostics.cjs");
 const {setupEventScheduleSessionIpc}=require("./event-schedule-session.cjs");
+// The experimental branch must not open or overwrite beta/main appdata.
+// A portable ZIP alone does not isolate Electron's per-user SQLite state.
+if(/-claude(?:\+.*)?$/.test(app.getVersion())){
+ const parent=path.dirname(app.getPath("userData"));
+ const isolated=path.join(parent,"ShowPilot-Claude-Test");
+ fs.mkdirSync(isolated,{recursive:true});
+ app.setPath("userData",isolated);
+}
 const {setupTodayChecklistIpc}=require("./today-checklist.cjs");
 let win;
 function openApp(){
