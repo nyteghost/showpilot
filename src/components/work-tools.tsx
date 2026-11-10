@@ -606,6 +606,8 @@ function ShiftsTab() {
   const [unreadable,setUnreadable]=useState<{sheet:string;date:string;raw:string}[]>([]);
   const [detectedNames,setDetectedNames]=useState<string[]>([]);
   const [shiftWarnings,setShiftWarnings]=useState<string[]>([]);
+  const [weekOverrides,setWeekOverrides]=useState<Record<string,string>>({});
+  const sheetDateWarnings=[...new Set(shiftWarnings.map(w=>/^Week #\d+/.exec(w)?.[0]).filter((x):x is string=>!!x))];
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("Mark Work");
   const [removed, setRemoved] = useState<string[]>([]);
@@ -631,7 +633,7 @@ function ShiftsTab() {
       const isPdf=/\.pdf$/i.test(f.name)||f.type==="application/pdf";
       const {shifts,people,unreadable,warnings}=isPdf
        ? await (await import("@/lib/showpilot-shift-pdf")).readWeeklyShiftPdf(f,who)
-       : await (await import("@/lib/work-files")).readScheduleWorkbook(f,who);
+       : await (await import("@/lib/work-files")).readScheduleWorkbook(f,who,weekOverrides);
       setShifts(withShiftIds(shifts));setUnreadable(unreadable);setShiftWarnings(warnings);
       setDetectedNames(people);
       setRemoved([]);setEditing(null);
@@ -677,6 +679,16 @@ function ShiftsTab() {
         </div>
       </details>
       {status && <p className={`text-sm ${/^Could not|^No shifts/.test(status) ? "text-destructive" : ""}`} role="status">{status}</p>}
+      {file&&!/\\.pdf$/i.test(file.name)&&sheetDateWarnings.length>0&&
+       <details className="rounded border border-amber-500 p-2 text-xs">
+        <summary className="cursor-pointer font-medium">Correct a worksheet week start (operator override)</summary>
+        <p className="my-2">If the Excel date formulas are stale, enter the true Monday for the affected sheet. This changes only the imported shift dates, never the original workbook. Check your calendars before syncing.</p>
+        {sheetDateWarnings.map(sheet=><label key={sheet} className="mb-2 flex items-center gap-2">{sheet}
+         <Input type="date" className="w-auto" value={weekOverrides[sheet]??""}
+          onChange={e=>setWeekOverrides(prev=>({...prev,[sheet]:e.target.value}))}/>
+        </label>)}
+        <Button size="sm" variant="outline" onClick={()=>void load(file)}>Re-read with corrections</Button>
+       </details>}
       {shiftWarnings.length>0&&<div role="alert" className="rounded border border-amber-500 p-2 text-xs"><strong>Date-row warnings:</strong>{shiftWarnings.map((w,i)=><p key={i}>{w}</p>)}</div>}
       {unreadable.length>0&&<div role="alert" className="rounded border border-amber-500 p-2 text-xs">
        <strong>{unreadable.length} unreadable shift cell(s) — review and add manually:</strong>
