@@ -12,6 +12,8 @@ import { StandaloneVendors } from "@/components/showpilot-vendors";
 import { FloorMapPanel } from "@/components/floor-map-panel";
 import { scopeShowPilotRows } from "@/lib/showpilot-venue";
 import { ScheduleReview } from "@/components/showpilot-review-panel";
+import {ClaudeStaffingSettingsPanel} from "@/components/showpilot-claude-settings";
+import {readClaudeSettings,saveClaudeSettings,type ClaudeStaffingSettings} from "@/lib/showpilot-claude-settings";
 import { ShowPilotExcelPreview } from "@/components/showpilot-excel-preview";
 import type {PreviewWorkbook} from "@/lib/showpilot-excel-preview";
 import {reviewScopeDates,type ReviewDateScope} from "@/lib/showpilot-review-months";
@@ -113,6 +115,11 @@ function FilePick({ accept, label, onFile, onFiles }: { accept: string; label: s
 
 function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
   const [entries, setEntries] = useState<EventEntry[]>([]);
+  const [claudePolicy,setClaudePolicy]=useState<ClaudeStaffingSettings>(readClaudeSettings);
+  const changeClaudePolicy=(value:ClaudeStaffingSettings)=>{
+   setClaudePolicy(value);
+   try{saveClaudeSettings(value)}catch{/* Readable in current session even when storage is blocked. */}
+  };
   const [aiScope,setAiScope] = useState<ReviewDateScope|null>(null);
   const [status, setStatus] = useState("");
   const [exportBusy,setExportBusy] = useState(false);
@@ -307,8 +314,8 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
       await lib.validateApprovedTemplate(original,chosen.entries,{retargetWeek:!!chosen.singleWeek});
     }
     const blob=await lib.eventsWorkbook(chosen.entries,original,chosen.tasks,
-      chosen.singleWeek?{singleWeek:chosen.singleWeek,preserveTemplateLayout:true,retargetTemplateWeek:kind==="approved"}:
-        {preserveTemplateLayout:true});
+      chosen.singleWeek?{singleWeek:chosen.singleWeek,preserveTemplateLayout:true,retargetTemplateWeek:kind==="approved",planning:claudePolicy}:
+        {preserveTemplateLayout:true,planning:claudePolicy});
     return {blob,period:chosen.period,week:!!chosen.singleWeek};
   }
   async function exportSelected(kind:ExportFormat){
@@ -341,7 +348,7 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
       const chosen=scopedScheduleData(entries,tasks,aiScope);
       if(!chosen.singleWeek)throw new Error("Choose Week view first.");
       const lib=await import("@/lib/work-files");
-      const blob=await lib.eventsWorkbook(chosen.entries,undefined,chosen.tasks,{singleWeek:chosen.singleWeek});
+      const blob=await lib.eventsWorkbook(chosen.entries,undefined,chosen.tasks,{singleWeek:chosen.singleWeek,planning:claudePolicy});
       lib.downloadBlob(blob,"ShowPilot-week-"+chosen.singleWeek+"-fresh-layout.xlsx");
       setExportStatus("Selected week downloaded in the ShowPilot-generated layout. Your original master and reviewed events were not changed.");
     }catch(e){setExportStatus("Fresh week not downloaded: "+(e as Error).message);}
@@ -521,6 +528,7 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
               onClick={()=>void exportFreshWeek()}><Download className="size-4"/> Download week (fresh layout)</Button>}
             {exportStatus&&<p role="status" className="w-full text-xs text-muted-foreground">{exportStatus}</p>}
           </div>
+          <ClaudeStaffingSettingsPanel value={claudePolicy} onChange={changeClaudePolicy}/>
           <ShowPilotExcelPreview open={previewOpen} onOpenChange={setPreviewOpen} book={previewWorkbook} title={previewTitle}/>
           <ShowPilotRuleReview evidence={exportRuleEvidence("reviewed workbook",entries.length,new Set(entries.map(e=>e.date)).size,exportStatus)}/>
           <p className="text-xs text-muted-foreground">ShowPilot uses the original Excel template as its layout authority. It will not create a new room section or reformat staffing, dates, colors or borders. Upload your master XLSX alongside the event report, or select it under Settings &amp; AI. Other spaces must be reviewed before export.</p>
