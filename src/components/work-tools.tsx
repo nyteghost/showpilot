@@ -128,6 +128,43 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
   const [previewOpen,setPreviewOpen]=useState(false);
   const [previewBusy,setPreviewBusy]=useState(false);
   const [previewKind,setPreviewKind]=useState<"original"|"approved">("original");
+  const [masterTemplateState,setMasterTemplateState]=useState<"checking"|"saved"|"missing"|"error"|"unavailable">(
+    window.showpilotLocal?"checking":"unavailable"
+  );
+  const [masterTemplateBusy,setMasterTemplateBusy]=useState(false);
+  const [masterTemplateError,setMasterTemplateError]=useState("");
+  useEffect(()=>{
+    const api=window.showpilotLocal;
+    if(!api){setMasterTemplateState("unavailable");return;}
+    let mounted=true;
+    const refresh=()=>{
+      void api.status().then(value=>{
+        if(mounted){setMasterTemplateState(value.template?.stored?"saved":"missing");setMasterTemplateError("");}
+      }).catch(error=>{
+        if(mounted){setMasterTemplateState("error");setMasterTemplateError(
+          "Could not read saved master template: "+String(error)
+        );}
+      });
+    };
+    refresh();
+    window.addEventListener("focus",refresh);
+    return ()=>{mounted=false;window.removeEventListener("focus",refresh);};
+  },[]);
+  async function chooseMasterTemplateForExport(){
+    const api=window.showpilotLocal;
+    if(!api)return;
+    setMasterTemplateBusy(true);setMasterTemplateError("");
+    try{
+      const result=await api.chooseTemplate();
+      const saved=Boolean(result.template?.stored);
+      setMasterTemplateState(saved?"saved":"missing");
+      if(saved)setPreviewKind("approved");
+    }catch(error){
+      setMasterTemplateState("error");
+      setMasterTemplateError("Could not save master template: "+String(error));
+    }finally{setMasterTemplateBusy(false);}
+  }
+
   const [previewWorkbook,setPreviewWorkbook]=useState<PreviewWorkbook|null>(null);
   const [previewTitle,setPreviewTitle]=useState("");
 
@@ -306,7 +343,8 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
     aiScope?.view==="month"?"selected month":aiScope?.view==="day"?"selected day":"full report";
   const fileSuffix=(scope:string)=>scope.replace(/[^a-zA-Z0-9_-]/g,"-");
   type ExportFormat="original"|"approved";
-  const selectedTemplate:ExportFormat=(previewKind==="original"&&source?.existing)?"original":(window.showpilotLocal?"approved":"original");
+  const selectedTemplate:ExportFormat=previewKind==="original"&&source?.existing?"original":"approved";
+  const masterTemplateMissing=selectedTemplate==="approved"&&masterTemplateState!=="saved";
   // Preview and Download share exactly the same generator.
   async function makeSelectedWorkbook(kind:ExportFormat):Promise<{blob:Blob;period:string;week:boolean}>{
     if(!aiScope)throw new Error("Choose a Month, Week or Day in Edit Schedule first.");
@@ -318,7 +356,7 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
       if(!original)throw new Error("Upload your original engineering schedule XLSX alongside the event report to use its formatting.");
     }else if(kind==="approved"){
       const bytes=await window.showpilotLocal?.readTemplate();
-      if(!bytes)throw new Error("Choose an approved master Excel template in Settings & AI first.");
+      if(!bytes)throw new Error("No saved master workbook found. Choose master XLSX next to the export controls, or upload the original workbook with the event report.");
       original=new File([new Uint8Array(bytes)],"approved-schedule-template.xlsx");
       await lib.validateApprovedTemplate(original,chosen.entries,{retargetWeek:!!chosen.singleWeek});
     }
@@ -528,16 +566,31 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
                 {window.showpilotLocal && <option value="approved">Saved master workbook (Settings &amp; AI)</option>}
               </select>
             </label>}
-            {entries.length>0 && <Button size="sm" variant="outline" disabled={!aiScope||previewBusy}
+            {entries.length>0 && <Button size="sm" variant="outline" disabled={!aiScope||previewBusy||masterTemplateMissing}
               onClick={()=>void openExcelPreview()}><Eye className="size-4"/> {previewBusy?"Building preview…":"Preview original Excel"}</Button>}
-            {entries.length>0 && <Button size="sm" disabled={!aiScope||exportBusy}
+            {entries.length>0 && <Button size="sm" disabled={!aiScope||exportBusy||masterTemplateMissing}
               onClick={()=>void exportSelected(selectedTemplate)}><Download className="size-4"/>
               {exportBusy?"Exporting…":"Download "+currentExportLabel+" (original layout)"}</Button>}
             {entries.length>0&&aiScope?.view==="week"&&<Button size="sm" variant="outline" disabled={exportBusy}
               onClick={()=>void exportFreshWeek()}><Download className="size-4"/> Download week (fresh layout)</Button>}
-            {entries.length>0&&aiScope?.view==="week"&&<Button size="sm" variant="outline" disabled={exportBusy}
+            {entries.length>0&&aiScope?.view==="week"&&<Button size="sm" variant="outline" disabled={exportBusy||masterTemplateState!=="saved"}
               title="Use your saved approved blank/master workbook and preserve its formulas, colors and staff rows"
               onClick={()=>void exportSelected("approved")}><Download className="size-4"/> Download week (saved master template)</Button>}
+            {entries.length>0&&window.showpilotLocal&&<Button size="sm" variant="outline"
+              disabled={masterTemplateBusy} onClick={()=>void chooseMasterTemplateForExport()}>
+              <FileUp className="size-4"/>{masterTemplateBusy?"Choosing workbook…":
+                masterTemplateState==="saved"?"Change master XLSX":"Choose master XLSX"}
+            </Button>}
+            {entries.length>0&&selectedTemplate==="approved"&&
+              <p role="status" className="w-full text-xs text-muted-foreground">
+                {masterTemplateState==="saved"?
+                 "Approved master XLSX saved on this computer. It is ready for preview and export; its original file is not overwritten.":
+                 masterTemplateState==="checking"?"Checking for a saved master workbook…":
+                 masterTemplateState==="missing"?"No approved master workbook is saved. Choose master XLSX above, or select an uploaded original workbook.":
+                 masterTemplateState==="unavailable"?"Master workbook selection requires the portable desktop app. Upload the original workbook with the event report.":
+                 "Master workbook status could not be verified. Use Choose master XLSX to retry."}
+              </p>}
+            {masterTemplateError&&<p role="alert" className="w-full text-xs text-destructive">{masterTemplateError}</p>}
             {exportStatus&&<p role="status" className="w-full text-xs text-muted-foreground">{exportStatus}</p>}
           </div>
           <ClaudeStaffingSettingsPanel value={claudePolicy} onChange={changeClaudePolicy}/>
