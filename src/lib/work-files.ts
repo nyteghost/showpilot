@@ -1,6 +1,6 @@
 // Browser-only file readers for work tools. Libraries load on demand.
 import { planWeeks, airwallHolds, needText, shiftText, workedHours, readAvail, SHOW_STAFF, ON_CALL, type Avail, type DayPlan } from "./staffing";
-import { BALLROOM_ROWS, ENGINEER_ROSTER, HALL_ROWS, assertNamedScheduleEntries, weekLayouts, mondayOf as mondayIso, expandSpace, type WeekLayout, type TaskNote, DEFAULT_SCHEDULE_NAME, parseShift, reportDateToIso, type EventEntry, type EventRow, type Shift } from "./work-tools";
+import { BALLROOM_ROWS, ENGINEER_ROSTER, HALL_ROWS, assertNamedScheduleEntries, weekLayouts, mondayOf as mondayIso, expandSpace, type WeekLayout, type TaskNote, DEFAULT_SCHEDULE_NAME, parseShift, shiftAnnotations, reportDateToIso, type EventEntry, type EventRow, type Shift } from "./work-tools";
 
 import {readShowPilotEventSchedulePages, eventScheduleDate, type SchedulePdfPage} from "./showpilot-event-schedule";
 
@@ -230,11 +230,14 @@ const serialToIso = (n: number):string|null => {
 };
 
 /** Reads every "Week #" sheet and returns the shifts in the named person's row. */
-export async function readScheduleWorkbook(file: File, name = DEFAULT_SCHEDULE_NAME): Promise<{ shifts: Shift[]; people: string[] }> {
+export type UnreadableShift={sheet:string;date:string;raw:string};
+export async function readScheduleWorkbook(file: File, name = DEFAULT_SCHEDULE_NAME): Promise<{ shifts: Shift[]; people: string[]; unreadable:UnreadableShift[]; warnings:string[] }> {
   const XLSX = await import("xlsx");
   const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
   const shifts: Shift[] = [];
   const people = new Set<string>();
+  const unreadable:UnreadableShift[]=[];
+  const warnings:string[]=[];
   const target = name.trim().toLowerCase();
   for (const sheetName of wb.SheetNames) {
     if (!/week/i.test(sheetName)) continue;
@@ -242,7 +245,7 @@ export async function readScheduleWorkbook(file: File, name = DEFAULT_SCHEDULE_N
     const dayRow = grid.findIndex((r) => String(r[1]).trim().toUpperCase() === "MON");
     if (dayRow < 0) continue;
     const found=scanWeekDateRow((row,col)=>grid[row]?.[col-1],dayRow);
-    if(!found)continue;
+    if(!found){warnings.push(sheetName+": no verified Monday–Sunday dates were found within five rows after the header. Check Extra/date formulas.");continue;}
     const dates=found.dates;
     for (let r = found.row + 1; r < grid.length; r++) {
       const cells = grid[r] ?? [];
@@ -251,16 +254,22 @@ export async function readScheduleWorkbook(file: File, name = DEFAULT_SCHEDULE_N
       if (label && /^\d{3}$/.test(next)) people.add(label);
       if (label.toLowerCase() !== target) continue;
       for (let c = 1; c <= 7; c++) {
-        const raw = String(cells[c] ?? "").trim();
-        const time = parseShift(raw);
-        const d = dates[c-1];
-        if (!time || !d) continue;
-        shifts.push({ date:d, ...time, raw });
+        const raw=String(cells[c]??"").trim();
+        const date=dates[c-1];
+        if(!raw||!date)continue;
+        const time=parseShift(raw);
+        if(!time){
+         if(!/^(?:off|pto|holiday|vacation|sick|fmla|bereavement|leave)(?:\s|$|[:(])/i.test(raw))
+          unreadable.push({sheet:sheetName,date,raw:raw.slice(0,180)});
+         continue;
+        }
+        const flags=shiftAnnotations(raw);
+        shifts.push({date,...time,raw,...(flags.length?{note:flags.join("; ")}:{})});
       }
     }
   }
   const seen = new Set<string>();
-  return { shifts: shifts.filter((s) => !seen.has(s.date) && seen.add(s.date)).sort((a, b) => a.date.localeCompare(b.date)), people: [...people] };
+  return { shifts: shifts.filter((s) => !seen.has(s.date) && seen.add(s.date)).sort((a,b)=>a.date.localeCompare(b.date)), people:[...people],unreadable,warnings };
 }
 
 type XWorkbook = import("exceljs").Workbook;
