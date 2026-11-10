@@ -41,14 +41,14 @@ export const PATTERNS: { start: number; end: number }[] = [
 export const MAX_DAYS = 5;
 const SLOTS = 56; // half hours from midnight to 4a the next morning
 type Shift = { name: string; start: number; end: number };
-const aloneOnly = (name: string) => !!SHOW_STAFF.find((x) => x.name === name)?.notAlone;
+const aloneOnly = (name: string,policy:StaffingPolicy={}) => !!SHOW_STAFF.find((x) => x.name === name)?.notAlone || (name===MARK_FLEX.name&&policy.managerRegularLine===true&&policy.managerMayWorkAlone!==true);
 /** People on per half hour, where someone who must not work alone only counts when another engineer is on with them. */
-const effCover = (list: Shift[]): number[] => {
+const effCover = (list: Shift[], policy:StaffingPolicy={}): number[] => {
   const others = new Array<number>(SLOTS).fill(0), na = new Array<number>(SLOTS).fill(0);
-  for (const a of list) for (let i = 0; i < SLOTS; i++) if (a.start < (i + 1) * 30 && a.end > i * 30) (aloneOnly(a.name) ? na : others)[i]!++;
+  for (const a of list) for (let i = 0; i < SLOTS; i++) if (a.start < (i + 1) * 30 && a.end > i * 30) (aloneOnly(a.name,policy) ? na : others)[i]!++;
   return others.map((o, i) => o + (o > 0 ? na[i]! : 0));
 };
-const othersAt = (list: Shift[]): number[] => { const o = new Array<number>(SLOTS).fill(0); for (const a of list) if (!aloneOnly(a.name)) for (let i = 0; i < SLOTS; i++) if (a.start < (i + 1) * 30 && a.end > i * 30) o[i]!++; return o; };
+const othersAt = (list: Shift[],policy:StaffingPolicy={}): number[] => { const o = new Array<number>(SLOTS).fill(0); for (const a of list) if (!aloneOnly(a.name,policy)) for (let i = 0; i < SLOTS; i++) if (a.start < (i + 1) * 30 && a.end > i * 30) o[i]!++; return o; };
 // An end before the start means it runs past midnight; an end equal to the start is a point in time (e.g. a 7:30a move-in marker), worth half an hour, not a whole day.
 const endOf = (e: EventEntry) => (e.end < e.start ? e.end + 1440 : e.end === e.start ? e.end + 30 : e.end);
 
@@ -149,7 +149,11 @@ const range = (slots: number[]) => {
 export function planWeek(
   dates: string[], entries: EventEntry[], staff: Staff[] = SHOW_STAFF, avail: Record<string, Record<string, Avail>> = {}, onCall: Staff | null = ON_CALL, holds: Hold[] = [], policy:StaffingPolicy=DEFAULT_STAFFING_POLICY,
 ): DayPlan[] {
-  const pool = staff === SHOW_STAFF ? [...staff, MARK_FLEX] : staff; // Mark is only a fallback for gaps
+  if(policy.managerRegularLine&&!staff.some(s=>s.name===MARK_FLEX.name))
+   staff=[...staff,{...MARK_FLEX,flexDays:undefined,
+    baseline:{weekdays:[0,1,2,3,4],pattern:{start:540,end:1080}},
+    notAlone:policy.managerMayWorkAlone!==true}];
+  const pool = staff === SHOW_STAFF ? [...staff, MARK_FLEX] : staff; // Normal manager line is opt-in; legacy fallback otherwise.
   const worked = new Map<string, number>(pool.map((s) => [s.name, 0]));
   const days = new Map<string, Set<string>>(pool.map((s) => [s.name, new Set()]));
   const prevDay = (d: string) => new Date(new Date(`${d}T12:00:00Z`).getTime() - 864e5).toISOString().slice(0, 10);
@@ -191,7 +195,7 @@ export function planWeek(
         worked.set(s.name, worked.get(s.name)! + 1);
       }
     }
-    const cover = () => effCover(assignments);
+    const cover = () => effCover(assignments,policy);
     const deficit = () => { const c = cover(); return need.map((n, i) => Math.max(0, n - c[i]!)); };
     // Pass -1 first covers anything running past midnight (only the late blocks can), then the rest of the day.
     const banned = new Set<string>(); // someone who must not work alone, dropped from today because that is what the shift would do
@@ -199,7 +203,7 @@ export function planWeek(
     for (let pass = -1; pass < 2; pass++) for (;;) {
       const def = deficit().map((x, i) => (pass < 0 && i < 48 ? 0 : x));
       if (!def.some((x) => x > 0)) break;
-      const oth = othersAt(assignments);
+      const oth = othersAt(assignments,policy);
       let best: { name: string; p: { start: number; end: number }; gain: number; waste: number; adj: number; rank: number } | null = null;
       for (const s of pool) {
         const wd = weekday(date);
@@ -235,8 +239,8 @@ export function planWeek(
     cover1();
     // Someone who must not work alone is dropped if any show hour of their shift would have them by themselves, then coverage is retried without them.
     for (let attempt = 0; attempt < 3; attempt++) {
-      const oth = othersAt(assignments);
-      const lone = assignments.filter((a) => aloneOnly(a.name) && !a.fixed && need.some((n, i) => n > 0 && oth[i] === 0 && a.start < (i + 1) * 30 && a.end > i * 30));
+      const oth = othersAt(assignments,policy);
+      const lone = assignments.filter((a) => aloneOnly(a.name,policy) && !a.fixed && need.some((n, i) => n > 0 && oth[i] === 0 && a.start < (i + 1) * 30 && a.end > i * 30));
       if (!lone.length) break;
       for (const a of lone) {
         assignments.splice(assignments.indexOf(a), 1);
