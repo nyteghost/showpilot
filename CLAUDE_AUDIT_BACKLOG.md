@@ -1,51 +1,73 @@
-# Claude scheduling audits — experiment status
+# Claude audit implementation ledger — ShowPilot experimental branch
 
-**Branch:** `claude`, originating from `beta`. **No merge authorized.** This file tracks the two user-provided Claude audit prompts. Tests use fabricated shows, people and times; never commit real exported schedules.
+**Branch:** `claude` only. No merge into `beta` or `main` authorized. **Last reviewed:** 2026-11-10.
+The two Claude prompts encompass both scheduling corrections and wider application maintenance. This ledger distinguishes implemented code from independent real-schedule verification. All committed test fixtures are synthetic.
 
-Status: **implemented for experimental testing** is not equivalent to passing CI or validating against the published schedule baseline.
+## Scheduling comparison against published CGC workbooks
 
-## Audit 1 — grouped Event Schedule and engineering plans
+| Item | Status on `claude` | Remaining verification or decision |
+|---|---|---|
+| D16 — moved CGC Hall/Ballroom section rows | Implemented, synthetic-tested | Compare against all 114 live weekly sheets; do not match CEPAC sections |
+| D17 — Mon–Sun date row spacers | Implemented, synthetic-tested | Check real formula-only and merged date rows |
+| B9 — access/rehearsal/noise occupancy | Partial | Neutral function spans and activity-only VERIFY warnings; compare actual room occupancy |
+| B10 — zero-length activities | Implemented, synthetic-tested | Instant VERIFY markers rather than zero-length S ranges |
+| A1 — booking-close coverage | Experimental ON by default | Uses source booking-end to suggest one-person coverage; verify real building close rather than assume all booking ends are authoritative |
+| A2 — preferred days off / usual weekdays | Implemented as editable soft preferences | Compare published roster patterns; hard PTO/other leave still takes precedence |
+| A3 — evening pair patterns | Partial | Prefer close-reaching patterns on equivalent coverage; historical pair staggering not calibrated |
+| A4 — manager regular line | Configurable, OFF by default | Operator chooses regular weekday 9a–6p and whether manager may cover shows alone; neither auto-enabled |
+| A5 — on-call | Implemented as suggestion | Additional 5p–10:30p pattern; never auto-assigns, even when evening gap remains |
+| A6 — dark-day plans | Partial | Generates all seven days when a week is selected; need published dark-week parity |
+| A7 — human OFF/PTO/third-row notes | Implemented, synthetic-tested | Reads three staff rows and preserves notes; explicit option can relax human OFF handling |
+| B8 — possible venue holds | Partial | Same-Event-ID gaps and activity-only candidates are VERIFY-only; booking-period edges remain to implement |
+| B11 — unknown description becomes S | Not automatically changed | Re-measure against actual sessions; prefer reviewed correction over silently relabeling show days |
+| B12 — tentative MO? close | Implemented, synthetic-tested | Uses source booking end when later |
+| B13 — contracted attendance | Parsed; staffing threshold optional | **No threshold is chosen**: null by default; user must explicitly set an approved value |
+| C14 — wall tasks | Partial | Adds AM/PM and observed groups plus EOC VERIFY; must compare physical shape, previous-event transition, and human Tasks row |
+| C15 — escalator, service desk, building hours | Partial | Manual cells preserved; proposed CGC hours use source booking window, but parity remains unverified |
+| E18 — offline comparison harness | Experimental CLI added | Run against copies of real published schedules locally; validate metrics and collect aggregate results only |
+
+## Monthly engineering workbook / My Shifts audit
 
 | Item | Status | Notes |
 |---|---|---|
-| D16 Dynamic CGC template sections | Implemented for test | Structural ordered blocks at shifted row offsets; protects lower other-venue Ballroom rows |
-| D17 Aligned date-row scan | Implemented for test | Consecutive Mon–Sun row within 5 rows after MON; supports spacer and rejects 1904 serial |
-| B9 Noise/access occupancy span | Partial | Skipped function ranges extend an existing same-event show span; noise-only days still need reviewed VERIFY hold candidates |
-| B10 Zero-length entries | Implemented for test | Render instant VERIFY marker, not a fictitious 0-minute range |
-| A1 Building-close coverage | Evidence only | Booking window parsed and displayed; **do not change default staffing coverage without owner approval** |
-| A6 Dark-day staffing | Pending policy approval | Normal baseline on days without event rows |
-| A7 Hand-typed OFF / third-row leave | Pending policy approval | Explicit respect-existing-OFF setting, parse PTO/Holiday and avoid contradictory staffing |
-| A2 Usual weekdays/days off | Pending policy approval | Data-driven preferences and break-reason text |
-| A3 Evening pair shifts | Pending policy approval | Re-evaluate after approved closing-coverage setting |
-| A4 Manager line | Pending policy approval | Regular 5-day manager option; not-alone permission |
-| A5 On-call | Pending policy approval | Additional 5p–10:30p pattern and gap suggestion |
-| B8 Room holds before/after function gaps | Pending | Reviewed VERIFY suggestions only; never silently insert |
-| B11 Classification fallback | Pending | Re-measure after B9/B10 and suggest corrections |
-| B12 MO? booking close | Implemented for test | If booking end is later, use it for tentative MO? end; otherwise preserve fallback |
-| B13 Attendance | Evidence only | Capture and display; threshold left unset pending owner decision |
-| C14 Airwall tasks | Pending | Show all resulting partitions and AM/PM; reviewed suggestions |
-| C15 Escalator/service desk/building hours | Pending | Respect typed cells, compare changes, use booking hours |
-| E18 Agreement harness | Pending | External local fixtures only, compare published schedules |
+| 1. Row spacers / Excel serial | Implemented | Shared Mon–Sun detector; rejects wrong-year serial dates |
+| 2. FROM/TO / duplicate weeks | Implemented for review | Visible warnings and explicit per-worksheet Monday override; source file never rewritten |
+| 3. Time strings / unreadable shifts | Implemented | Handles annotated clocks; displays unreadable spreadsheet and pasted cells |
+| 4. Implausible shifts / 11:59 PM | Implemented | Individual human confirmation required before calendar sync |
+| 5. Human OFF, Holiday, PTO, SD | Implemented for experimental staffing | Three rows inspected; notes copied to Staffing Why |
+| 6. Roster name detection / aliases | Partial | Editable aliases; legacy hardcoded defaults are not yet fully migrated into a private validated roster |
+| 7. Room aliases / other rooms | Partial | Known CGC row aliases; unknown/other-venue rows still require explicit review |
+| 8. Typed Escalator/Service Desk | Implemented preservation | Never clobber typed cells; comparison of suggestions needs real workbooks |
+| 9. Weekly PDF My Shifts | Experimental text-layer parser | Synthetic date/column tests; scanned/image-only PDFs warn; needs real-PDF validation |
+| 10. Configurable staffing patterns | Partial | Preferred days, manager/on-call options, solo rules; six-day exceptions remain review-only/pending |
+| 11. Fresh approved-master export | Implemented for test | Selected-week shortcut retains master layout; validate unusual formulas and original formatting |
 
-## Audit 2 — monthly engineering workbooks and shifts
+## General modernization audit
 
-| Item | Status | Notes |
-|---|---|---|
-| 1 Date row spacer / serial | Implemented for test | Shared date scan in reader/writer; reject numeric 1904 dates |
-| 2 Date/weekday sanity | Partial | Enforce weekday alignment; FROM/TO cross-sheet comparison and correction UI pending |
-| 3 Shift annotation / unreadables | Implemented for test | Trailing +, (TBD), dash/semicolon, compact times; workbook AND pasted unreadables shown |
-| 4 Implausible shifts | Implemented for test | 2–14 hour review; confirmed-only calendar export/sync; 11:59p close-hour accounting |
-| 5 Human OFF / third row | Pending policy approval | PTO and Holiday status parsing; SD assignment; preserve staff notes |
-| 6 Roster/name matching | Partial | Detect on-call/blank-badge people and offer name dropdown; alias/roster merging pending |
-| 7 Row aliases and other spaces | Pending | Region-scoped room labels, alias table, unsupported-space report |
-| 8 Typed escalator and desk | Pending | Compare suggestions but preserve human-entered values |
-| 9 Weekly PDF My Shifts | Pending | Positional text-layer reader; image-only warning |
-| 10 Configurable staffing patterns | Pending policy approval | Pattern history, on-call 5p–10:30p, reviewed 6th day |
-| 11 Fresh-from-template export | Pending | Use approved blank template without disturbing formulas or styles |
+| Topic | Status on `claude` |
+|---|---|
+| Updater version regex | Previous Claude diagnosis was incorrect; live regex already matches digits correctly; regression coverage still desirable |
+| CI test script | Uses `bun run test` and Vitest |
+| Reproducible dependency installs | Bun 1.3.1 pinned; `bun.lock` committed; CI runs `bun install --frozen-lockfile` |
+| Corrupt AI vault | Non-throwing settings status; RESET requires explicit confirmation, preserves encrypted corrupt file as archive; synthetic tests |
+| Google OAuth timeout and unbounded historical list | Non-async Promise executor, cleared timer; bounded 60-day-padded reconciliation window and tests |
+| Dead Pixel Pals UI | Broken standalone links/tips and unused calendar handoff props removed; public WorkTools wrapper retained pending full usage audit |
+| Personal names/roster extraction | **Partial**: editable, zod-validated local settings with aliases and work backup; real legacy defaults still in source |
+| Venue rule/source, model catalog | Pending verification; CGC/CEPAC boundary never weakened |
+| Strict TypeScript / checked storage / typed IPC | Partial, major work pending |
+| Large component/library splitting | Pending; do not rewrite deck/staffing algorithms without regression harness |
+| Local-storage key namespace and migrations | Pending; preserve all existing personal data and Google shift IDs |
+| Redundant Excel library | XLSX primary reader now ExcelJS; legacy `.xls` still uses xlsx for compatibility. Cannot remove xlsx until binary .xls replacement is tested |
+| Combinatorial staffing search | Bounded to 7 weekdays, order-preserving iterative enumeration, synthetic test |
+| Electron CSP, navigation, permissions | Pending full secure/offline-AI compatibility checks |
+| ESLint / Prettier / component smoke tests / error boundaries | Pending |
 
-## Release and data safety
+## Safety and test procedure
 
-- GitHub Actions builds the `claude` branch into separate Windows and Linux artifacts after check/test/build pass. The branch uses a `-claude` version suffix.
-- **User data isolation:** packaged `-claude` app uses `ShowPilot-Claude-Test` Electron userData, not normal `ShowPilot`. Beta/main in-app update installation is disabled in experimental packages.
-- Tests are synthetic only. Exact operational staffing, venue exclusion, stage/deck geometry and permission rules remain unchanged.
-- Use [CLAUDE_TESTING.md](CLAUDE_TESTING.md) for hands-on instructions and [issue #2](https://github.com/nyteghost/showpilot/issues/2) for continuation notes.
+- `claude` packages carry `-claude` versions and isolated Electron data under `ShowPilot-Claude-Test`. Never install over regular ShowPilot or point them at production appdata.
+- Every change requires successful GitHub Actions **check**, Windows package and Linux package before being described as release-ready.
+- Real Event Schedule exports, EOCs, published employee schedules, names, secrets, and customer files are never committed.
+- Use the local `scripts/claude-agreement.ts` with **private paths** to compare against published workbooks; the script is under active validation and its metrics are not yet a proven historical benchmark.
+- The user has authorized building experimental alternatives, **not** merging proposed operational-policy changes into the stable branch.
+
+See [CLAUDE_TESTING.md](CLAUDE_TESTING.md) and [Issue #2](https://github.com/nyteghost/showpilot/issues/2).
