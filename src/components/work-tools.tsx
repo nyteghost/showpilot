@@ -7,7 +7,7 @@ import {shiftRuleEvidence,calendarRuleEvidence,eventScheduleRuleEvidence,exportR
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { KeepAliveTabContent } from "@/components/showpilot-keep-alive-tab";
-import { buildIcs, DEFAULT_SCHEDULE_NAME, editShift, entryLabel, formatMinutes, googleCalendarLink, isIsoDate, minutesToTime, newShiftId, nextMondayIso, parsePastedShiftsWithReview, shiftLabel, shiftNeedsReview, airwallTasks, isCancelledRow, isPendingRow, sharedSpaces, expandSpace, summarizeEvents, attachShowNames, taskSuggestions, timeToMinutes, withShiftIds, type EventEntry, type EventRow, type Shift, type TaskNote } from "@/lib/work-tools";
+import { buildIcs, DEFAULT_SCHEDULE_NAME, editShift, entryLabel, formatMinutes, googleCalendarLink, isIsoDate, minutesToTime, newShiftId, nextMondayIso, parsePastedShiftsWithReview, shiftLabel, shiftNeedsReview, airwallTasks, detailedAirwallTask, isCancelledRow, isPendingRow, sharedSpaces, expandSpace, summarizeEvents, attachShowNames, taskSuggestions, timeToMinutes, withShiftIds, type EventEntry, type EventRow, type Shift, type TaskNote } from "@/lib/work-tools";
 import { StandaloneVendors } from "@/components/showpilot-vendors";
 import { FloorMapPanel } from "@/components/floor-map-panel";
 import { scopeShowPilotRows } from "@/lib/showpilot-venue";
@@ -228,7 +228,7 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
       "rows used: " + rows.length, "entries suggested: " + proposals.length,
       "dates: " + (dayList[0] ?? "-") + " to " + (dayList.at(-1) ?? "-"),
       "statuses: " + ([...statuses].map(([k,v]) => k + "=" + v).join(", ") || "-")].join("\n"));
-    const notes = [...airwallTasks(rows), ...taskSuggestions(rows)].sort((a, b) => a.date.localeCompare(b.date));
+    const notes = [...airwallTasks(rows).map(t=>detailedAirwallTask(t,rows)), ...taskSuggestions(rows)].sort((a, b) => a.date.localeCompare(b.date));
     setSuggestedEntries(proposals);
     setSuggestedTasks(notes);
     setMerged(!!src.existing);
