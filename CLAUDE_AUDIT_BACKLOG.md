@@ -35,11 +35,11 @@ The two Claude prompts encompass both scheduling corrections and wider applicati
 | 3. Time strings / unreadable shifts | Implemented | Handles annotated clocks; displays unreadable spreadsheet and pasted cells |
 | 4. Implausible shifts / 11:59 PM | Implemented | Individual human confirmation required before calendar sync |
 | 5. Human OFF, Holiday, PTO, SD | Implemented for experimental staffing | Three rows inspected; notes copied to Staffing Why |
-| 6. Roster name detection / aliases | Partial | Editable aliases; legacy hardcoded defaults are not yet fully migrated into a private validated roster |
+| 6. Roster name detection / aliases | Partial | Editable aliases and now local Schedule People add/remove for generated rosters. The legacy default roster is still in source; no bulk historical migration yet |
 | 7. Room aliases / other rooms | Partial | Known CGC row aliases; unknown/other-venue rows still require explicit review |
 | 8. Typed Escalator/Service Desk | Implemented preservation | Never clobber typed cells; comparison of suggestions needs real workbooks |
 | 9. Weekly PDF My Shifts | Experimental text-layer parser | Synthetic date/column tests; scanned/image-only PDFs warn; needs real-PDF validation |
-| 10. Configurable staffing patterns | Partial | Preferred days, manager/on-call options, solo rules; six-day exceptions remain review-only/pending |
+| 10. Configurable staffing patterns | Partial | Preferred days, manager/on-call options, solo rules and explicit per-date added shift / OFF overrides; six-day exceptions remain review-only/pending |
 | 11. Fresh approved-master export | Implemented for test | Selected-week shortcut retains master layout; validate unusual formulas and original formatting |
 
 ## General modernization audit
@@ -52,7 +52,7 @@ The two Claude prompts encompass both scheduling corrections and wider applicati
 | Corrupt AI vault | Non-throwing settings status; RESET requires explicit confirmation, preserves encrypted corrupt file as archive; synthetic tests |
 | Google OAuth timeout and unbounded historical list | Non-async Promise executor, cleared timer; bounded 60-day-padded reconciliation window and tests |
 | Dead Pixel Pals UI | Broken standalone links/tips and unused calendar handoff props removed; public WorkTools wrapper retained pending full usage audit |
-| Personal names/roster extraction | **Partial**: editable, zod-validated local settings with aliases and work backup; real legacy defaults still in source |
+| Personal names/roster extraction | **Partial**: editable, zod-validated local settings, roster additions/removals, alias and day overrides, backed up locally; real legacy default staff remain in source |
 | Venue rule/source, model catalog | Pending verification; CGC/CEPAC boundary never weakened |
 | Strict TypeScript / checked storage / typed IPC | Partial, major work pending |
 | Large component/library splitting | Pending; do not rewrite deck/staffing algorithms without regression harness |
@@ -61,6 +61,15 @@ The two Claude prompts encompass both scheduling corrections and wider applicati
 | Combinatorial staffing search | Bounded to 7 weekdays, order-preserving iterative enumeration, synthetic test |
 | Electron CSP, navigation, permissions | Pending full secure/offline-AI compatibility checks |
 | ESLint / Prettier / component smoke tests / error boundaries | Pending |
+
+## Schedule People editor
+
+- Implemented on `claude`: **Event Schedule → Claude scheduling preferences → Schedule People**.
+- Add a person with normal shift/role/badge/usual days, requiring another engineer on a show by default; remove with explicit typed `REMOVE` confirmation; restore without erasing stored person details.
+- Manually select a new shift or OFF for a specific date, and Undo it. An uploaded workbook shift or PTO remains authoritative; planner records the conflict in Staffing Why.
+- Fresh-layout exports show added active people and omit removed names. Approved original master workbooks are not silently restructured: if they lack an assigned new person's row, export fails with a clear instruction.
+- Preferences are zod-validated, saved locally and backed up; exported/stored historical shifts and Google Calendar items are not deleted.
+- **Still pending:** replacing hardcoded production personnel with a fully data-driven private roster and approval flow for exceeding staffing limits.
 
 ## Safety and test procedure
 
