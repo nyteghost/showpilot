@@ -4,6 +4,7 @@ import {scopeShowPilotRows} from "./showpilot-venue";
 import {applyReview,parseReviewProject,type ReviewProject} from "./showpilot-review";
 import {postConShowsFromReportRows} from "./showpilot-postcon";
 import type {PostConShow} from "./showpilot-postcon";
+import {resolveScheduleEventNames} from "./showpilot-event-name-resolution";
 
 /** Dated activity is not the same as a catalog start/end date. Catalog ranges
  * can be incomplete or historical, while the engineering schedule may include
@@ -58,7 +59,7 @@ function aggregate(items:readonly DailyActivity[]):DailyActivity[]{
  }
  return [...merged.values()].sort((a,b)=>a.date.localeCompare(b.date)||a.showName.localeCompare(b.showName));
 }
-export function activitiesFromReviewProject(project:ReviewProject):{activities:DailyActivity[];airwalls:TaskNote[];acceptedRows:ReviewProject["originalRows"]}{
+export function activitiesFromReviewProject(project:ReviewProject,catalog:readonly PostConShow[]=[]):{activities:DailyActivity[];airwalls:TaskNote[];acceptedRows:ReviewProject["originalRows"]}{
  const parsed=parseReviewProject(JSON.stringify(project));
  const accepted=scopeShowPilotRows(parsed.originalRows.filter(r=>!isCancelledRow(r)),parsed.approvedSpaces).accepted
   .filter(r=>parsed.includePending||!isPendingRow(r));
@@ -66,10 +67,11 @@ export function activitiesFromReviewProject(project:ReviewProject):{activities:D
  const review=applyReview(proposed,[],parsed.draft);
  const originalShows=postConShowsFromReportRows(accepted);
  const names=new Map(originalShows.filter(x=>x.eventId).map(x=>[x.eventId,x.showName]));
- const dates=review.entries.filter(e=>e.code!=="MO?"&&safeDate(e.date)&&!nonCgc.test(e.space));
+ const named=resolveScheduleEventNames(review.entries,accepted,[...originalShows,...catalog]);
+ const dates=named.entries.filter(e=>e.code!=="MO?"&&safeDate(e.date)&&!nonCgc.test(e.space));
  const items:DailyActivity[]=[];
  for(const entry of dates){
-  const label=names.get(entry.eventId??"")||entry.title;
+  const label=entry.showName||names.get(entry.eventId??"")||entry.title;
   if(!label||/^(?:move\s?in|move\s?out|setup|teardown)$/i.test(label))continue;
   const rooms=entry.space.includes("BallRoom")||entry.space.includes("Hall")?
    [entry.space]:[];
