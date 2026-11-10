@@ -375,34 +375,46 @@ export function buildIcs(shifts: Shift[], title = "Mark Work"): string {
 }
 
 /** Parses a pasted schedule block. If the paste includes the date row (7 dates under MON–SUN), those dates are used; otherwise dates fall back to the given week-start Monday. */
-export function parsePastedShifts(text: string, weekStartIso: string, name = DEFAULT_SCHEDULE_NAME): Shift[] {
-  const target = name.trim().toLowerCase();
-  const lines = text.split(/\r?\n/);
-  const line = lines.find((l) => l.trim().toLowerCase().startsWith(target));
-  if (!line) return [];
-  let dates: string[] = [];
-  for (const l of lines) {
-    const found = l.match(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g) ?? [];
-    if (found.length >= 7) { dates = found.slice(0, 7).map(reportDateToIso); break; }
+export type PastedUnreadableShift={date:string;raw:string};
+/** Keep the legacy shifts-only API for compatibility, but surface every
+ * unexplained populated shift cell through the reviewed companion API. */
+export function parsePastedShiftsWithReview(text:string,weekStartIso:string,name=DEFAULT_SCHEDULE_NAME):
+ {shifts:Shift[];unreadable:PastedUnreadableShift[]}{
+ const target=name.trim().toLowerCase();
+ const lines=text.split(/\r?\n/);
+ const line=lines.find(l=>l.trim().toLowerCase().startsWith(target));
+ if(!line)return {shifts:[],unreadable:[]};
+ let dates:string[]=[];
+ for(const l of lines){
+  const found=l.match(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g)??[];
+  if(found.length>=7){dates=found.slice(0,7).map(reportDateToIso);break;}
+ }
+ if(dates.length<7){
+  const monday=new Date(weekStartIso+"T12:00:00Z");
+  if(Number.isNaN(monday.getTime()))return {shifts:[],unreadable:[]};
+  dates=Array.from({length:7},(_,i)=>{
+   const d=new Date(monday);d.setUTCDate(d.getUTCDate()+i);
+   return d.toISOString().slice(0,10);
+  });
+ }
+ const cells=line.split(/\t| {2,}/).map(c=>c.trim()).slice(1);
+ const shifts:Shift[]=[],unreadable:PastedUnreadableShift[]=[];
+ for(let i=0;i<Math.min(cells.length,7);i++){
+  const raw=cells[i]??"",date=dates[i]!;
+  if(!raw)continue;
+  const parsed=parseShift(raw);
+  if(!parsed){
+   if(!/^(?:off|pto|holiday|vacation|sick|fmla|bereavement|leave)(?:\s|$|[:(])/i.test(raw))
+    unreadable.push({date,raw:raw.slice(0,180)});
+   continue;
   }
-  if (dates.length < 7) {
-    const monday = new Date(`${weekStartIso}T12:00:00Z`);
-    if (Number.isNaN(monday.getTime())) return [];
-    dates = Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(monday);
-      d.setUTCDate(d.getUTCDate() + i);
-      return d.toISOString().slice(0, 10);
-    });
-  }
-  const cells = line.split(/\t| {2,}/).map((c) => c.trim()).slice(1);
-  const shifts: Shift[] = [];
-  for (let i = 0; i < Math.min(cells.length, 7); i++) {
-    const raw = cells[i] ?? "";
-    const time = parseShift(raw);
-    if (!time) continue;
-    shifts.push({ date: dates[i]!, ...time, raw });
-  }
-  return shifts;
+  const flags=shiftAnnotations(raw);
+  shifts.push({date,...parsed,raw,...(flags.length?{note:flags.join("; ")}:{})});
+ }
+ return {shifts,unreadable};
+}
+export function parsePastedShifts(text:string,weekStartIso:string,name=DEFAULT_SCHEDULE_NAME):Shift[]{
+ return parsePastedShiftsWithReview(text,weekStartIso,name).shifts;
 }
 
 // ---------- vendors ----------
