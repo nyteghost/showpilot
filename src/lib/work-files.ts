@@ -261,10 +261,18 @@ export async function readScheduleWorkbook(file: File, name = DEFAULT_SCHEDULE_N
     const dates=found.dates;
     for (let r = found.row + 1; r < grid.length; r++) {
       const cells = grid[r] ?? [];
-      const label = String(cells[0] ?? "").trim();
-      const next = String(grid[r + 1]?.[0] ?? "").trim();
-      if (label && /^\d{3}$/.test(next)) people.add(label);
-      if (label.toLowerCase() !== target) continue;
+      const label=String(cells[0]??"").trim();
+      const next=String(grid[r+1]?.[0]??"").trim();
+      const title=String(grid[r+2]?.[0]??"").trim();
+      if(/^(?:HALLS|ESCALATOR(?:S)?|SERVICE DESK)$/i.test(label))break;
+      // Employee blocks are Name / Badge-or-On-Call / Role. Do not require
+      // a three-digit badge: new staff and on-call may have none.
+      const person=!!label&&(
+       /^\d{3}$/.test(next)||/^on[ -]?call$/i.test(next)||
+       (!next&&/engineer|supervisor|manager|technician|assistant|director|chief|operations|show service/i.test(title))
+      );
+      if(person)people.add(label);
+      if(label.toLowerCase()!==target)continue;
       for (let c = 1; c <= 7; c++) {
         const raw=String(cells[c]??"").trim();
         const date=dates[c-1];
