@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { Briefcase, CalendarClock, CalendarDays, CalendarPlus, CalendarSync, FolderOpen, Download, ExternalLink, FileUp, GitBranch, Layers, Eye, Map as MapIcon, Store, Sun } from "lucide-react";
+import { Briefcase, CalendarClock, CalendarDays, CalendarPlus, CalendarSync, FolderOpen, Download, FileUp, GitBranch, Layers, Eye, Map as MapIcon, Store, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {ShowPilotRuleReview} from "@/components/showpilot-rule-review";
@@ -86,7 +86,7 @@ export function ShowServicesTools({ page = false, selectedTab, hideTabBar = fals
           </TabsList>}
           <div className="flex items-start justify-between gap-3 pt-2">
             <p className="text-sm text-muted-foreground">{cur.hint}</p>
-            {!page && <a href={`/work?tab=${tab}`} target="_blank" rel="noreferrer" className="inline-flex shrink-0 items-center gap-1 text-xs text-primary underline"><ExternalLink className="size-3.5" /> Open as its own page</a>}
+
           </div>
           {visited.includes("today") && <KeepAliveTabContent value="today"><ShowPilotTodayPanel active={activeTab==="today"}/></KeepAliveTabContent>}
           {visited.includes("events") && <KeepAliveTabContent value="events"><EventsTab venueOnly={venueOnly} /></KeepAliveTabContent>}
@@ -548,8 +548,7 @@ function useDeliver() {
 
 /** Standalone .ics handoff: never call Pixel Pals' server-only Google routes. */
 function AddAllToCalendar({ shifts, onStatus, onDownload }: {
-  shifts: Shift[]; title: string; remove: string[]; onPushed: () => void;
-  onStatus: (s: string) => void; onDownload: () => void;
+  shifts: Shift[]; onStatus: (s: string) => void; onDownload: () => void;
 }) {
   return <Button size="sm" variant="secondary" disabled={!shifts.length} onClick={() => {
     onDownload();
@@ -709,7 +708,7 @@ function ShiftsTab() {
           <div className="flex flex-wrap gap-2">
             <Button size="sm" onClick={ics} disabled={!usableShifts.length}><Download className="size-4" /> Download all (.ics)</Button>
             <UpdateInGoogle shifts={usableShifts} title={title.trim() || "Mark Work"} onStatus={setStatus} />
-            <AddAllToCalendar onDownload={() => void ics()} shifts={usableShifts} title={title.trim() || "Mark Work"} remove={removed} onPushed={() => setRemoved([])} onStatus={setStatus} />
+            <AddAllToCalendar onDownload={() => void ics()} shifts={usableShifts} onStatus={setStatus} />
             <Button size="sm" variant="outline" onClick={add}>Add a shift</Button>
           </div>
           {removed.length > 0 && <p className="text-xs text-muted-foreground">{removed.length} removed shift{removed.length === 1 ? "" : "s"} will be omitted from the next .ics export; already imported Google Calendar events are not deleted automatically by either Google sync or .ics export.</p>}
@@ -761,7 +760,7 @@ function DeckTab() {
       <Suspense fallback={<p className="text-sm text-muted-foreground">Loading the stage planner…</p>}>
         <DeckPlanner />
       </Suspense>
-      <p className="mt-3 text-xs text-muted-foreground">Tip: type <code>@deck 24x24x32</code> in the chat box for a quick answer. Want to share the planner? <a className="text-primary underline" href="/stage-planner.html" download="stage-planner.html">Download the one-file version</a>. It works offline in any browser.</p>
+      <p className="mt-3 text-xs text-muted-foreground">Use the planner above to design, review, and save your deck layouts locally.</p>
     </div>
   );
 }
