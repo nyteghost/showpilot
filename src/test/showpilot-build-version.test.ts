@@ -14,6 +14,7 @@ describe("automatic ShowPilot Main/Beta version stamping",()=>{
   expect(simulate("beta","14")).toEqual({exit:0,output:"0.1.14-beta",error:""});
   expect(simulate("beta","15").output).toBe("0.1.15-beta");
   expect(simulate("main","16").output).toBe("0.1.16");
+  expect(simulate("claude","16").output).toBe("0.1.16-claude");
  });
  it("produces matching versions for Windows and browser jobs in the same run",()=>{
   expect(simulate("beta","123").output).toBe(simulate("beta","123").output);
