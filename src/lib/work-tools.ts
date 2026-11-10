@@ -55,9 +55,9 @@ export function parseReportTime(t: string): number {
 }
 
 // ---------- Ungerboeck event functions ----------
-export type EventRow = { level: number; usage: string; start: string; end: string; description: string; space: string; date: string; event?: string; eventId?: string; status?: string };
+export type EventRow = { level: number; usage: string; start: string; end: string; description: string; space: string; date: string; event?: string; eventId?: string; status?: string; bookingStart?:string; bookingEnd?:string; attendance?:number };
 export type EventCode = "S" | "Exmi" | "MI" | "MO" | "MO?" | "Food" | "Dinner" | "MTG" | "Arr" | "Breakfast" | "Lunch";
-export type EventEntry = { date: string; space: string; code: EventCode; start: number; end: number; title: string; showName?: string; eventId?: string };
+export type EventEntry = { date: string; space: string; code: EventCode; start: number; end: number; title: string; showName?: string; eventId?: string; bookingStart?:number; bookingEnd?:number; attendance?:number };
 
 /** Applies Mark's rules: skip Level 1 date headers; S = show events; Exmi = exhibitor move in; MI = other move in; MO = move out. */
 const FOOD_RE = /reception|dinner|lunch|breakfast|buffet|hosted bar|cash bar|wine service|food|concession|coffee|snack|banquet|luncheon|plated|boxed|brunch/;
@@ -166,10 +166,20 @@ export function summarizeEvents(rows: EventRow[], preserveCombinedSpaces = false
        (row.eventId?parents.get(row.eventId):"")||"";
       const key = JSON.stringify([row.date, space, row.eventId ?? "", showName||row.description, code]);
       const prev = map.get(key);
-      if (prev) { prev.start = Math.min(prev.start, start); prev.end = Math.max(prev.end, end); }
-      else map.set(key, { date: row.date, space, code, start, end,
-       title: showName||row.description, ...(showName?{showName}:{}),
-       ...(row.eventId ? { eventId: row.eventId } : {}) });
+      const bookedStart=row.bookingStart?parseReportTime(row.bookingStart):undefined;
+      const bookedEnd=row.bookingEnd?parseReportTime(row.bookingEnd):undefined;
+      const attendance=row.attendance&&Number.isFinite(row.attendance)&&row.attendance>0?row.attendance:undefined;
+      if(prev){
+       prev.start=Math.min(prev.start,start);prev.end=Math.max(prev.end,end);
+       if(bookedStart!==undefined)prev.bookingStart=prev.bookingStart===undefined?bookedStart:Math.min(prev.bookingStart,bookedStart);
+       if(bookedEnd!==undefined)prev.bookingEnd=prev.bookingEnd===undefined?bookedEnd:Math.max(prev.bookingEnd,bookedEnd);
+       if(attendance!==undefined)prev.attendance=Math.max(prev.attendance??0,attendance);
+      }else map.set(key,{date:row.date,space,code,start,end,
+       title:showName||row.description,...(showName?{showName}:{}),
+       ...(bookedStart!==undefined?{bookingStart:bookedStart}:{}),
+       ...(bookedEnd!==undefined?{bookingEnd:bookedEnd}:{}),
+       ...(attendance!==undefined?{attendance}:{}),
+       ...(row.eventId?{eventId:row.eventId}:{})});
     }
   }
   // A meal or meeting inside the same show's day is part of the show; only one after the show ends gets its own line.
@@ -223,7 +233,8 @@ export function summarizeEvents(rows: EventRow[], preserveCombinedSpaces = false
   for (const list of groups.values()) {
     if (list.some((e) => e.code === "MO") || !list.some((e) => e.code === "MI" || e.code === "Exmi")) continue;
     const last = list.reduce((a, b) => (b.date > a.date || (b.date === a.date && b.end > a.end) ? b : a));
-    kept.push({ ...last, code: "MO?", start: last.end, end: Math.min(last.end + MO_GUESS_MIN, 1440) }); // guess: move out runs 3 h after the show
+    kept.push({ ...last, code: "MO?", start: last.end,
+      end:last.bookingEnd!==undefined&&last.bookingEnd>last.end?last.bookingEnd:Math.min(last.end+MO_GUESS_MIN,1440) }); // booking end is preferred; still VERIFY
   }
   const order: EventCode[] = ["Arr", "MI", "Exmi", "Breakfast", "S", "Lunch", "Food", "Dinner", "MTG", "MO", "MO?"];
   return kept.sort((a, b) => a.date.localeCompare(b.date) || a.space.localeCompare(b.space) || order.indexOf(a.code) - order.indexOf(b.code));
