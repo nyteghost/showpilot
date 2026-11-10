@@ -22,6 +22,16 @@ This test branch builds on the original Claude scheduling fixes and adds:
 
 **Still pending:** complete real-published-schedule agreement, fully private roster migration, exact airwall EOC parity, historical evening-pattern calibration, PDF scans that require OCR, sixth-day exception review flow, and broader application refactors/security hardening. Details are in [CLAUDE_AUDIT_BACKLOG.md](CLAUDE_AUDIT_BACKLOG.md).
 
+## Add or remove scheduling people (Claude build)
+
+In **Event Schedule**, expand **Claude scheduling preferences (experimental)**, then **Schedule People — add, remove and edit days**.
+
+- **Add a person:** enter their full name, role, optional badge, normal start/end shift and usual weekdays. New people appear in fresh generated week exports. The default for a new person is **requires another engineer on a show**, which can be changed explicitly.
+- **Remove from future schedules:** select **Remove**, type **REMOVE**, then confirm. They disappear from new planner suggestions and newly generated fresh-layout staffing rows. **Restore** returns the existing person record without re-entering details. No previously published shifts or source data are erased.
+- **Change one day:** choose a date/person and either add a manually selected shift or mark that day OFF. **Save day instruction** records the reviewable override; **Undo** removes just that instruction. The planner displays its reason in **Staffing Why** and does not replace PTO or shifts already typed in the uploaded master workbook.
+- **Important master-template limit:** An approved original workbook is the formatting/shift authority. If your added person is missing an authorized three-row block, export stops and tells you to add the person to the source master or choose **Download week (fresh layout)**. Existing master employee rows are not automatically deleted or rearranged.
+- Changes are saved **locally**, included in ShowPilot work-data backups, and isolated to the experimental Claude build. No Google Calendar events are created, altered or deleted by the roster editor.
+
 ## Testing the experimental settings
 
 In **Event Schedule**, expand **Claude scheduling preferences (experimental)**. Start by comparing with default choices. You can turn off booking-close coverage to compare, or opt into a manager regular weekday line; manager-alone coverage remains disabled until explicitly enabled. Keep attendance threshold blank unless local staffing policy approves a number.
