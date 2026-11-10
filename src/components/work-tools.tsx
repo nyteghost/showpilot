@@ -593,6 +593,7 @@ function ShiftsTab() {
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [status, setStatus] = useState("");
   const [unreadable,setUnreadable]=useState<{sheet:string;date:string;raw:string}[]>([]);
+  const [detectedNames,setDetectedNames]=useState<string[]>([]);
   const [shiftWarnings,setShiftWarnings]=useState<string[]>([]);
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("Mark Work");
@@ -619,6 +620,7 @@ function ShiftsTab() {
       const { readScheduleWorkbook } = await import("@/lib/work-files");
       const { shifts, people,unreadable,warnings } = await readScheduleWorkbook(f, who);
       setShifts(withShiftIds(shifts));setUnreadable(unreadable);setShiftWarnings(warnings);
+      setDetectedNames(people);
       setRemoved([]);setEditing(null);
       setStatus(shifts.length ? `${shifts.length} shifts for ${who}.` : `No shifts found for “${who}”. Names on sheet: ${people.slice(0,12).join(", ")}`);
     } catch (e) { setStatus(`Could not read that workbook: ${(e as Error).message}`); }
@@ -638,7 +640,8 @@ function ShiftsTab() {
     <div className="space-y-3 pt-2">
       <label className="grid gap-1 text-xs text-muted-foreground">Your name exactly as it appears on the schedule (remembered)</label>
       <div className="flex gap-2">
-        <Input value={name} onChange={(e) => setName(e.target.value)} aria-label="Name on schedule" />
+        <Input list="showpilot-detected-shift-names" value={name} onChange={(e) => setName(e.target.value)} aria-label="Name on schedule" />
+        <datalist id="showpilot-detected-shift-names">{detectedNames.map(person=><option key={person} value={person}/>)}</datalist>
         {file && <Button variant="outline" onClick={() => load(file)}>Re-read</Button>}
       </div>
       <FilePick accept=".xlsx,.xls" label="Drop a monthly schedule workbook (.xlsx)" onFile={(f) => load(f)} />
