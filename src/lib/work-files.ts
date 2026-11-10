@@ -639,11 +639,22 @@ function mergeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans
   for(let c=2;c<=8;c++)cols.set(weekRow.dates[c-2]!,c);
   if (!w.dates.some((d) => cols.has(d))) return false;
   const byLabel = new Map<string, number>();
-  ws.eachRow((row, n) => { const l = String(row.getCell(1).value ?? "").trim().toLowerCase(); if (l && !byLabel.has(l)) byLabel.set(l, n); });
+  const canonicalLabel=(raw:string)=>{
+   const value=raw.replace(/\s+/g," ").trim().toLowerCase();
+   if(/^(?:cgc|ccc)(?: lights and hvac)?$/.test(value))return "cgc";
+   if(/^(?:(?:cgc|ccc) )?bars$/.test(value))return "cgc bars";
+   if(/^escalators?$/.test(value))return "escalator";
+   if(/^(?:service desk|sd)$/.test(value))return "service desk";
+   return value;
+  };
+  ws.eachRow((row, n) => { const l = canonicalLabel(String(row.getCell(1).value ?? "")); if (l && !byLabel.has(l)) byLabel.set(l, n); });
   // Pin Hall and Ballroom rows to the verified CGC section. A lower
   // other-venue section may repeat the word "Ballroom".
   const cgcRows=cgcTemplateRows(ws);
   if(cgcRows)for(const [label,row] of cgcRows)byLabel.set(label,row);
+  for(const [label,cells] of Object.entries(w.rows))
+   if(cells.some(cell=>Boolean(cell.text))&&!byLabel.has(label.toLowerCase()))
+    throw new Error("Cannot place CGC event: missing "+label+" in verified workbook section. Review source row labels.");
   if(preserveTemplateLayout){
     // Read-only merge geometry: two distinct shows may not share one master cell.
     // The caller must update the source workbook or resolve the room conflict.
