@@ -15,6 +15,7 @@ export function ShowPilotAiSettings(){
  const [models,setModels]=useState<string[]>([]);
  const [model,setModel]=useState(()=>{try{return localStorage.getItem(NAME)||""}catch{return ""}});
  const [working,setWorking]=useState(false);
+ const [vaultResetText,setVaultResetText]=useState("");
  const [cache,setCache]=useState<LocalModelCacheStatus>("checking");
  const [runtime,setRuntime]=useState<LocalAiRuntimeState>(()=>getLocalAiRuntimeState());
  useEffect(()=>subscribeLocalAiRuntimeState(setRuntime),[]);
@@ -82,6 +83,18 @@ export function ShowPilotAiSettings(){
      <h2 className="font-semibold flex items-center gap-2"><KeyRound size={19}/> Online AI Providers</h2>
      <p className="text-sm text-muted-foreground">Paste an API key; ShowPilot tries to recognize its provider from the prefix. This is a hint, not proof. Ambiguous keys require manual selection. Keys are never saved to browser storage or exported with work backups.</p>
      {!window.showpilotAI?<p className="text-xs text-amber-700">Secure API key storage is available in the Windows and Linux desktop apps. Browser mode can use Local WebGPU AI without keys.</p>:
+      secrets?.needsReset?<div className="space-y-2 rounded-md border border-amber-500 p-3">
+       <p role="alert" className="text-sm font-semibold">Saved AI credentials could not be read.</p>
+       <p className="text-xs">{secrets.message??"The encrypted credential file is damaged."} No API keys are shown or deleted automatically.</p>
+       <label className="block text-xs font-semibold">Type RESET to archive the damaged file and reconnect providers.</label>
+       <Input aria-label="Confirm damaged AI vault recovery" value={vaultResetText} onChange={e=>setVaultResetText(e.target.value)} className="max-w-48"/>
+       <Button variant="destructive" size="sm" disabled={working||vaultResetText!=="RESET"} onClick={()=>void (async()=>{
+        setWorking(true);setStatus("");
+        try{setSecrets(await window.showpilotAI!.resetCorruptVault("RESET"));setVaultResetText("");setStatus("Damaged encrypted vault archived. Reconnect any cloud AI providers.");}
+        catch(e){setStatus("Could not archive damaged credentials: "+String(e))}
+        finally{setWorking(false)}
+       })()}>Archive and reset damaged vault</Button>
+      </div>:
       !secrets?.available?<p className="text-xs text-amber-700">Secure OS credential protection is unavailable. On Linux, unlock KDE KWallet or configure libsecret; ShowPilot will not use basic-text storage or save plaintext keys.</p>:<div className="space-y-3">
        <Input type="password" autoComplete="off" spellCheck={false} aria-label="AI API key" placeholder="Paste your AI provider key" value={draft} onChange={e=>{setDraft(e.target.value);setProvider("");}}/>
        <p className="text-xs">{detection.description}</p>
