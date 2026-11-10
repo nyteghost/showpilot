@@ -36,6 +36,14 @@ describe("event name attribution in reviewed engineering schedules",()=>{
   expect(result.entries[0]?.showName).toBe("Fictional Lantern Conference 2026");
   expect(result.unresolved).toBe(0);
  });
+ it("does not mistake an operational Program Start heading for the booked Event name",()=>{
+  const source=[row("99002","Program Start","2026-11-16")];
+  const named=resolveScheduleEventNames([entry("99002","Program Start","2026-11-16")],
+   source,[show("99002","Fictional Lantern Conference 2026")]);
+  expect(named.entries[0]?.showName).toBe("Fictional Lantern Conference 2026");
+  expect(resolveEventRowNames(source,[show("99002","Fictional Lantern Conference 2026")])[0]?.event)
+   .toBe("Fictional Lantern Conference 2026");
+ });
  it("never guesses a different show or converts a function into a verified name",()=>{
   const old=entry("99002","Vendor Load-In","2026-11-20");
   const result=resolveScheduleEventNames([old],[],[show("99111","Unrelated Event")]);
