@@ -483,9 +483,9 @@ export type WeekLayout = {
 };
 
 /** Groups entries into Monday–Sunday weeks shaped like the CGC engineering schedule. */
-export function weekLayouts(entries: EventEntry[]): WeekLayout[] {
+export function weekLayouts(entries: EventEntry[], includeWeekStarts:readonly string[]=[]): WeekLayout[] {
   const esc = escalatorHours(entries);
-  const mondays = [...new Set(entries.map((e) => mondayOf(e.date)))].sort();
+  const mondays = [...new Set([...entries.map((e) => mondayOf(e.date)),...includeWeekStarts])].sort();
   return mondays.map((monday) => {
     const dates = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
     const week = entries.filter((e) => dates.includes(e.date));
