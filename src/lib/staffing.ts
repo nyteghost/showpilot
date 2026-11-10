@@ -308,13 +308,33 @@ export function needText(need: number[]): string {
 }
 
 /** Reads a workbook cell like "7a-3:30p" as a fixed shift, "OFF"/"PTO" as unavailable, anything else as free. */
-export function readAvail(text: string): Avail | null {
+export function readAvail(text: string, respectHumanOff=false): Avail | null {
   const t = text.trim();
   if (!t) return null;
-  if (/^off$/i.test(t)) return null; // OFF is what the planner writes for a day not worked; only PTO-type entries block a day
+  if (/^off$/i.test(t)) return respectHumanOff ? {off:true} : null; // distinguish human OFF from planner-generated OFF
   if (/^(pto|sick|vac|fmla|bereave|holiday)/i.test(t)) return { off: true };
   const s = parseShift(t.split("\n")[0] ?? "");
   return s ? { off: false, fixed: { start: s.start, end: s.end } } : null;
+}
+
+/** Name / badge / title are a single staff-day record. Human leave on any
+ * of the three rows overrides a generated shift; never schedule across it. */
+export function readStaffBlockAvailability(
+ nameRow:string,badgeRow:string,titleRow:string, respectHumanOff=true
+):{availability:Avail|null; notes:string[]}{
+ const cells=[nameRow,badgeRow,titleRow].map(x=>x.trim());
+ const notes=cells.filter((x,i)=>i===2&&!!x);
+ const leave=cells.find(x=>/^(?:pto|sick|vac(?:ation)?|fmla|bereave(?:ment)?|holiday|leave)(?:\\s|$|[:(])/i.test(x));
+ if(leave)return {availability:{off:true},notes};
+ const fixed=readAvail(cells[0]??"");
+ if(fixed)return {availability:fixed,notes};
+ if(respectHumanOff&&cells.some(x=>/^off$/i.test(x)))return {availability:{off:true},notes};
+ const service=titleRow.trim().match(/^SD:\\s*(.+)$/i);
+ if(service){
+  const shift=parseShift(service[1]??"");
+  if(shift)return {availability:{off:false,fixed:shift},notes};
+ }
+ return {availability:null,notes};
 }
 
 export const WEEK_HOURS = 40;
