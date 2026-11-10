@@ -26,11 +26,11 @@ const base=dryRun?(process.argv[5]??pkg.version):pkg.version;
 function versionFor(sourceVersion, releaseChannel, buildNumber) {
  const baseMatch=/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:[-+][0-9A-Za-z.+-]+)?$/.exec(sourceVersion??"");
  if(!baseMatch)throw new Error("Invalid base package version: "+sourceVersion);
- if(releaseChannel!=="main"&&releaseChannel!=="beta")throw new Error("Build channel must be main or beta");
+ if(!["main","beta","claude"].includes(releaseChannel))throw new Error("Build channel must be main, beta, or claude");
  if(!/^[1-9]\d*$/.test(String(buildNumber??"")))throw new Error("Missing positive GitHub workflow run number");
  const n=Number(buildNumber);
  if(!Number.isSafeInteger(n))throw new Error("Workflow run number is too large");
- return baseMatch[1]+"."+baseMatch[2]+"."+n+(releaseChannel==="beta"?"-beta":"");
+ return baseMatch[1]+"."+baseMatch[2]+"."+n+(releaseChannel==="main"?"":"-"+releaseChannel);
 }
 try {
  const version=versionFor(base,channel,number);
