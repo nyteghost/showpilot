@@ -70,6 +70,16 @@ describe("Claude shift-date and parsing audit",()=>{
   const result=await readScheduleWorkbook(file,"Sample Operator",{},["Sample Aliased Employee"]);
   expect(result.shifts[0]?.date).toBe("2026-11-16");
  });
+ it("reads XLSX rich-text shift cells using ExcelJS while keeping date checks",async()=>{
+  const book=datesWithSpacer(),ws=book.getWorksheet("Week #1")!;
+  ws.getCell("B7").value={richText:[{text:"7a"},{text:"-3:30p"}]};
+  ws.getCell("C7").value="OFF";
+  const file=new File([new Uint8Array(await book.xlsx.writeBuffer())],"styled-schedule.xlsx");
+  const result=await readScheduleWorkbook(file,"Sample Operator");
+  expect(result.shifts).toHaveLength(1);
+  expect(result.shifts[0]).toMatchObject({date:"2026-11-16",start:420,end:930});
+  expect(result.warnings).toEqual([]);
+ });
  it("recognizes on-call and blank-badge staff blocks as people",async()=>{
   const book=datesWithSpacer(),ws=book.getWorksheet("Week #1")!;
   ws.getCell("A10").value="Sample On Call";
