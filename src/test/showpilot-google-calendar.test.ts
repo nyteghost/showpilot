@@ -34,6 +34,22 @@ describe("ShowPilot Google Calendar desktop integration", () => {
     expect(source.localDateTime("2026-11-02",1560)).toBe("2026-11-03T02:00:00");
     expect(source.localDateTime("2026-12-31",1500)).toBe("2027-01-01T01:00:00");
   });
+  it("bounds reconciliation to the requested shifts with a safety margin",()=>{
+    const range=source.managedSyncWindow([
+      {date:"2026-11-16"},{date:"2026-11-20"}
+    ]);
+    expect(range.timeMin).toBe("2026-09-17T12:00:00.000Z");
+    expect(range.timeMax).toBe("2027-01-21T12:00:00.000Z");
+    expect(()=>source.managedSyncWindow([])).toThrow(/Select shifts/);
+    expect(()=>source.managedSyncWindow([{date:"2026-02-30"}])).toThrow(/Invalid shift date/);
+  });
+  it("does not leave the legacy async-Promise OAuth executor or orphaned timer",()=>{
+    const file=readFileSync(resolve(process.cwd(),"desktop/google-calendar.cjs"),"utf8");
+    expect(file).not.toContain("new Promise(async");
+    expect(file).toContain("clearTimeout(timeoutId)");
+    expect(file).toContain("url.searchParams.set('timeMin',timeMin)");
+    expect(file).toContain("url.searchParams.set('timeMax',timeMax)");
+  });
   it("builds a stable, private ShowPilot-owned calendar event and never includes a password", () => {
     const shift={id:"ppshift20261102s660",date:"2026-11-02",start:660,end:1200,raw:"11a-8p",note:"Hall A"};
     const doc=source.calendarBody(shift,"Work");
