@@ -94,11 +94,12 @@ async function connect() {
   if(!settings.client_id)FAIL('In Settings, first import a Google Desktop OAuth client JSON file.');
   secure();connecting=true;
   let server;
+  let timeoutId;
   try {
     const verifier=randomBytes(32).toString('base64url');
     const challenge=createHash('sha256').update(verifier).digest('base64url');
     const state=randomBytes(24).toString('base64url');
-    const codePromise=new Promise(async(resolve,reject)=>{
+    const codePromise=new Promise((resolve,reject)=>{
       server=createServer((req,res)=>{
         const url=new URL(req.url||'/', 'http://127.0.0.1');
         res.setHeader('Content-Type','text/html; charset=UTF-8');
@@ -123,7 +124,10 @@ async function connect() {
         shell.openExternal(url.toString()).catch(reject);
       });
     });
-    const timeout=new Promise((_,reject)=>setTimeout(()=>reject(new Error('Google sign-in timed out. Try again.')),120000));
+    // A pending timeout must never fire after successful OAuth or a browser failure.
+    const timeout=new Promise((_,reject)=>{
+      timeoutId=setTimeout(()=>reject(new Error('Google sign-in timed out. Try again.')),120000);
+    });
     const code=await Promise.race([codePromise,timeout]);
     const redirect='http://127.0.0.1:'+server.address().port+'/showpilot-calendar';
     const params={client_id:settings.client_id,code,code_verifier:verifier,redirect_uri:redirect,grant_type:'authorization_code'};
@@ -134,6 +138,7 @@ async function connect() {
     writeSettings({...settings,refresh_token:refresh});
     return status();
   } finally {
+    if(timeoutId!==undefined)clearTimeout(timeoutId);
     if(server){try{server.close()}catch{}}
     connecting=false;
   }
@@ -199,11 +204,25 @@ function calendarBody(s,title) {
     extendedProperties:{private:{showpilotSource:SOURCE,showpilotId:s.id,showpilotDate:s.date}},
   };
 }
-async function listManaged(token) {
+/** Date-bounded API listing, with a 60-day reconciliation margin for
+ * shifts whose event clock/date was edited after the previous sync. */
+function managedSyncWindow(shifts){
+  if(!Array.isArray(shifts)||!shifts.length)FAIL('Select shifts to bound Calendar reconciliation.');
+  const dates=shifts.map(s=>isoDay(s.date).getTime());
+  const days=86400000,padding=60*days;
+  return {
+    timeMin:new Date(Math.min(...dates)-padding).toISOString(),
+    timeMax:new Date(Math.max(...dates)+padding+2*days).toISOString()
+  };
+}
+async function listManaged(token,shifts) {
+  const {timeMin,timeMax}=managedSyncWindow(shifts);
   const events=[];let pageToken='';
   for(let i=0;i<20;i++){
     const url=new URL(GOOGLE);
     url.searchParams.set('privateExtendedProperty','showpilotSource='+SOURCE);
+    url.searchParams.set('timeMin',timeMin);
+    url.searchParams.set('timeMax',timeMax);
     url.searchParams.set('maxResults','250');
     if(pageToken)url.searchParams.set('pageToken',pageToken);
     const response=await callGoogle('GET',url.toString(),token);
@@ -221,7 +240,7 @@ async function updateAll(payload) {
   let created=0,updated=0,failed=0;
   try{
     const token=await accessToken();
-    const existing=await listManaged(token);
+    const existing=await listManaged(token,shifts);
     const seenIds=new Set(), byId=new Map();
     for(const e of existing){const id=e.extendedProperties?.private?.showpilotId;if(typeof id==='string'&&!byId.has(id))byId.set(id,e)}
     const inputByDate=new Map();
@@ -261,4 +280,4 @@ function setupGoogleCalendarIpc(){
   ipcMain.handle('showpilot-calendar:forget',()=>forget());
   ipcMain.handle('showpilot-calendar:update-all',(_,input)=>updateAll(input));
 }
-module.exports={setupGoogleCalendarIpc,credentialFromJson,validateSync,localDateTime,calendarBody};
+module.exports={setupGoogleCalendarIpc,credentialFromJson,validateSync,localDateTime,calendarBody,managedSyncWindow};
