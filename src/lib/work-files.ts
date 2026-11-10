@@ -694,7 +694,7 @@ function engineerCell(plans: Map<string, DayPlan>, name: string, date: string): 
   return managed ? { top: "", mid: "OFF" } : null;
 }
 
-function mergeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans: Map<string, DayPlan> = new Map(), preserveTemplateLayout = false,aliasesByName:Record<string,string[]>={},roster:typeof ENGINEER_ROSTER=ENGINEER_ROSTER): boolean {
+function mergeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans: Map<string, DayPlan> = new Map(), preserveTemplateLayout = false,aliasesByName:Record<string,string[]>={},roster:typeof ENGINEER_ROSTER=ENGINEER_ROSTER,extraNames:readonly string[]=[]): boolean {
   const dayRow=scheduleDayHeaderRow(ws);
   if (!dayRow) return false;
   const cols = new Map<string, number>();
@@ -805,6 +805,7 @@ function mergeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans
   // Adding someone to a preserved source workbook never silently inserts
   // rows, changes existing formulas, or hides missing people.
   for(const person of roster){
+    if(!extraNames.some(x=>x.toLowerCase()===person.name.toLowerCase()))continue;
     if(byLabel.has(person.name.toLowerCase()))continue;
     if([...cols].some(([date])=>plans.get(date)?.assignments.some(a=>a.name===person.name)))
       throw new Error("The approved master workbook has no staffing row for "+person.name+
@@ -975,7 +976,7 @@ export async function eventsWorkbook(entries: EventEntry[], existing?: File, tas
   for(const note of sourceStaffNotes)plans.get(note.date)?.notes.push(note.name+": "+note.text+" (operator workbook note)");
   let n = sheets.length;
   for (const w of weeks) {
-    if (sheets.some((s) => mergeWeekSheet(s, w, tasks, plans,!!options.preserveTemplateLayout,options.planning?.aliasesByName,scheduleDisplayRoster(options.planning)))) continue;
+    if (sheets.some((s) => mergeWeekSheet(s, w, tasks, plans,!!options.preserveTemplateLayout,options.planning?.aliasesByName,scheduleDisplayRoster(options.planning),options.planning?.extraPeople?.map(p=>p.name)))) continue;
     if(existing)throw new Error("The exact engineering template has no worksheet for week "+w.monday+". A differently formatted worksheet will not be generated.");
     writeWeekSheet(wb.addWorksheet(`Week #${++n}`), w, tasks, plans,scheduleDisplayRoster(options.planning));
   }
