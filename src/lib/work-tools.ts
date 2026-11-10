@@ -556,6 +556,29 @@ export function possibleRoomHolds(rows:readonly EventRow[]):PossibleRoomHold[]{
  return holds.sort((a,b)=>a.date.localeCompare(b.date)||a.space.localeCompare(b.space)).slice(0,120);
 }
 
+/** Activity-only room use is evidence for a possible booking, not
+ * authorization to classify that day as S or MI. Operator must approve. */
+export function possibleActivityOnlyOccupancy(rows:readonly EventRow[]):PossibleRoomHold[]{
+ const groups=new Map<string,EventRow[]>();
+ for(const r of rows){
+  if(r.level<=1||!r.eventId||!r.date||/cepac|cobb energy|performing arts/i.test(r.space))continue;
+  for(const space of expandSpace(r.space)){
+   if(!/^(?:Hall [A-D]|BallRoom [A-G])$/.test(space))continue;
+   const key=r.eventId+"|"+r.date+"|"+space;
+   groups.set(key,[...(groups.get(key)??[]),{...r,space}]);
+  }
+ }
+ return [...groups.values()].flatMap(list=>{
+  if(list.some(r=>classifyEvent(r)!==null))return [];
+  const physical=list.filter(r=>parseReportTime(r.end)>parseReportTime(r.start));
+  if(!physical.length)return [];
+  const r=physical[0]!;
+  return [{date:r.date,space:r.space,eventId:r.eventId!,
+   showName:r.event?.trim()||"Unnamed booking",
+   reason:"VERIFY activity-only occupancy: source has access/rehearsal/service functions but no classified event. Confirm booked use, then manually approve MI/hold or S; never generated automatically."}];
+ }).sort((a,b)=>a.date.localeCompare(b.date)||a.space.localeCompare(b.space)).slice(0,120);
+}
+
 // ---------- task suggestions ----------
 export type TaskNote = { date: string; section: "HALLS" | "BALLROOM"; text: string };
 
