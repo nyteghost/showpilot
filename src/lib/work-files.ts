@@ -430,7 +430,20 @@ function unmergeEventSpaces(ws: XSheet, w: WeekLayout, byLabel: Map<string, numb
   }
 }
 
-function writeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans: Map<string, DayPlan> = new Map()) {
+/** Preserve the normal roster when no local edits exist. A removed person is
+ * removed only from newly generated schedules; uploaded master rows stay intact. */
+export function scheduleDisplayRoster(policy?:StaffingPolicy):typeof ENGINEER_ROSTER{
+ const disabled=new Set((policy?.excludedPeople??[]).map(x=>x.trim().toLowerCase()));
+ const people=ENGINEER_ROSTER.filter(p=>!disabled.has(p.name.toLowerCase())).map(x=>({...x}));
+ const seen=new Set(ENGINEER_ROSTER.map(p=>p.name.toLowerCase()));
+ for(const p of policy?.extraPeople??[]){
+  const key=p.name.trim().toLowerCase();
+  if(disabled.has(key)||seen.has(key))continue;
+  seen.add(key);people.push({name:p.name,badge:p.badge,title:p.title});
+ }
+ return people;
+}
+function writeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans: Map<string, DayPlan> = new Map(), roster:typeof ENGINEER_ROSTER=ENGINEER_ROSTER) {
   const font = { name: "Calibri", size: 9, bold: true };
   const wrap = { wrapText: true, vertical: "middle" as const, horizontal: "center" as const };
   // Match the compact CGC engineering roster instead of the old poster-width
@@ -456,7 +469,7 @@ function writeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans
   // performing-arts row here, but ShowPilot must never export CEPAC events.
   put(8, ["CGC BARS", null, null, null, null, null, null, null, "CGC BARS"]);
   let r = 9;
-  for (const p of ENGINEER_ROSTER) {
+  for (const p of roster) {
     put(r, [p.name, ...w.dates.map((d) => engineerCell(plans, p.name, d)?.top || null)]);
     put(r + 1, [/^\d+$/.test(p.badge) ? Number(p.badge) : p.badge, ...w.dates.map((d) => engineerCell(plans, p.name, d)?.mid ?? null), { formula: `SUM(B${r + 1}:H${r + 1})` }]);
     put(r + 2, [p.title]);
@@ -681,7 +694,7 @@ function engineerCell(plans: Map<string, DayPlan>, name: string, date: string): 
   return managed ? { top: "", mid: "OFF" } : null;
 }
 
-function mergeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans: Map<string, DayPlan> = new Map(), preserveTemplateLayout = false,aliasesByName:Record<string,string[]>={}): boolean {
+function mergeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans: Map<string, DayPlan> = new Map(), preserveTemplateLayout = false,aliasesByName:Record<string,string[]>={},roster:typeof ENGINEER_ROSTER=ENGINEER_ROSTER): boolean {
   const dayRow=scheduleDayHeaderRow(ws);
   if (!dayRow) return false;
   const cols = new Map<string, number>();
@@ -789,9 +802,17 @@ function mergeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans
       if (text && !String(cell.value ?? "").trim()) { cell.value = text; cell.alignment = { wrapText: true, vertical: "middle", horizontal: "center" }; }
     }
   }
+  // Adding someone to a preserved source workbook never silently inserts
+  // rows, changes existing formulas, or hides missing people.
+  for(const person of roster){
+    if(byLabel.has(person.name.toLowerCase()))continue;
+    if([...cols].some(([date])=>plans.get(date)?.assignments.some(a=>a.name===person.name)))
+      throw new Error("The approved master workbook has no staffing row for "+person.name+
+       ". Add a verified three-row staff block in your source master, or choose Download week (fresh layout). No source file was changed.");
+  }
   // Engineer shifts in the uploaded workbook are authoritative.
   // Even blank shift cells stay blank when exact-template mode is enabled.
-  if(!preserveTemplateLayout)for (const p of ENGINEER_ROSTER) {
+  if(!preserveTemplateLayout)for (const p of roster) {
     const nr = byLabel.get(p.name.toLowerCase());
     if (!nr) continue;
     for (const [date, c] of cols) {
@@ -936,7 +957,7 @@ export async function eventsWorkbook(entries: EventEntry[], existing?: File, tas
     for(let c=2;c<=8;c++)cols.set(weekRow.dates[c-2]!,c);
     ws.eachRow((row, i) => {
       const name = String(row.getCell(1).value ?? "").trim();
-      const canonical=ENGINEER_ROSTER.find(p=>p.name.toLowerCase()===name.toLowerCase()||
+      const canonical=scheduleDisplayRoster(options.planning).find(p=>p.name.toLowerCase()===name.toLowerCase()||
        (options.planning?.aliasesByName?.[p.name]??[]).some(a=>a.trim().toLowerCase()===name.toLowerCase()))?.name;
       if(!canonical)return;
       for (const [d, c] of cols) {
@@ -954,9 +975,9 @@ export async function eventsWorkbook(entries: EventEntry[], existing?: File, tas
   for(const note of sourceStaffNotes)plans.get(note.date)?.notes.push(note.name+": "+note.text+" (operator workbook note)");
   let n = sheets.length;
   for (const w of weeks) {
-    if (sheets.some((s) => mergeWeekSheet(s, w, tasks, plans,!!options.preserveTemplateLayout,options.planning?.aliasesByName))) continue;
+    if (sheets.some((s) => mergeWeekSheet(s, w, tasks, plans,!!options.preserveTemplateLayout,options.planning?.aliasesByName,scheduleDisplayRoster(options.planning)))) continue;
     if(existing)throw new Error("The exact engineering template has no worksheet for week "+w.monday+". A differently formatted worksheet will not be generated.");
-    writeWeekSheet(wb.addWorksheet(`Week #${++n}`), w, tasks, plans);
+    writeWeekSheet(wb.addWorksheet(`Week #${++n}`), w, tasks, plans,scheduleDisplayRoster(options.planning));
   }
   if(!options.singleWeek && !existing)addStaffingSheets(wb, [...plans.values()]);
   const out = await wb.xlsx.writeBuffer();
