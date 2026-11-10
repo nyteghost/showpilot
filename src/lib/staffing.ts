@@ -167,6 +167,7 @@ export function planWeek(
     const day = entries.filter((e) => e.date === date && e.code !== "MO?");
     const medium = mediumSlots(entries, date);
     const powerDay = day.some((e) => POWER_HEAVY.test(e.title));
+    const bookedClose=policy.coverBookingClose===false?0:Math.max(0,...day.map(e=>e.bookingEnd??0));
     const offDay = (m: Staff) => !!m.offWeekdays?.includes(weekday(date)) && !(powerDay && m.powerDays?.includes(weekday(date)));
     const notes: string[] = [];
     if(policy.coverBookingClose!==false){
@@ -218,6 +219,10 @@ export function planWeek(
         for (const p of s.patterns ?? PATTERNS) {
           let gain = 0;
           for (let i = 0; i < SLOTS; i++) if (def[i]! > 0 && p.start < (i + 1) * 30 && p.end > i * 30 && (!s.notAlone || oth[i]! > 0)) gain++;
+          // When two patterns cover the same actual gaps, prefer the one
+          // that genuinely reaches the stated building close.
+          const closeBias=gain>0&&bookedClose>1200&&p.end>=bookedClose&&p.start<bookedClose?0.25:0;
+          gain+=closeBias;
           const waste = (p.end - p.start) / 30 - gain;
           const adj = days.get(s.name)!.has(prevDay(date)) ? 1 : 0; // keeps work days together so days off land together
           const rank = s.flexDays ? 1 : 0; // Mark before Edison's last-resort Mon/Tue
