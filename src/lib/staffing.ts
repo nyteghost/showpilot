@@ -14,10 +14,14 @@ export type StaffingPolicy={
  aliasesByName?:Record<string,string[]>;
  usualWeekdaysByName?:Record<string,number[]>;
  maxDays?:number;
+ /** Local roster additions and per-date reviewable operator changes. */
+ extraPeople?:Array<{name:string;badge:string;title:string;start:number;end:number;usualWeekdays:number[];notAlone:boolean}>;
+ excludedPeople?:string[];
+ dayOverrides?:Array<{date:string;name:string;action:"off"|"shift";start?:number;end?:number}>;
 };
 export const DEFAULT_STAFFING_POLICY:Required<StaffingPolicy>={
  coverBookingClose:true, attendanceThreshold:null,
- respectExistingOff:true,managerRegularLine:false,managerMayWorkAlone:false,preferredDaysOffByName:{},usualWeekdaysByName:{},aliasesByName:{},maxDays:5
+ respectExistingOff:true,managerRegularLine:false,managerMayWorkAlone:false,preferredDaysOffByName:{},usualWeekdaysByName:{},aliasesByName:{},extraPeople:[],excludedPeople:[],dayOverrides:[],maxDays:5
 };
 const hours = (list: [number, number][]) => list.map(([a, b]) => ({ start: a * 60, end: b * 60 }));
 const EVENING = hours([[12, 20.5], [12.5, 21], [13, 21.5], [13.5, 22], [14, 22.5], [14.5, 23], [15, 23.5], [15.5, 24]]);
@@ -515,9 +519,23 @@ function topUpDesk(plans: DayPlan[], avail: Record<string, Record<string, Avail>
 /** Plans whole Mon-Sun weeks (so the five-day limit and days off are per week) and notes anyone without two days off in a row. */
 export function planWeeks(dates: string[], entries: EventEntry[], avail: Record<string, Record<string, Avail>> = {}, staff: Staff[] = SHOW_STAFF, holds: Hold[] = [],policy:StaffingPolicy=DEFAULT_STAFFING_POLICY): DayPlan[] {
   const mondays = [...new Set(dates.map((d) => { const t = new Date(`${d}T12:00:00Z`); t.setUTCDate(t.getUTCDate() - weekday(d)); return t.toISOString().slice(0, 10); }))].sort();
-  // A preference only influences selection; it never overrides a hard
-  // availability rule or forces a sixth workday.
-  const preferences=staff.map(s=>({
+  // Apply local roster selection only to NEW suggestions. Never delete or
+  // rewrite a person's existing shifts in the uploaded master workbook.
+  const disabled=new Set((policy.excludedPeople??[]).map(x=>x.trim().toLowerCase()));
+  const people=staff.filter(s=>!disabled.has(s.name.toLowerCase()));
+  const names=new Set(people.map(s=>s.name.toLowerCase()));
+  for(const person of policy.extraPeople??[]){
+   const key=person.name.trim().toLowerCase();
+   if(disabled.has(key)||names.has(key)||key===MARK_FLEX.name.toLowerCase()||key===ON_CALL.name.toLowerCase())continue;
+   names.add(key);
+   const pattern={start:person.start,end:person.end};
+   people.push({name:person.name,badge:person.badge,title:person.title,
+     patterns:[pattern],baseline:{weekdays:person.usualWeekdays,pattern},
+     notAlone:person.notAlone});
+  }
+  // A preference only influences selection; it never overrides hard leave or
+  // an authoritative shift already entered in the source workbook.
+  const preferences=people.map(s=>({
    ...s,
    preferredDaysOff:policy.preferredDaysOffByName?.[s.name]??s.preferredDaysOff,
    preferredWeekdays:policy.usualWeekdaysByName?.[s.name]??s.preferredWeekdays
@@ -525,13 +543,47 @@ export function planWeeks(dates: string[], entries: EventEntry[], avail: Record<
   const out: DayPlan[] = [];
   for (const m of mondays) {
     const week = Array.from({ length: 7 }, (_, i) => { const t = new Date(`${m}T12:00:00Z`); t.setUTCDate(t.getUTCDate() + i); return t.toISOString().slice(0, 10); });
-    const team=policy.managerRegularLine&&!preferences.some(s=>s.name===MARK_FLEX.name)
+    const team=policy.managerRegularLine&&!disabled.has(MARK_FLEX.name.toLowerCase())&&!preferences.some(s=>s.name===MARK_FLEX.name)
       ?[...preferences,{...MARK_FLEX,flexDays:undefined,baseline:{
         weekdays:[0,1,2,3,4],pattern:{start:540,end:1080}
        },notAlone:policy.managerMayWorkAlone!==true}]:preferences;
-    const plans = planWeek(week, entries, team, avail, ON_CALL, holds, policy);
-    trimToFive(plans, team, avail,policy);
-    topUp(plans, team, avail, entries,policy);
+    const manualNotes=new Map<string,string[]>();
+    const sourceAvail=avail;
+    const weekAvail:Record<string,Record<string,Avail>>={...sourceAvail};
+    for(const override of policy.dayOverrides??[]){
+      if(!week.includes(override.date))continue;
+      const person=team.find(p=>p.name.toLowerCase()===override.name.toLowerCase());
+      if(!person)continue;
+      const recorded=sourceAvail[person.name]?.[override.date];
+      if(recorded?.off||recorded?.fixed){
+        const msg=person.name+" "+override.date+": manual change NOT applied because the uploaded workbook has an existing "+
+         (recorded.off?"OFF/PTO/leave entry":"shift")+". Change the source workbook or remove this override.";
+        manualNotes.set(override.date,[...(manualNotes.get(override.date)??[]),msg]);
+        continue;
+      }
+      const entry:Avail=override.action==="off"?{off:true}:{
+        off:false,fixed:{start:override.start!,end:override.end!}
+      };
+      weekAvail[person.name]={...(weekAvail[person.name]??{}),[override.date]:entry};
+      manualNotes.set(override.date,[...(manualNotes.get(override.date)??[]),
+        person.name+" "+override.date+": manual "+(override.action==="off"?"OFF":"shift "+shiftText(entry.fixed!))+
+        " requested in Schedule People; review before publishing."]);
+    }
+    const onCall=disabled.has(ON_CALL.name.toLowerCase())?null:ON_CALL;
+    const plans = planWeek(week, entries, team, weekAvail, onCall, holds, policy);
+    trimToFive(plans, team, weekAvail,policy);
+    topUp(plans, team, weekAvail, entries,policy);
+    for(const p of plans){
+      p.notes.push(...(manualNotes.get(p.date)??[]));
+      for(const override of policy.dayOverrides??[])if(override.date===p.date){
+        const person=team.find(x=>x.name.toLowerCase()===override.name.toLowerCase());
+        if(!person||sourceAvail[person.name]?.[p.date]?.off||sourceAvail[person.name]?.[p.date]?.fixed)continue;
+        if(override.action==="shift")for(const a of p.assignments)
+          if(a.name===person.name&&a.fixed)a.reason="Manual, operator-selected shift. "+a.reason;
+        if(override.action==="off")for(const a of p.notUsed)
+          if(a.name===person.name)a.why="Manually marked OFF for this date in Schedule People.";
+      }
+    }
     topUpDesk(plans, avail);
     for (const s of team) {
       const on = plans.map((p) => p.assignments.some((a) => a.name === s.name));
