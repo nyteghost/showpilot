@@ -2,6 +2,7 @@ import {describe,it,expect} from "vitest";
 import ExcelJS from "exceljs";
 import {parseShift,shiftNeedsReview} from "../lib/work-tools";
 import {readScheduleWorkbook} from "../lib/work-files";
+import {workedHours} from "../lib/staffing";
 
 function datesWithSpacer(){
  const book=new ExcelJS.Workbook(),ws=book.addWorksheet("Week #1");
@@ -37,6 +38,9 @@ describe("Claude shift-date and parsing audit",()=>{
    expect.objectContaining({sheet:"Week #1",date:"2026-11-17",raw:"7am-TBD"})
   ]));
   expect(result.shifts.some(s=>s.date.startsWith("1904"))).toBe(false);
+ });
+ it("counts the standard 3:30p–11:59p closing line as eight paid hours",()=>{
+  expect(workedHours({start:930,end:1439})).toBe(8);
  });
  it("marks implausible shifts for explicit confirmation before calendar output",()=>{
   expect(shiftNeedsReview({date:"2026-11-16",start:1200,end:2580,raw:"8pm-7pm"})).toBe(true);
