@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { entryLabel, formatMinutes, type EventCode, type EventEntry, type EventRow, type TaskNote } from "@/lib/work-tools";
+import { possibleRoomHolds, entryLabel, formatMinutes, type EventCode, type EventEntry, type EventRow, type TaskNote } from "@/lib/work-tools";
 import {type ReviewDateScope,availableReviewMonths,availableReviewWeeks,reviewMatchesDay,reviewMatchesMonth,reviewMatchesWeek,reviewMonthLabel,reviewWeekStart,reviewWeekLabel,selectedReviewMonth,selectedReviewWeek,shiftReviewWeek} from "@/lib/showpilot-review-months";
 import {
   applyReview, emptyReviewDraft, validEntry, type ReviewDraft, type ReviewLine,
@@ -33,6 +33,7 @@ export function ScheduleReview({
   initialScope?: ReviewDateScope|null;
 }) {
   const reviewRef = useRef<HTMLElement>(null);
+  const roomHoldReviews=useMemo(()=>possibleRoomHolds(originalRows),[originalRows]);
   useEffect(()=>{
     if (!conflictTarget) return;
     setMode("review");setView("week");setWeekChoice(reviewWeekStart(conflictTarget.date) ?? "");setDate(conflictTarget.date);
@@ -154,6 +155,16 @@ export function ScheduleReview({
       <div className="rounded-lg bg-muted p-2"><strong className="block text-lg">{finalCount}</strong><span className="text-xs">Final entries in view</span></div>
       <div className="rounded-lg bg-muted p-2"><strong className="block text-lg">{changes}</strong><span className="text-xs">Reviewed changes in view</span></div>
     </div>
+    {roomHoldReviews.length>0&&<details className="rounded-lg border border-amber-500/60 p-3 text-xs">
+      <summary className="cursor-pointer font-semibold">VERIFY: {roomHoldReviews.length} possible booking room hold(s) need EOC review</summary>
+      <p className="mt-2 text-muted-foreground">No holds are added to the schedule automatically. Confirm the event and space in its EOC, then add a reviewed MI/hold only if verified.</p>
+      <div className="mt-2 max-h-52 overflow-y-auto">
+       {roomHoldReviews.slice(0,60).map(x=><p key={x.eventId+"|"+x.date+"|"+x.space} className="border-t border-border py-1">
+        {x.date} · {x.space} · {x.showName} (Event ID {x.eventId}): {x.reason}
+       </p>)}
+       {roomHoldReviews.length>60&&<p>Showing first 60; narrow the report to inspect others.</p>}
+      </div>
+    </details>}
     {result.unmatchedChanges > 0 && <p className="rounded border border-amber-500 p-2 text-xs">Heads-up: {result.unmatchedChanges} saved changes no longer match the latest proposed entries. They were not applied. Export your project before discarding or reimporting.</p>}
     <div className="flex flex-wrap gap-2">
       {([["imported","1. Original functions"],["review","2. Edit schedule"],["changes","3. Changes / comparison"]] as const).map(([id,label])=>
