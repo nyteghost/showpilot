@@ -69,6 +69,24 @@ describe("Today reads the user's actual weekly engineering workbook",()=>{
   expect(synthetic).toBeDefined();
   expect(isUnlinkedTodayShow(synthetic!,joined)).toBe(true);
  });
+ it("shows the attached catalog event name when a saved function has only an Event ID",()=>{
+  const known:PostConShow={key:"id:99001",eventId:"99001",
+   showName:"Fictional Lantern Convention",startDate:"2026-11-16",
+   showDate:"2026-11-20",rooms:"Hall D"};
+  const project:ReviewProject={
+   kind:"showpilot-review-project",version:1,templateSaved:false,
+   originalRows:[{level:2,date:"2026-11-16",space:"Exhibit Hall D",
+    event:"",eventId:"99001",description:"Exhibitor Move-In",
+    start:"12:00 PM",end:"07:00 PM",usage:"Move In"}],
+   draft:emptyReviewDraft(),approvedSpaces:[],includePending:false,note:""
+  };
+  const result=activitiesFromReviewProject(project,[known]);
+  expect(result.activities).toEqual([expect.objectContaining({
+   eventId:"99001",showName:"Fictional Lantern Convention",
+   date:"2026-11-16"
+  })]);
+  expect(combineTodaySources([known],result.activities).unlinkedFunctions).toEqual([]);
+ });
  it("takes dated reviewed Event Schedule functions without requiring an EOC",()=>{
   const project:ReviewProject={
    kind:"showpilot-review-project",version:1,templateSaved:false,
