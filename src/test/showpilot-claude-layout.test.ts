@@ -1,6 +1,6 @@
 import {describe,it,expect} from "vitest";
 import ExcelJS from "exceljs";
-import {isExactCgcEngineeringTemplate} from "../lib/work-files";
+import {isExactCgcEngineeringTemplate,findWeekDateRow} from "../lib/work-files";
 
 const labels=[
  "HALLS","HALL A","HALL B","HALL C","HALL D","TASKS","BALLROOM",
@@ -31,5 +31,33 @@ describe("Claude D16: real CGC template sections may move when staff rows are in
   const ws=week(57);
   ws.getRow(60).getCell(1).value="OTHER VENUE";
   expect(isExactCgcEngineeringTemplate(ws)).toBe(false);
+ });
+});
+
+describe("Claude D17: week dates may be below a spacer row",()=>{
+ const sample=(dateRow:number)=>{
+  const ws=week(57);
+  for(let i=0;i<7;i++)ws.getRow(dateRow).getCell(i+2).value=
+   new Date(Date.UTC(2026,10,16+i));
+  return ws;
+ };
+ it("finds seven consecutive weekday-aligned dates after a blank spacer",()=>{
+  const ws=sample(6);
+  expect(findWeekDateRow(ws,4)).toMatchObject({row:6,dates:[
+   "2026-11-16","2026-11-17","2026-11-18","2026-11-19",
+   "2026-11-20","2026-11-21","2026-11-22"
+  ]});
+ });
+ it("does not read numeric spacer values as 1904 dates",()=>{
+  const ws=sample(7);
+  ws.getRow(5).getCell(2).value=1500;
+  ws.getRow(5).getCell(3).value=5500;
+  expect(findWeekDateRow(ws,4)?.row).toBe(7);
+ });
+ it("rejects rows whose Monday column is really Sunday",()=>{
+  const ws=week(57);
+  for(let i=0;i<7;i++)ws.getRow(5).getCell(i+2).value=
+   new Date(Date.UTC(2025,10,16+i));
+  expect(findWeekDateRow(ws,4)).toBeNull();
  });
 });
