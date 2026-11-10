@@ -7,6 +7,7 @@ import {getLocalAiRuntimeState,subscribeLocalAiRuntimeState,explainBallroomWarni
 import {reconcileAirwallDay} from "@/lib/showpilot-today-checklist";
 import {inferBallroomTransitions} from "@/lib/showpilot-ballroom-inference";
 import {detectHallOverlaps,describeHallOverlap} from "@/lib/showpilot-hall-inference";
+import {resolveEventRowNames} from "@/lib/showpilot-event-name-resolution";
 import {findingKey,readFindingAcknowledgements,acknowledgeFinding,FINDING_ACK_KEY} from "@/lib/showpilot-finding-ack";
 import type {EventRow} from "@/lib/work-tools";
 import {loadDurableShowCatalog,type PostConShow} from "@/lib/showpilot-postcon";
@@ -245,7 +246,7 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
      }));
     }
     if(live){
-     setShows(catalog);setScheduleActivities(activities);setReviewRows(acceptedReviewRows);
+     setShows(catalog);setScheduleActivities(activities);setReviewRows(resolveEventRowNames(acceptedReviewRows,catalog));
      setDetails(Object.fromEntries(items));
      setSuggestions(tasks);setWorkbookWalls(walls);setSourceWarnings(warnings);
      if(!bridge)setWarning("EOC links require the ShowPilot portable desktop app. Saved schedule activity can still be viewed.");
