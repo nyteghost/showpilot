@@ -244,17 +244,32 @@ const serialToIso = (n: number):string|null => {
 /** Reads every "Week #" sheet and returns the shifts in the named person's row. */
 export type UnreadableShift={sheet:string;date:string;raw:string};
 export async function readScheduleWorkbook(file: File, name = DEFAULT_SCHEDULE_NAME,weekOverrides:Record<string,string>={},aliases:readonly string[]=[]): Promise<{ shifts: Shift[]; people: string[]; unreadable:UnreadableShift[]; warnings:string[] }> {
-  const XLSX = await import("xlsx");
-  const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+  const excel=await import("exceljs");
+  const ExcelJS=excel.default??excel;
+  const wb=new ExcelJS.Workbook();
+  await wb.xlsx.load(await file.arrayBuffer());
   const shifts: Shift[] = [];
   const people = new Set<string>();
   const unreadable:UnreadableShift[]=[];
   const warnings:string[]=[];
   const target = name.trim().toLowerCase();
   const usedWeeks=new Map<string,string>();
-  for (const sheetName of wb.SheetNames) {
+  for (const sheet of wb.worksheets) {
+    const sheetName=sheet.name;
     if (!/week/i.test(sheetName)) continue;
-    const grid = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[sheetName]!, { header: 1, raw: true, defval: "" });
+    // Read the seven weekday columns and nearby metadata directly from
+    // ExcelJS. Preserve numeric serials, Date values and formula results for
+    // the shared date-row verifier; do not stringify dates prematurely.
+    const grid:unknown[][]=[];
+    const columns=Math.min(32,Math.max(8,sheet.columnCount));
+    for(let r=1;r<=sheet.rowCount;r++){
+      const row=sheet.getRow(r);
+      grid.push(Array.from({length:columns},(_,i)=>{
+        const cell=row.getCell(i+1),value=cell.value;
+        if(value&&typeof value==="object"&&"richText" in value)return cell.text;
+        return value??"";
+      }));
+    }
     const dayRow = grid.findIndex((r) => String(r[1]).trim().toUpperCase() === "MON");
     if (dayRow < 0) continue;
     const found=scanWeekDateRow((row,col)=>grid[row]?.[col-1],dayRow);
