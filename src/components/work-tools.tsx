@@ -585,7 +585,7 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
             {entries.length>0&&selectedTemplate==="approved"&&
               <p role="status" className="w-full text-xs text-muted-foreground">
                 {masterTemplateState==="saved"?
-                 "Approved master XLSX saved on this computer. It is ready for preview and export; its original file is not overwritten.":
+                 "Approved master XLSX saved locally. Preview or export will still verify its CGC layout; the original file is not overwritten.":
                  masterTemplateState==="checking"?"Checking for a saved master workbook…":
                  masterTemplateState==="missing"?"No approved master workbook is saved. Choose master XLSX above, or select an uploaded original workbook.":
                  masterTemplateState==="unavailable"?"Master workbook selection requires the portable desktop app. Upload the original workbook with the event report.":
