@@ -1,6 +1,6 @@
 import {describe,it,expect} from "vitest";
 import ExcelJS from "exceljs";
-import {parseShift,shiftNeedsReview} from "../lib/work-tools";
+import {parseShift,shiftNeedsReview,parsePastedShiftsWithReview} from "../lib/work-tools";
 import {readScheduleWorkbook} from "../lib/work-files";
 import {workedHours} from "../lib/staffing";
 
@@ -23,6 +23,14 @@ describe("Claude shift-date and parsing audit",()=>{
   expect(parseShift("7a-3;30p")).toMatchObject({start:420,end:930});
   expect(parseShift("3p-1130p")).toMatchObject({start:900,end:1410});
   expect(parseShift("7am-TBD")).toBeNull();
+ });
+ it("reports unreadable pasted shifts instead of dropping them silently",()=>{
+  const pasted="MON  TUE  WED  THU  FRI  SAT  SUN\nSample Operator  9a-6p  7am-TBD  OFF  3pm-11:30pm+  OFF  OFF  OFF";
+  const result=parsePastedShiftsWithReview(pasted,"2026-11-16","Sample Operator");
+  expect(result.shifts).toHaveLength(2);
+  expect(result.unreadable).toEqual(expect.arrayContaining([
+   expect.objectContaining({date:"2026-11-17",raw:"7am-TBD"})
+  ]));
  });
  it("does not silently lose unreadable user shift cells",async()=>{
   const book=datesWithSpacer(),ws=book.getWorksheet("Week #1")!;
