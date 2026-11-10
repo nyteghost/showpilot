@@ -191,7 +191,7 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
     try{
      snapshot=await window.showpilotScheduleSession?.load()??null;
      if(snapshot){
-      const extracted=activitiesFromReviewProject(snapshot.project);
+      const extracted=activitiesFromReviewProject(snapshot.project,catalog);
       activities.push(...extracted.activities);
       tasks=extracted.airwalls;
       acceptedReviewRows=extracted.acceptedRows;
