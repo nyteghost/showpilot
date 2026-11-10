@@ -254,7 +254,12 @@ export function planWeek(
 }
 
 /** Hours on the clock: a scheduled 8.5 hour shift is 8 worked because of lunch. */
-export const workedHours = (a: { start: number; end: number }) => (a.end - a.start === 510 ? 8 : (a.end - a.start) / 60);
+export const workedHours = (a: { start: number; end: number }) => {
+ const minutes=a.end-a.start;
+ // A printed 11:59 PM end is the midnight boundary in the human schedule.
+ // This changes hours display only; actual calendar times remain unchanged.
+ return minutes===509||minutes===510?8:minutes/60;
+};
 
 /** "2: 6a-11p, 1: 11p-12a" style summary of a day's needs. */
 export function needText(need: number[]): string {
