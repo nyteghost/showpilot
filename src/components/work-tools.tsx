@@ -679,7 +679,7 @@ function ShiftsTab() {
         </div>
       </details>
       {status && <p className={`text-sm ${/^Could not|^No shifts/.test(status) ? "text-destructive" : ""}`} role="status">{status}</p>}
-      {file&&!/\\.pdf$/i.test(file.name)&&sheetDateWarnings.length>0&&
+      {file&&!/\.pdf$/i.test(file.name)&&sheetDateWarnings.length>0&&
        <details className="rounded border border-amber-500 p-2 text-xs">
         <summary className="cursor-pointer font-medium">Correct a worksheet week start (operator override)</summary>
         <p className="my-2">If the Excel date formulas are stale, enter the true Monday for the affected sheet. This changes only the imported shift dates, never the original workbook. Check your calendars before syncing.</p>
