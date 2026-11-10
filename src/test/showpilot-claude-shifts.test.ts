@@ -47,6 +47,20 @@ describe("Claude shift-date and parsing audit",()=>{
   ]));
   expect(result.shifts.some(s=>s.date.startsWith("1904"))).toBe(false);
  });
+ it("warns on FROM/TO disagreement and requires an explicit Monday override",async()=>{
+  const book=datesWithSpacer(),ws=book.getWorksheet("Week #1")!;
+  ws.getCell("C3").value="FROM:";
+  ws.getCell("D3").value=new Date(Date.UTC(2025,10,17));
+  ws.getCell("B7").value="7a-3:30p";
+  const file=new File([new Uint8Array(await book.xlsx.writeBuffer())],"synthetic.xlsx");
+  const original=await readScheduleWorkbook(file,"Sample Operator");
+  expect(original.warnings.join(" ")).toContain("FROM header");
+  expect(original.shifts[0]?.date).toBe("2026-11-16");
+  const corrected=await readScheduleWorkbook(file,"Sample Operator",{"Week #1":"2026-11-23"});
+  expect(corrected.shifts[0]?.date).toBe("2026-11-23");
+  expect(corrected.warnings.join(" ")).toContain("manually corrected");
+  expect((await readScheduleWorkbook(file,"Sample Operator",{"Week #1":"2026-11-24"})).shifts).toEqual([]);
+ });
  it("recognizes on-call and blank-badge staff blocks as people",async()=>{
   const book=datesWithSpacer(),ws=book.getWorksheet("Week #1")!;
   ws.getCell("A10").value="Sample On Call";
