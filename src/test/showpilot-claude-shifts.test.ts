@@ -47,6 +47,19 @@ describe("Claude shift-date and parsing audit",()=>{
   ]));
   expect(result.shifts.some(s=>s.date.startsWith("1904"))).toBe(false);
  });
+ it("recognizes on-call and blank-badge staff blocks as people",async()=>{
+  const book=datesWithSpacer(),ws=book.getWorksheet("Week #1")!;
+  ws.getCell("A10").value="Sample On Call";
+  ws.getCell("A11").value="On-Call";
+  ws.getCell("A12").value="Show Service Engineer";
+  ws.getCell("A13").value="Sample New Operator";
+  ws.getCell("A15").value="Show Service Engineer";
+  ws.getCell("A17").value="HALLS";
+  const file=new File([new Uint8Array(await book.xlsx.writeBuffer())],"synthetic.xlsx");
+  const result=await readScheduleWorkbook(file,"Sample Operator");
+  expect(result.people).toContain("Sample On Call");
+  expect(result.people).toContain("Sample New Operator");
+ });
  it("counts the standard 3:30p–11:59p closing line as eight paid hours",()=>{
   expect(workedHours({start:930,end:1439})).toBe(8);
  });
