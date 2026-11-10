@@ -86,7 +86,7 @@ describe("Secure event ZIP import",()=>{
  it("caps file size and compression expansion to prevent ZIP bombs",()=>{
   const big=createZip([{name:"massive.txt",data:Buffer.alloc(26*1024*1024,65)}]);
   expect(()=>zip.inspect(big)).toThrow(/25 MB|ratio/i);
- });
+ },20_000); // Generating a synthetic 26 MB compressed ZIP can exceed CI's 5 s default.
  it("does not accept a ZIP containing only executable or unsupported files",()=>{
   expect(()=>zip.inspect(createZip([{name:"install.exe",data:Buffer.from("bad")}]))).toThrow(/no supported/);
  });
