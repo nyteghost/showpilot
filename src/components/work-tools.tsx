@@ -633,7 +633,7 @@ function ShiftsTab() {
       const isPdf=/\.pdf$/i.test(f.name)||f.type==="application/pdf";
       const {shifts,people,unreadable,warnings}=isPdf
        ? await (await import("@/lib/showpilot-shift-pdf")).readWeeklyShiftPdf(f,who)
-       : await (await import("@/lib/work-files")).readScheduleWorkbook(f,who,weekOverrides);
+       : await (await import("@/lib/work-files")).readScheduleWorkbook(f,who,weekOverrides,readClaudeSettings().aliasesByName[who]??[]);
       setShifts(withShiftIds(shifts));setUnreadable(unreadable);setShiftWarnings(warnings);
       setDetectedNames(people);
       setRemoved([]);setEditing(null);
