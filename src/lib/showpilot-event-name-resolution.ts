@@ -55,7 +55,9 @@ export function resolveScheduleEventNames(
   const id=entry.eventId?.trim();
   const source=id?topName(sourceById.get(id)??[]):"";
   const catalog=id?topName(catalogById.get(id)??[]):"";
-  const existing=realShowName(entry.showName)||realShowName(entry.title);
+  // With an Event ID, an unverified title could be a function (e.g.
+  // "Exhibitor Move-In"). Never promote it to a confirmed show name.
+  const existing=realShowName(entry.showName)||(id?"":realShowName(entry.title));
   let match=source||catalog||existing;
   if(!match&&!id){
    const candidates=new Set<string>();
