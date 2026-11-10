@@ -258,19 +258,20 @@ export function planWeek(
       }
       cover1();
     }
-    // Jontee is never scheduled automatically. He is suggested only for a busy evening that is still short
-    // on a day Edison or Franck is off; the person decides.
+    // On-call is a human-reviewed recommendation, never an automatic shift.
+    // A gap matters even when both regular evening staff already work.
     if (onCall) {
-      const left = deficit();
-      const worksToday = (n: string) => assignments.some((a) => a.name === n);
-      const someoneOff = ["Edison Dunkley", "Franck Pierre-Louis"].filter((n) => !worksToday(n));
-      let pick: { start: number; end: number } | null = null, top = 0;
-      for (const p of onCall.patterns ?? []) {
-        let gain = 0;
-        for (let i = 34; i < SLOTS; i++) if (left[i]! > 0 && p.start < (i + 1) * 30 && p.end > i * 30) gain++;
-        if (gain > top) { top = gain; pick = p; }
+      const left=deficit();
+      let pick: {start:number;end:number}|null=null,top=0;
+      for(const p of onCall.patterns??[]){
+        let gain=0;
+        for(let i=34;i<SLOTS;i++)if(left[i]!>0&&p.start<(i+1)*30&&p.end>i*30)gain++;
+        if(gain>top){top=gain;pick=p;}
       }
-      if (pick && someoneOff.length && !avail[onCall.name]?.[date]?.off) notes.push(`Suggestion: ${onCall.name.split(" ")[0]} ${shiftText(pick)} would close the evening gap (${someoneOff.map((n) => n.split(" ")[0]).join(" and ")} off today). Not scheduled.`);
+      if(pick&&top>0&&!avail[onCall.name]?.[date]?.off){
+        const remaining=left.filter((n,i)=>i>=34&&n>0).length;
+        notes.push(`Suggestion: on-call ${onCall.name} ${shiftText(pick)} could cover ${top/2} of ${remaining/2} short evening hours. Not scheduled; operator approval required.`);
+      }
     }
     const notUsed: DayPlan["notUsed"] = [];
     for (const m of [...staff, ...(onCall ? [onCall] : [])]) {
