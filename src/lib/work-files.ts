@@ -692,11 +692,12 @@ function mergeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans
           ": the selected show does not occupy every room already joined in the template. Review the original merged-room layout; ShowPilot will not modify it.");
     }
   }else unmergeEventSpaces(ws, w, byLabel, cols);
-  const write = (label: string, i: number, text: string, codes?: string[]) => {
+  const write = (label: string, i: number, text: string, codes?: string[], onlyIfEmpty=false) => {
     const date = w.dates[i];
     const r = byLabel.get(label.toLowerCase()); const c = date ? cols.get(date) : undefined;
     if (!r || !c || !text) return;
     const cell = ws.getRow(r).getCell(c);
+    if(onlyIfEmpty && cell.value!==null && cell.value!==undefined && String(cell.value).trim())return;
     cell.value = text;
     if(!preserveTemplateLayout)cell.alignment = { wrapText: true, vertical: "middle", horizontal: "center" };
     if (codes) paint(cell, codes);
@@ -705,9 +706,9 @@ function mergeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans
     // In exact-template mode, the existing CGC, escalator and desk rows
     // remain precisely as supplied in the uploaded workbook.
     if(!preserveTemplateLayout){
-      if(w.cgc[i]!=="DARK"){write("CGC",i,w.cgc[i]!);write("CCC",i,w.cgc[i]!);}
-      write("Escalator",i,w.escalator[i]!);
-      write("Service Desk",i,w.serviceDesk[i]!,["MI"]);
+      if(w.cgc[i]!=="DARK"){write("CGC",i,w.cgc[i]!,undefined,true);write("CCC",i,w.cgc[i]!,undefined,true);}
+      write("Escalator",i,w.escalator[i]!,undefined,true);
+      write("Service Desk",i,w.serviceDesk[i]!,["MI"],true);
     }
     for(const [label,cells] of Object.entries(w.rows))write(label,i,cells[i]!.text,cells[i]!.codes);
   });
