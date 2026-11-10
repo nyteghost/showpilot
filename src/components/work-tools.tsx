@@ -7,7 +7,7 @@ import {shiftRuleEvidence,calendarRuleEvidence,eventScheduleRuleEvidence,exportR
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { KeepAliveTabContent } from "@/components/showpilot-keep-alive-tab";
-import { buildIcs, DEFAULT_SCHEDULE_NAME, editShift, entryLabel, formatMinutes, googleCalendarLink, isIsoDate, minutesToTime, newShiftId, nextMondayIso, parsePastedShiftsWithReview, shiftLabel, shiftNeedsReview, airwallTasks, detailedAirwallTask, isCancelledRow, isPendingRow, sharedSpaces, expandSpace, summarizeEvents, attachShowNames, taskSuggestions, timeToMinutes, withShiftIds, type EventEntry, type EventRow, type Shift, type TaskNote } from "@/lib/work-tools";
+import { buildIcs, DEFAULT_SCHEDULE_NAME, editShift, entryLabel, formatMinutes, googleCalendarLink, isIsoDate, minutesToTime, newShiftId, nextMondayIso, parsePastedShiftsWithReview, shiftLabel, shiftNeedsReview, airwallTasks, detailedAirwallTask, isCancelledRow, isPendingRow, sharedSpaces, expandSpace, summarizeEvents, taskSuggestions, timeToMinutes, withShiftIds, type EventEntry, type EventRow, type Shift, type TaskNote } from "@/lib/work-tools";
 import { StandaloneVendors } from "@/components/showpilot-vendors";
 import { FloorMapPanel } from "@/components/floor-map-panel";
 import { scopeShowPilotRows } from "@/lib/showpilot-venue";
