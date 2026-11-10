@@ -38,6 +38,24 @@ export function ClaudeStaffingSettingsPanel({value,onChange}:{
       }}/>{day}
      </label>
     })}
+    <label className="flex flex-wrap items-center gap-1 text-muted-foreground">Usual weekdays:
+     {DAYS.map((day,index)=>{
+      const checked=(value.usualWeekdaysByName[person.name]??person.baseline?.weekdays??[]).includes(index);
+      return <label key={day} className="inline-flex items-center gap-1">
+       <input type="checkbox" checked={checked} onChange={e=>{
+        const prev=value.usualWeekdaysByName[person.name]??person.baseline?.weekdays??[];
+        const next=e.target.checked?[...new Set([...prev,index])].sort():prev.filter(x=>x!==index);
+        update({usualWeekdaysByName:{...value.usualWeekdaysByName,[person.name]:next}});
+       }}/>{day}
+      </label>;
+     })}
+    </label>
+    <label className="flex items-center gap-1">Aliases:
+      <input className="w-52 rounded border border-border bg-background p-1" aria-label={person.name+" aliases"}
+       placeholder="Alternate names, comma separated" value={(value.aliasesByName[person.name]??[]).join(", ")}
+       onChange={e=>update({aliasesByName:{...value.aliasesByName,
+        [person.name]:e.target.value.split(",").map(x=>x.trim()).filter(Boolean).slice(0,8)}})}/>
+    </label>
    </div>)}
   </div>
   <p className="mt-3 text-muted-foreground">A sixth day remains review-only; it is never added automatically. Confirm a new attendance threshold or solo-coverage permission against local staffing policy before relying on the resulting plan.</p>
