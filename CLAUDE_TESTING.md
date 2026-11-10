@@ -32,6 +32,17 @@ In **Event Schedule**, expand **Claude scheduling preferences (experimental)**, 
 - **Important master-template limit:** An approved original workbook is the formatting/shift authority. If your added person is missing an authorized three-row block, export stops and tells you to add the person to the source master or choose **Download week (fresh layout)**. Existing master employee rows are not automatically deleted or rearranged.
 - Changes are saved **locally**, included in ShowPilot work-data backups, and isolated to the experimental Claude build. No Google Calendar events are created, altered or deleted by the roster editor.
 
+## Approved master workbook and AI review troubleshooting
+
+In **Event Schedule**, the **Original template** selector shows where your export layout will come from:
+
+- **Saved master workbook:** ShowPilot now checks whether one has actually been saved. If not, it disables original-layout Preview/Download and shows **Choose master XLSX** beside the export buttons. Choose an approved CGC engineering workbook; a copy is saved in the Claude test app's isolated local data. Original source files are not overwritten.
+- **Uploaded Excel workbook:** If you uploaded an engineering workbook alongside the event report, select it to preserve its layout and existing staff rows. That source takes precedence when selected.
+- **Download week (fresh layout):** Available in Week view without a saved master; its layout is ShowPilot-generated rather than your published master. Use it for testing only.
+- **Saved is not the same as validated:** A saved XLSX still undergoes structural row, date and CGC-only checks when previewing or exporting. Incorrect source files can still be rejected.
+
+The **Rule review · Excel export validation** box is an optional Local AI second opinion. A model response that omits the required JSON opinion/checks is rejected without modifying any Excel entries. The Claude build displays the exact validation problem and offers **Retry AI review**. This is independent of the master-template status; Local AI never authorizes or blocks exports.
+
 ## Testing the experimental settings
 
 In **Event Schedule**, expand **Claude scheduling preferences (experimental)**. Start by comparing with default choices. You can turn off booking-close coverage to compare, or opt into a manager regular weekday line; manager-alone coverage remains disabled until explicitly enabled. Keep attendance threshold blank unless local staffing policy approves a number.
