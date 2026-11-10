@@ -53,8 +53,8 @@ export function SchedulePeopleEditor({value,onChange}:{value:ClaudeStaffingSetti
  const confirmRemoval=()=>{
   if(!removing||confirmText!=="REMOVE")return;
   // Preserve custom records so Restore is always possible.
-  update({excludedPeople:[...new Set([...value.excludedPeople,removing])],
-    dayOverrides:value.dayOverrides.filter(x=>x.name.toLowerCase()!==removing.toLowerCase())});
+  // Preserve approved manual instructions for a later Restore, too.
+  update({excludedPeople:[...new Set([...value.excludedPeople,removing])]});
   setRemoving(null);setConfirmText("");
   setFeedback("Removed from new schedules. Existing published workbook cells remain unchanged.");
  };
