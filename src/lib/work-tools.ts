@@ -507,7 +507,7 @@ export function weekLayouts(entries: EventEntry[], includeWeekStarts:readonly st
     const cgc = dates.map((d) => {
       const day = week.filter((e) => e.date === d);
       if (!day.length) return "DARK";
-      return `${formatMinutes(Math.min(...day.map((e) => e.start)))}-${formatMinutes(Math.max(...day.map((e) => e.end)))}`;
+      return `${formatMinutes(Math.min(...day.map((e) => e.bookingStart??e.start)))}-${formatMinutes(Math.max(...day.map((e) => e.bookingEnd??e.end)))}`;
     });
     const escalator = dates.map((d) => { const h = esc.get(d); return h ? escalatorLabel(h) : ""; });
     const serviceDesk = dates.map((d) => {
