@@ -23,7 +23,8 @@ import { LocalPlanningAssistant } from "@/components/showpilot-planning-assistan
 import { staffingPlanningContext } from "@/lib/showpilot-planning";
 import {ShowPilotEventsPanel} from "@/components/showpilot-events-panel";
 import {ShowPilotTodayPanel} from "@/components/showpilot-today-panel";
-import { rememberPostConShowsFromReportRows } from "@/lib/showpilot-postcon";
+import { rememberPostConShowsFromReportRows,loadDurableShowCatalog,loadPostConShows,type PostConShow } from "@/lib/showpilot-postcon";
+import {resolveScheduleEventNames} from "@/lib/showpilot-event-name-resolution";
 import { applyReview, emptyReviewDraft, fingerprintRows, parseDraft, parseReviewProject, storageKey, type ReviewDraft, type ReviewProject } from "@/lib/showpilot-review";
 
 const dayLabel = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
@@ -157,6 +158,7 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
     }).sort((a,b)=>a.date.localeCompare(b.date)||a.space.localeCompare(b.space));
   })();
   const [source, setSource] = useState<{ rows: EventRow[]; existing?: File; sources: number } | null>(null);
+  const verifiedShowCatalog=useRef<PostConShow[]>([]);
   const [withPending, setWithPending] = useState(false);
   const [pending, setPending] = useState<string[]>([]);
   const [venueReview, setVenueReview] = useState<string[]>([]);
@@ -195,10 +197,10 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
     // Never prebuild a differently formatted workbook during editing.
     // The user-provided Excel template is read only for preview or download.
     const approved=applyReview(proposals,notes,nextDraft);
-    const named=attachShowNames(approved.entries,originalRows);
-    setEntries(named);
+    const named=resolveScheduleEventNames(approved.entries,originalRows,verifiedShowCatalog.current);
+    setEntries(named.entries);
     setTasks(approved.tasks);
-    setShared(sharedSpaces(named));
+    setShared(sharedSpaces(named.entries));
   }
   async function build(src: { rows: EventRow[]; existing?: File; sources: number }, includePending: boolean, approved: string[] = [], overrideDraft?: ReviewDraft) {
     const nextDraft = draftFor(src.rows, overrideDraft);
@@ -216,7 +218,12 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
       shows:0,unnamedRows:0,storage:"none" as const,
       error:error instanceof Error?error.message:String(error)
     }));
-    const proposals = summarizeEvents(rows, true);
+    // Attach names by verified Event ID before the user ever sees the review
+    // and again after manual review. A previously imported workbook may have
+    // omitted its group heading while Events already has the linked show.
+    verifiedShowCatalog.current=await loadDurableShowCatalog().catch(()=>loadPostConShows());
+    const resolved=resolveScheduleEventNames(summarizeEvents(rows,true),src.rows,verifiedShowCatalog.current);
+    const proposals=resolved.entries;
     const dayList = [...new Set(live.map((r) => r.date))].sort();
     const statuses = new Map<string, number>();
     for (const r of src.rows) statuses.set(r.status ?? "(none)", (statuses.get(r.status ?? "(none)") ?? 0) + 1);
@@ -226,6 +233,8 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
       "unverified-space rows: " + scope.needsReview.length,
       "not-yet-definite: " + live.filter(isPendingRow).length + (includePending ? " (included)" : " (excluded)"),
       "rows used: " + rows.length, "entries suggested: " + proposals.length,
+      "show names restored by Event ID or catalog: " + resolved.restored,
+      "entries still needing show-name verification: " + resolved.unresolved,
       "dates: " + (dayList[0] ?? "-") + " to " + (dayList.at(-1) ?? "-"),
       "statuses: " + ([...statuses].map(([k,v]) => k + "=" + v).join(", ") || "-")].join("\n"));
     const notes = [...airwallTasks(rows).map(t=>detailedAirwallTask(t,rows)), ...taskSuggestions(rows)].sort((a, b) => a.date.localeCompare(b.date));
