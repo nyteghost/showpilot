@@ -10,11 +10,13 @@ export type StaffingPolicy={
  respectExistingOff?:boolean;
  managerRegularLine?:boolean;
  managerMayWorkAlone?:boolean;
+ preferredDaysOffByName?:Record<string,number[]>;
+ usualWeekdaysByName?:Record<string,number[]>;
  maxDays?:number;
 };
 export const DEFAULT_STAFFING_POLICY:Required<StaffingPolicy>={
  coverBookingClose:true, attendanceThreshold:null,
- respectExistingOff:true,managerRegularLine:false,managerMayWorkAlone:false,maxDays:5
+ respectExistingOff:true,managerRegularLine:false,managerMayWorkAlone:false,preferredDaysOffByName:{},usualWeekdaysByName:{},maxDays:5
 };
 const hours = (list: [number, number][]) => list.map(([a, b]) => ({ start: a * 60, end: b * 60 }));
 const EVENING = hours([[12, 20.5], [12.5, 21], [13, 21.5], [13.5, 22], [14, 22.5], [14.5, 23], [15, 23.5], [15.5, 24]]);
@@ -489,13 +491,20 @@ function topUpDesk(plans: DayPlan[], avail: Record<string, Record<string, Avail>
 /** Plans whole Mon-Sun weeks (so the five-day limit and days off are per week) and notes anyone without two days off in a row. */
 export function planWeeks(dates: string[], entries: EventEntry[], avail: Record<string, Record<string, Avail>> = {}, staff: Staff[] = SHOW_STAFF, holds: Hold[] = [],policy:StaffingPolicy=DEFAULT_STAFFING_POLICY): DayPlan[] {
   const mondays = [...new Set(dates.map((d) => { const t = new Date(`${d}T12:00:00Z`); t.setUTCDate(t.getUTCDate() - weekday(d)); return t.toISOString().slice(0, 10); }))].sort();
+  // A preference only influences selection; it never overrides a hard
+  // availability rule or forces a sixth workday.
+  const preferences=staff.map(s=>({
+   ...s,
+   preferredDaysOff:policy.preferredDaysOffByName?.[s.name]??s.preferredDaysOff,
+   preferredWeekdays:policy.usualWeekdaysByName?.[s.name]??s.preferredWeekdays
+  }));
   const out: DayPlan[] = [];
   for (const m of mondays) {
     const week = Array.from({ length: 7 }, (_, i) => { const t = new Date(`${m}T12:00:00Z`); t.setUTCDate(t.getUTCDate() + i); return t.toISOString().slice(0, 10); });
-    const team=policy.managerRegularLine&&!staff.some(s=>s.name===MARK_FLEX.name)
-      ?[...staff,{...MARK_FLEX,flexDays:undefined,baseline:{
+    const team=policy.managerRegularLine&&!preferences.some(s=>s.name===MARK_FLEX.name)
+      ?[...preferences,{...MARK_FLEX,flexDays:undefined,baseline:{
         weekdays:[0,1,2,3,4],pattern:{start:540,end:1080}
-       },notAlone:policy.managerMayWorkAlone!==true}]:staff;
+       },notAlone:policy.managerMayWorkAlone!==true}]:preferences;
     const plans = planWeek(week, entries, team, avail, ON_CALL, holds, policy);
     trimToFive(plans, team, avail,policy);
     topUp(plans, team, avail, entries,policy);
@@ -504,6 +513,8 @@ export function planWeeks(dates: string[], entries: EventEntry[], avail: Record<
       const on = plans.map((p) => p.assignments.some((a) => a.name === s.name));
       if (!on.some(Boolean)) continue;
       const pairOff = on.some((x, i) => !x && !on[(i + 1) % 7]); // Sunday + the following Monday count as a pair
+      for(const p of plans)if(p.assignments.some(a=>a.name===s.name)&&s.preferredDaysOff?.includes(weekday(p.date)))
+       p.notes.push(s.name+": preferred day off was overridden by coverage or hours needs; review the assignment.");
       if (!pairOff) plans[6]!.notes.push(`${s.name.split(" ")[0]} has no two days off in a row this week (coverage needed it).`);
     }
     out.push(...plans);
