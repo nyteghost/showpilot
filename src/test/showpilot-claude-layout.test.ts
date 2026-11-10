@@ -1,6 +1,6 @@
 import {describe,it,expect} from "vitest";
 import ExcelJS from "exceljs";
-import {isExactCgcEngineeringTemplate,findWeekDateRow} from "../lib/work-files";
+import {isExactCgcEngineeringTemplate,findWeekDateRow,eventsWorkbook} from "../lib/work-files";
 
 const labels=[
  "HALLS","HALL A","HALL B","HALL C","HALL D","TASKS","BALLROOM",
@@ -59,5 +59,25 @@ describe("Claude D17: week dates may be below a spacer row",()=>{
   for(let i=0;i<7;i++)ws.getRow(5).getCell(i+2).value=
    new Date(Date.UTC(2025,10,16+i));
   expect(findWeekDateRow(ws,4)).toBeNull();
+ });
+});
+
+describe("Claude CGC-only safety during template re-dating",()=>{
+ it("preserves a same-named Ballroom row below the separate-venue boundary",async()=>{
+  const ws=week(57);
+  for(let i=0;i<7;i++)ws.getRow(5).getCell(i+2).value=
+   new Date(Date.UTC(2026,10,16+i));
+  ws.getCell("B58").value="Old CGC Hall A event";
+  ws.getCell("A74").value="BallRoom A";
+  ws.getCell("B74").value="Other venue entry must remain unchanged";
+  const file=new File([new Uint8Array(await ws.workbook.xlsx.writeBuffer())],"template.xlsx");
+  const blob=await eventsWorkbook([],file,[],{
+   singleWeek:"2026-11-23",preserveTemplateLayout:true,retargetTemplateWeek:true
+  });
+  const output=new ExcelJS.Workbook();
+  await output.xlsx.load(Buffer.from(await blob.arrayBuffer()));
+  const sheet=output.getWorksheet("Week #1")!;
+  expect(sheet.getCell("B58").value).toBeNull();
+  expect(sheet.getCell("B74").value).toBe("Other venue entry must remain unchanged");
  });
 });
