@@ -599,12 +599,15 @@ function weekDates(monday:string):string[]{
  * Engineer shifts, PTO, titles, borders, fills, formulas and user data in the
  * original saved XLSX remain untouched. */
 function clearRetargetedEventGrid(ws:XSheet){
- const allowed=new Set([...HALL_ROWS,...BALLROOM_ROWS].map(s=>s.toLowerCase()));
+ const cgc=cgcTemplateRows(ws);
+ if(!cgc)throw new Error("Cannot retarget a sheet without verified CGC Hall/Ballroom sections.");
  const roots=new Set<string>();
- ws.eachRow((row,n)=>{
-  if(!allowed.has(String(row.getCell(1).value??"").trim().toLowerCase()))return;
-  for(let c=2;c<=8;c++)roots.add(ws.getCell(n,c).master.address);
- });
+ for(const label of [...HALL_ROWS,...BALLROOM_ROWS]){
+  const row=cgc.get(label.toLowerCase());
+  if(!row)throw new Error("Verified CGC room row missing: "+label);
+  for(let c=2;c<=8;c++)roots.add(ws.getCell(row,c).master.address);
+ }
+ // Never clear a same-named Ballroom in the lower CEPAC/other-venue block.
  for(const address of roots)ws.getCell(address).value=null;
 }
 
