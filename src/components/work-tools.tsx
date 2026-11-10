@@ -625,13 +625,15 @@ function ShiftsTab() {
   async function load(f: File, who = name) {
     setFile(f); setStatus("Reading…");
     try {
-      const { readScheduleWorkbook } = await import("@/lib/work-files");
-      const { shifts, people,unreadable,warnings } = await readScheduleWorkbook(f, who);
+      const isPdf=/\.pdf$/i.test(f.name)||f.type==="application/pdf";
+      const {shifts,people,unreadable,warnings}=isPdf
+       ? await (await import("@/lib/showpilot-shift-pdf")).readWeeklyShiftPdf(f,who)
+       : await (await import("@/lib/work-files")).readScheduleWorkbook(f,who);
       setShifts(withShiftIds(shifts));setUnreadable(unreadable);setShiftWarnings(warnings);
       setDetectedNames(people);
       setRemoved([]);setEditing(null);
       setStatus(shifts.length ? `${shifts.length} shifts for ${who}.` : `No shifts found for “${who}”. Names on sheet: ${people.slice(0,12).join(", ")}`);
-    } catch (e) { setStatus(`Could not read that workbook: ${(e as Error).message}`); }
+    } catch (e) { setStatus(`Could not read that schedule: ${(e as Error).message}`); }
   }
   const ics = () => import("@/lib/work-files").then((m) => m.downloadBlob(new Blob([buildIcs(usableShifts, title.trim() || "Mark Work")], { type: "text/calendar" }), "my-shifts.ics"));
   const [pasted, setPasted] = useState("");
@@ -652,7 +654,7 @@ function ShiftsTab() {
         <datalist id="showpilot-detected-shift-names">{detectedNames.map(person=><option key={person} value={person}/>)}</datalist>
         {file && <Button variant="outline" onClick={() => load(file)}>Re-read</Button>}
       </div>
-      <FilePick accept=".xlsx,.xls" label="Drop a monthly schedule workbook (.xlsx)" onFile={(f) => load(f)} />
+      <FilePick accept=".xlsx,.xls,.pdf" label="Drop monthly Excel or weekly text-layer PDF schedule" onFile={(f) => load(f)} />
       <details className="rounded-md border border-border p-3">
         <summary className="cursor-pointer text-sm text-muted-foreground">…or paste your rows from Excel</summary>
         <div className="mt-2 space-y-2">
