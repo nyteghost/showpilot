@@ -6,6 +6,7 @@ import type {PostConShow} from "./showpilot-postcon";
 function realShowName(raw:string|undefined):string{
  const name=(raw??"").replace(/\s+/g," ").trim();
  if(!name||isFunctionOnlyTitle(name)||
+   /^(?:program\s+start|registration\s+open|exhibitor\s+access|client\s+(?:arrival|check[ -]?in)|general\s+session|doors?\s+open|room\s+(?:setup|turn|flip)|rehearsals?|vendor\s+load[ -]?in)$/i.test(name)||
    /^(?:unknown|untitled|unassigned|event\s*#?\d+|no event|not available)$/i.test(name))return "";
  return name;
 }
