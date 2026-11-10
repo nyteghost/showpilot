@@ -1,5 +1,5 @@
 import type {AiProviderId} from "@/lib/showpilot-ai-providers";
-export type AiStatus = {available:boolean;providers:string[]};
+export type AiStatus = {available:boolean;providers:string[];needsReset?:boolean;message?:string};
 export type AiTaskContext = {
  date:string;
  dates:string[];
@@ -16,6 +16,7 @@ export type AiTaskContext = {
 export type AiRawResponse = {suggestions:unknown[]};
 export interface ShowPilotAiBridge {
  status():Promise<AiStatus>;
+ resetCorruptVault(confirmation:"RESET"):Promise<AiStatus>;
  saveKey(provider:AiProviderId,key:string):Promise<AiStatus>;
  removeKey(provider:AiProviderId):Promise<AiStatus>;
  suggestTasks(provider:AiProviderId,context:AiTaskContext):Promise<AiRawResponse>;
