@@ -244,32 +244,44 @@ const serialToIso = (n: number):string|null => {
 /** Reads every "Week #" sheet and returns the shifts in the named person's row. */
 export type UnreadableShift={sheet:string;date:string;raw:string};
 export async function readScheduleWorkbook(file: File, name = DEFAULT_SCHEDULE_NAME,weekOverrides:Record<string,string>={},aliases:readonly string[]=[]): Promise<{ shifts: Shift[]; people: string[]; unreadable:UnreadableShift[]; warnings:string[] }> {
-  const excel=await import("exceljs");
-  const ExcelJS=excel.default??excel;
-  const wb=new ExcelJS.Workbook();
-  await wb.xlsx.load(await file.arrayBuffer());
+  // ExcelJS is the primary XLSX reader. Keep the old .xls path until
+  // binary Excel support can be replaced with a tested compatible parser.
+  // Do not silently drop legacy .xls support, which existing users rely on.
+  const grids:{name:string;grid:unknown[][]}[]=[];
+  if(/\.xls$/i.test(file.name)){
+    const XLSX=await import("xlsx");
+    const legacy=XLSX.read(await file.arrayBuffer(),{type:"array"});
+    for(const name of legacy.SheetNames)if(/week/i.test(name))
+      grids.push({name,grid:XLSX.utils.sheet_to_json<unknown[]>(legacy.Sheets[name]!,{
+        header:1,raw:true,defval:""
+      })});
+  }else{
+    const excel=await import("exceljs");
+    const ExcelJS=excel.default??excel;
+    const wb=new ExcelJS.Workbook();
+    await wb.xlsx.load(await file.arrayBuffer());
+    for(const sheet of wb.worksheets){
+      if(!/week/i.test(sheet.name))continue;
+      const grid:unknown[][]=[];
+      const columns=Math.min(32,Math.max(8,sheet.columnCount));
+      for(let r=1;r<=sheet.rowCount;r++){
+        const row=sheet.getRow(r);
+        grid.push(Array.from({length:columns},(_,i)=>{
+          const cell=row.getCell(i+1),value=cell.value;
+          if(value&&typeof value==="object"&&"richText" in value)return cell.text;
+          return value??"";
+        }));
+      }
+      grids.push({name:sheet.name,grid});
+    }
+  }
   const shifts: Shift[] = [];
   const people = new Set<string>();
   const unreadable:UnreadableShift[]=[];
   const warnings:string[]=[];
   const target = name.trim().toLowerCase();
   const usedWeeks=new Map<string,string>();
-  for (const sheet of wb.worksheets) {
-    const sheetName=sheet.name;
-    if (!/week/i.test(sheetName)) continue;
-    // Read the seven weekday columns and nearby metadata directly from
-    // ExcelJS. Preserve numeric serials, Date values and formula results for
-    // the shared date-row verifier; do not stringify dates prematurely.
-    const grid:unknown[][]=[];
-    const columns=Math.min(32,Math.max(8,sheet.columnCount));
-    for(let r=1;r<=sheet.rowCount;r++){
-      const row=sheet.getRow(r);
-      grid.push(Array.from({length:columns},(_,i)=>{
-        const cell=row.getCell(i+1),value=cell.value;
-        if(value&&typeof value==="object"&&"richText" in value)return cell.text;
-        return value??"";
-      }));
-    }
+  for (const {name:sheetName,grid} of grids) {
     const dayRow = grid.findIndex((r) => String(r[1]).trim().toUpperCase() === "MON");
     if (dayRow < 0) continue;
     const found=scanWeekDateRow((row,col)=>grid[row]?.[col-1],dayRow);
