@@ -11,24 +11,35 @@ This is a **separate test branch** based on `beta`. It is not the production app
 
 The test package has an isolated `-claude` version suffix and uses a separate **ShowPilot-Claude-Test** Electron user-data directory. Beta/main SQLite, Native Memory and credentials are not loaded by this test build. Still keep your production backups and avoid live Google Calendar sync during testing. Experimental in-app updates are disabled; download subsequent claude builds from GitHub Actions.
 
-## Implemented experiments (as of this checkpoint)
-- Detect the actual ordered CGC Hall/Ballroom section at a moved row offset; keep other-venue rows excluded.
-- Scan up to five rows below MON for seven consecutive, weekday-aligned dates. Refuse the incorrect 1904 date implied by spacer numerals.
-- Import shift annotations `+` and `(TBD)`; tolerate typographic dashes, semicolons and compact clock times.
-- Show unreadable shift cells and date problems. Calendar export/sync excludes shifts outside 2–14 hours until individually confirmed.
-- Treat skipped access/rehearsal function rows as occupancy evidence for *the same event and room*, without separately declaring a show.
-- Render zero-length entries as `VERIFY marker`, not fictional time ranges.
-- Read event booking start/end and contracted attendance for review. For a tentative `MO?` entry, use the booking end when later than its function end; do not silently modify staffing coverage or apply an attendance threshold.
-- Count a regular 3:30p–11:59p closing shift as eight worked hours, while retaining its exact calendar clock time.
+## Current experimental features
 
-**Not yet implemented:** the full Claude staffing-pattern, manager/on-call defaults, holiday/OFF policy, dark-day assignments, full roster migration, PDF shift parser, every event hold/airwall/escalator recalibration, full template alias support, and the local agreement-number harness. These remain backlog items. No staffing policy defaults were changed without owner approval.
+This test branch builds on the original Claude scheduling fixes and adds:
+- **Event Schedule:** structural CGC row/date detection; booking-close coverage suggestions; operator-controlled manager regular line, manager-alone permission, preferred days off/usual weekdays and attendance threshold (no default threshold); seven-day staffing even with selected dark days; three-row OFF/PTO/Holiday interpretation.
+- **Room review:** possible same-event gap holds and activity-only room use are flagged **VERIFY**, never inserted into the export without a human review; zero-length markers aren't printed as misleading ranges.
+- **Engineering Excel:** approved-master selected-week export option; existing typed service-desk/escalator/CGC hours retained; booking-window proposal for CGC hours.
+- **My Shifts:** standard `.xlsx` imported with ExcelJS, historical `.xls` supported by a compatibility parser; text-layer weekly PDFs accepted with visible warnings; source-name aliases; optional manually corrected week-start if the dates are stale; implausible shifts remain excluded until confirmed.
+- **Safety and security:** recover a damaged encrypted cloud-AI vault without losing Settings; Google OAuth timeout cleanup and date-bounded calendar sync; pinned Bun lockfile in CI.
+
+**Still pending:** complete real-published-schedule agreement, fully private roster migration, exact airwall EOC parity, historical evening-pattern calibration, PDF scans that require OCR, sixth-day exception review flow, and broader application refactors/security hardening. Details are in [CLAUDE_AUDIT_BACKLOG.md](CLAUDE_AUDIT_BACKLOG.md).
+
+## Testing the experimental settings
+
+In **Event Schedule**, expand **Claude scheduling preferences (experimental)**. Start by comparing with default choices. You can turn off booking-close coverage to compare, or opt into a manager regular weekday line; manager-alone coverage remains disabled until explicitly enabled. Keep attendance threshold blank unless local staffing policy approves a number.
+
+In **My Shifts**, try both your copied `.xlsx` monthly schedule and a selectable-text weekly `.pdf`. For stale FROM/TO dates, use the explicit weekday override only after checking the actual Monday in the published schedule. Never send unreviewed or implausible shifts to live Google Calendar.
+
+To compare a **private local** event report and a folder of published weekly Excel files (developer environment with Bun), run:
+
+`bun scripts/claude-agreement.ts --report "/path/to/event-report.xlsx" --published "/path/to/published-xlsx-folder"`
+
+It prints aggregate counts only; source files stay on your computer. Its agreement metrics are experimental and need validation against known test weeks before being used as a scorecard.
 
 ## Test checklist
 - Use a historical workbook copy with one or more staff rows inserted above HALLS. Confirm the week export recognizes Hall A–D and Ballroom A–G.
 - Use a workbook copy with a blank or numeric row inserted between MON and actual dates. Confirm My Shifts reads the correct 2026 dates.
 - Verify unreadable/ambiguous shifts are visible, and suspicious durations require confirmation.
 - Compare a same-event day with rehearsals/access and a zero-length Doors Open function; look for sane, **reviewable** span and VERIFY label.
-- Inspect Event Schedule for source booking close and attendance data; check staff defaults remain unchanged.
+- Inspect booking-close coverage in Staffing Why; compare on/off settings, verify the source booking end, and do not approve staffing solely because the test planner generated it.
 - Confirm you can still launch your normal `beta` folder unchanged.
 
 Report any red CI run or discrepancy with the **check job error lines**, the tested branch version and a screenshot. Never upload real EOCs or employee details into the public GitHub issue.
