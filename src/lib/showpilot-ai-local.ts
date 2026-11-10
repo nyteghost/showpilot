@@ -1,4 +1,5 @@
 import {conciseChatAnswer,conciseChatReference} from "./showpilot-chat-format";
+import {selectShowPilotLocalModels} from "./showpilot-ai-models";
 import { taskContext, TASK_SYSTEM_PROMPT, validateTaskResponse, safeMemoryReferences, type AiTaskInput } from "./showpilot-ai-tasks";
 import { TASK_JSON_SCHEMA, isGrammarInitFailure, parseTaskJson } from "./showpilot-ai-json";
 import {PLANNING_JSON_SCHEMA,validatePlanningResponse,type PlanningKind,type PlanningContext} from "./showpilot-planning";
@@ -85,9 +86,7 @@ export function localModelButtonLabel(cache:LocalModelCacheStatus,working:boolea
 export async function localModelOptions() {
  const webllm=await import("@mlc-ai/web-llm");
  const models=webllm.prebuiltAppConfig.model_list.map(m=>m.model_id);
- const preferred=["Qwen2.5-1.5B-Instruct-q4f16_1-MLC","Llama-3.2-1B-Instruct-q4f16_1-MLC"];
- const short=models.filter(m=>/Qwen2.*0\.5B|Qwen2.*1\.5B|Llama-3\.2-1B|SmolLM.*1\.7B/i.test(m)&&/q4/i.test(m));
- return [...new Set([...preferred.filter(m=>models.includes(m)),...short])].slice(0,10);
+ return selectShowPilotLocalModels(models);
 }
 export async function loadLocalModel(model:string,onProgress:(message:string)=>void):Promise<void> {
  if(!localAiEnabled)throw new Error("Local AI is switched off. Turn it on in the header.");
