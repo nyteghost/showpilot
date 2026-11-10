@@ -120,6 +120,10 @@ async function latest(ch){
  }
  return null;
 }
+function isClaudeTestBuild(){return /-claude(?:\+.*)?$/.test(app.getVersion());}
+function refuseExperimentalUpdate(){
+ if(isClaudeTestBuild())throw new Error("This is an isolated Claude test build. Download newer test ZIPs from GitHub Actions instead of replacing it with beta/main.");
+}
 function setupUpdates(){
  ipcMain.handle("showpilot-update:status",()=>({channel:channel(),installedVersion:app.getVersion(),repository:"nyteghost/showpilot",platform:process.platform,artifactFormats:updateArtifacts(),lastUpdate:readUpdateResult(app.getPath("userData"),app.getVersion())}));
  ipcMain.handle("showpilot-update:copy-report",()=>{
@@ -157,6 +161,7 @@ function setupUpdates(){
  });
  ipcMain.handle("showpilot-update:channel",(_,value)=>({channel:setChannel(value)}));
  ipcMain.handle("showpilot-update:check",async()=>{
+   if(isClaudeTestBuild())return {channel:"claude",platform:process.platform,latest:null,upToDate:true,message:"Experimental Claude build. Get newer ZIPs from GitHub Actions (claude branch), not beta/main releases."};
    const ch=channel(),found=await latest(ch);
    const comparison=found?.version?semverCompare(found.version,app.getVersion()):null;
    const upToDate=comparison!==null?comparison<=0:!!found?.version&&found.version===app.getVersion();
@@ -168,6 +173,7 @@ function setupUpdates(){
      : "No completed ShowPilot "+ch+" package for "+(process.platform==="linux"?"Linux":process.platform==="win32"?"Windows":"this platform")+" is available yet."};
  });
  ipcMain.handle("showpilot-update:download",async(event)=>{
+   refuseExperimentalUpdate();
    if(process.platform!=="win32"||!app.isPackaged)
     throw new Error("Download to Downloads is available in the packaged Windows app.");
    const found=await latest(channel());
@@ -176,6 +182,7 @@ function setupUpdates(){
    return downloadWindowsReleaseToDownloads(event.sender,{...found.release,version:found.version},app.getVersion());
  });
  ipcMain.handle("showpilot-update:install",async(event)=>{
+   refuseExperimentalUpdate();
    if(process.platform!=="win32"||!app.isPackaged)
     throw new Error("Automatic installation is only available in the packaged Windows portable app.");
    const found=await latest(channel());
