@@ -1,5 +1,6 @@
 import {SHOW_STAFF,MARK_FLEX} from "@/lib/staffing";
 import type {ClaudeStaffingSettings} from "@/lib/showpilot-claude-settings";
+import {SchedulePeopleEditor} from "@/components/showpilot-schedule-people";
 const DAYS=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"] as const;
 export function ClaudeStaffingSettingsPanel({value,onChange}:{
  value:ClaudeStaffingSettings;onChange:(next:ClaudeStaffingSettings)=>void;
@@ -59,5 +60,6 @@ export function ClaudeStaffingSettingsPanel({value,onChange}:{
    </div>)}
   </div>
   <p className="mt-3 text-muted-foreground">A sixth day remains review-only; it is never added automatically. Confirm a new attendance threshold or solo-coverage permission against local staffing policy before relying on the resulting plan.</p>
+  <div className="mt-3"><SchedulePeopleEditor value={value} onChange={onChange}/></div>
  </details>;
 }
