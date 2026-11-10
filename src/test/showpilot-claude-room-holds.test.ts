@@ -1,5 +1,5 @@
 import {describe,it,expect} from "vitest";
-import {possibleRoomHolds,summarizeEvents,type EventRow} from "../lib/work-tools";
+import {possibleRoomHolds,possibleActivityOnlyOccupancy,summarizeEvents,type EventRow} from "../lib/work-tools";
 const line=(date:string,space:string,id:string,show:string):EventRow=>({
  date,space,eventId:id,event:show,level:2,description:"Main Session",usage:"Event (Evt)",
  start:"08:00 AM",end:"04:00 PM"
@@ -18,6 +18,14 @@ describe("Claude B8: possible room holds are review-only",()=>{
   // Source events are not silently rewritten or assigned an MI/hold.
   expect(summarizeEvents(rows).filter(e=>e.date==="2026-11-17").map(e=>e.space))
    .toEqual(["Hall A"]);
+ });
+ it("warns about an access-only room day without inventing S or MI",()=>{
+  const row={...line("2026-11-17","Hall D","77889","Fictional Lantern Expo"),
+    description:"Exhibitor Access",usage:"Event (Evt)"};
+  expect(possibleActivityOnlyOccupancy([row])).toEqual([expect.objectContaining({
+    date:"2026-11-17",space:"Hall D",reason:expect.stringContaining("VERIFY")
+  })]);
+  expect(summarizeEvents([row])).toEqual([]);
  });
  it("never suggests a lower other-venue space",()=>{
   const rows=[
