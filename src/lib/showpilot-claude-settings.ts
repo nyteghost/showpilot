@@ -12,7 +12,8 @@ export const ClaudeStaffingSettingsSchema=z.object({
  managerMayWorkAlone:z.boolean().default(false),
  attendanceThreshold:z.number().int().positive().max(1000000).nullable().default(null),
  preferredDaysOffByName:z.record(days).default({}),
- usualWeekdaysByName:z.record(days).default({})
+ usualWeekdaysByName:z.record(days).default({}),
+ aliasesByName:z.record(z.array(z.string().trim().min(1).max(100)).max(8)).default({})
 }).strict();
 export type ClaudeStaffingSettings=z.infer<typeof ClaudeStaffingSettingsSchema>;
 export const DEFAULT_CLAUDE_SETTINGS:ClaudeStaffingSettings=ClaudeStaffingSettingsSchema.parse({});
