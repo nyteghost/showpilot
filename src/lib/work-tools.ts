@@ -241,9 +241,10 @@ export function summarizeEvents(rows: EventRow[], preserveCombinedSpaces = false
 }
 
 export function entryLabel(e: EventEntry) {
+  // An arrival is intentionally a point-in-time event, not a zero-length error.
+  if (e.code === "Arr") return `Client Arr ${formatMinutes(e.start)}`;
   if(e.end<=e.start)return `${e.code} at ${formatMinutes(e.start)} (VERIFY marker)`;
   if (e.code === "MO?") return `MO? ${formatMinutes(e.start)}-${formatMinutes(e.end)}`;
-  if (e.code === "Arr") return `Client Arr ${formatMinutes(e.start)}`;
   return `${e.code} ${formatMinutes(e.start)}-${formatMinutes(e.end)}`;
 }
 
