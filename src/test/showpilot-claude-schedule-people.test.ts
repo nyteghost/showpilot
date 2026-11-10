@@ -73,7 +73,9 @@ describe("Schedule People: roster + reviewed daily changes",()=>{
   expect(labels).toContain(extra.name);
   expect(labels).not.toContain(SHOW_STAFF[0]!.name);
   expect(labels).toContain(MARK_FLEX.name);
-  const staffRow=labels.indexOf(extra.name)+1;
+  let staffRow=0;
+  sheet!.eachRow((row,index)=>{if(String(row.getCell(1).value??"")===extra.name)staffRow=index;});
+  expect(staffRow).toBeGreaterThan(0);
   expect(sheet!.getRow(staffRow).getCell(2).text).not.toBe("");
  });
 });
