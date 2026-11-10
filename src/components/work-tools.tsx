@@ -159,7 +159,7 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
       const result=await api.chooseTemplate();
       const saved=Boolean(result.template?.stored);
       setMasterTemplateState(saved?"saved":"missing");
-      if(saved)setPreviewKind("approved");
+      if(saved){setPreviewKind("approved");setExportStatus("Master XLSX saved locally. Preview or download to validate its CGC layout.");}
     }catch(error){
       setMasterTemplateState("error");
       setMasterTemplateError("Could not save master template: "+String(error));
