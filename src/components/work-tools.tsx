@@ -7,7 +7,7 @@ import {shiftRuleEvidence,calendarRuleEvidence,eventScheduleRuleEvidence,exportR
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { KeepAliveTabContent } from "@/components/showpilot-keep-alive-tab";
-import { buildIcs, DEFAULT_SCHEDULE_NAME, editShift, entryLabel, formatMinutes, googleCalendarLink, isIsoDate, minutesToTime, newShiftId, nextMondayIso, parsePastedShifts, shiftLabel, shiftNeedsReview, airwallTasks, isCancelledRow, isPendingRow, sharedSpaces, expandSpace, summarizeEvents, attachShowNames, taskSuggestions, timeToMinutes, withShiftIds, type EventEntry, type EventRow, type Shift, type TaskNote } from "@/lib/work-tools";
+import { buildIcs, DEFAULT_SCHEDULE_NAME, editShift, entryLabel, formatMinutes, googleCalendarLink, isIsoDate, minutesToTime, newShiftId, nextMondayIso, parsePastedShiftsWithReview, shiftLabel, shiftNeedsReview, airwallTasks, isCancelledRow, isPendingRow, sharedSpaces, expandSpace, summarizeEvents, attachShowNames, taskSuggestions, timeToMinutes, withShiftIds, type EventEntry, type EventRow, type Shift, type TaskNote } from "@/lib/work-tools";
 import { StandaloneVendors } from "@/components/showpilot-vendors";
 import { FloorMapPanel } from "@/components/floor-map-panel";
 import { scopeShowPilotRows } from "@/lib/showpilot-venue";
@@ -627,9 +627,11 @@ function ShiftsTab() {
   const [pasted, setPasted] = useState("");
   const [weekStart, setWeekStart] = useState(nextMondayIso);
   function readPasted() {
-    setUnreadable([]);setShiftWarnings([]);
-    const list = parsePastedShifts(pasted, weekStart, name);
-    setShifts(withShiftIds(list)); setRemoved([]); setEditing(null);
+    const result=parsePastedShiftsWithReview(pasted,weekStart,name);
+    const list=result.shifts;
+    setUnreadable(result.unreadable.map(x=>({...x,sheet:"Pasted schedule"})));
+    setShiftWarnings([]);
+    setShifts(withShiftIds(list));setRemoved([]);setEditing(null);
     setStatus(list.length ? `${list.length} shifts for ${name}.` : `No shifts found — make sure the first line starts with “${name}” and the times look like 9a-6p.`);
   }
   return (
