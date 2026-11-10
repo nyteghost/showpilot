@@ -1,5 +1,6 @@
 import {useEffect,useMemo,useRef,useState} from "react";
 import {BrainCircuit} from "lucide-react";
+import {Button} from "@/components/ui/button";
 import {getLocalAiRuntimeState,subscribeLocalAiRuntimeState,reviewRuleEvidenceLocally} from "@/lib/showpilot-ai-local";
 import {boundedEvidence,type RuleEvidence} from "@/lib/showpilot-rule-evidence";
 
@@ -52,6 +53,11 @@ export function ShowPilotRuleReview({evidence}:{evidence:RuleEvidence}){
   {runtime.status!=="ready"?<p className="mt-2 text-muted-foreground">Enable Local AI in the header for an independent review.</p>:
    <div className="mt-2 space-y-2" role="status">
     <p>{status||"Waiting for rule review…"}</p>
+    {status.startsWith("AI review unavailable:")&&
+     <Button size="sm" variant="outline" onClick={()=>{
+      previous.current="";setResult(null);setStatus("Retrying Local AI review…");
+      setFeedbackRevision(value=>value+1);
+     }}>Retry AI review</Button>}
     {result&&<>
      <p><strong>AI opinion:</strong> {result.opinion}</p>
      {result.checks.length>0&&<div><strong>Check before acting:</strong>
