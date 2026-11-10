@@ -347,9 +347,9 @@ const isOffDay = (m: Staff, date: string, entries: EventEntry[]) => {
   return !!m.offWeekdays?.includes(weekday(date)) && !(powerDay && m.powerDays?.includes(weekday(date)));
 };
 const combos = <T,>(list: T[], k: number): T[][] => (k <= 0 ? [[]] : list.flatMap((x, i) => combos(list.slice(i + 1), k - 1).map((rest) => [x, ...rest])));
-const coverOf = (p: DayPlan) => effCover(p.assignments);
-const gapsOf = (p: DayPlan): DayPlan["gaps"] => {
-  const cover = coverOf(p), out: DayPlan["gaps"] = [];
+const coverOf = (p: DayPlan,policy:StaffingPolicy={}) => effCover(p.assignments,policy);
+const gapsOf = (p: DayPlan,policy:StaffingPolicy={}): DayPlan["gaps"] => {
+  const cover = coverOf(p,policy), out: DayPlan["gaps"] = [];
   for (let i = 0; i < SLOTS; i++) {
     const short = Math.max(0, p.need[i]! - cover[i]!);
     if (!short) continue;
@@ -363,20 +363,20 @@ const gapsOf = (p: DayPlan): DayPlan["gaps"] => {
  * Nobody works more than 5 days a week (paid leave counts as a day). If coverage or a power-heavy show pushed someone past 5, a day that
  * can go without leaving a new gap is released, keeping two days off together where possible.
  */
-function trimToFive(plans: DayPlan[], staff: Staff[], avail: Record<string, Record<string, Avail>>) {
+function trimToFive(plans: DayPlan[], staff: Staff[], avail: Record<string, Record<string, Avail>>,policy:StaffingPolicy={}) {
   for (const s of staff) {
     for (;;) {
       const leave = plans.map((p) => !!avail[s.name]?.[p.date]?.off);
       const on = plans.map((p) => p.assignments.some((a) => a.name === s.name));
       if (on.filter(Boolean).length + leave.filter(Boolean).length <= MAX_DAYS) break;
-      const short = (p: DayPlan, without: boolean) => { const c = effCover(p.assignments.filter((a) => !(without && a.name === s.name))); return p.need.reduce((t, n, i) => t + Math.max(0, n - c[i]!), 0); };
+      const short = (p: DayPlan, without: boolean) => { const c = effCover(p.assignments.filter((a) => !(without && a.name === s.name)),policy); return p.need.reduce((t, n, i) => t + Math.max(0, n - c[i]!), 0); };
       let best: { i: number; score: number } | null = null;
       plans.forEach((p, i) => {
         if (!on[i] || p.assignments.some((a) => a.name === s.name && a.fixed)) return;
         if (short(p, true) > short(p, false)) return; // would open a gap
         const busy = plans.map((_, j) => (j !== i && (on[j] || leave[j])));
         const pair = busy.some((b, j) => !b && !busy[(j + 1) % 7]);
-        const score = (pair ? 0 : 50) + plans[i]!.need.filter((n) => n > 0).length / 20 + (s.baseline && !s.baseline.weekdays.includes(weekday(p.date)) ? 20 : 0);
+        const score = (pair ? 0 : 50) + plans[i]!.need.filter((n) => n > 0).length / 20 + (s.baseline && !s.baseline.weekdays.includes(weekday(p.date)) ? 20 : 0) + (s.preferredWeekdays?.includes(weekday(p.date))?30:0) - (s.preferredDaysOff?.includes(weekday(p.date))?30:0);
         if (!best || score < best.score) best = { i, score };
       });
       if (!best) { plans[6]!.notes.push(`${s.name.split(" ")[0]} works more than ${MAX_DAYS} days this week: every one of those days is needed for coverage.`); break; }
@@ -391,7 +391,7 @@ function trimToFive(plans: DayPlan[], staff: Staff[], avail: Record<string, Reco
  * Everyone needs 40 hours a week, show or no show. After coverage is planned, anyone under 40 (paid leave and holidays count as 8)
  * gets extra shifts on their usual days, keeping two days off in a row and avoiding the days they are normally off.
  */
-function topUp(plans: DayPlan[], staff: Staff[], avail: Record<string, Record<string, Avail>>, entries: EventEntry[]) {
+function topUp(plans: DayPlan[], staff: Staff[], avail: Record<string, Record<string, Avail>>, entries: EventEntry[],policy:StaffingPolicy={}) {
   for (const s of staff) {
     const mine = (p: DayPlan) => p.assignments.filter((a) => a.name === s.name).reduce((t, a) => t + workedHours(a), 0);
     const leave = plans.map((p) => (avail[s.name]?.[p.date]?.off ? 8 : 0));
@@ -400,7 +400,7 @@ function topUp(plans: DayPlan[], staff: Staff[], avail: Record<string, Record<st
     if (total >= WEEK_HOURS) continue;
     const cand = plans.map((p, i) => i).filter((i) => {
       const wd = weekday(plans[i]!.date);
-      return have[i] === 0 && !avail[s.name]?.[plans[i]!.date]?.off && !isOffDay(s, plans[i]!.date, entries) && (!s.baseline || s.baseline.weekdays.includes(wd) || !!s.lastResort?.includes(wd)) && (!s.notAlone || (s.patterns ?? PATTERNS).some((pat) => !leavesAlone(plans[i]!, pat)));
+      return have[i] === 0 && !avail[s.name]?.[plans[i]!.date]?.off && !isOffDay(s, plans[i]!.date, entries) && (!s.baseline || s.baseline.weekdays.includes(wd) || !!s.lastResort?.includes(wd)) && (!s.notAlone || (s.patterns ?? PATTERNS).some((pat) => !leavesAlone(plans[i]!, pat,policy)));
     });
     const k = Math.min(cand.length, Math.ceil((WEEK_HOURS - total) / 8));
     if (k <= 0) continue;
@@ -413,6 +413,8 @@ function topUp(plans: DayPlan[], staff: Staff[], avail: Record<string, Record<st
       for (const i of pick) {
         const wd = weekday(plans[i]!.date);
         if (s.lastResort?.includes(wd)) score += 100;
+        if(s.preferredDaysOff?.includes(wd))score+=60;
+        if(s.preferredWeekdays?.includes(wd))score-=10;
         if ((i > 0 && have[i - 1]! > 0) || (i < 6 && have[i + 1]! > 0)) score -= 2; // keeps work days together
         score -= plans[i]!.need.filter((n) => n > 0).length / 20; // lean toward the busier days
       }
@@ -422,11 +424,11 @@ function topUp(plans: DayPlan[], staff: Staff[], avail: Record<string, Record<st
     let running = total;
     for (const i of best.pick.sort((a, b) => a - b)) {
       const p = plans[i]!;
-      const cover = coverOf(p);
+      const cover = coverOf(p,policy);
       const pats = s.patterns ?? PATTERNS;
       let choice = pats[0]!, top = -1, waste = Infinity;
       for (const pat of pats) {
-        if (s.notAlone && leavesAlone(p, pat)) continue;
+        if (s.notAlone && leavesAlone(p, pat,policy)) continue;
         let gain = 0;
         for (let j = 0; j < SLOTS; j++) if (p.need[j]! > cover[j]! && pat.start < (j + 1) * 30 && pat.end > j * 30) gain++;
         const w = (pat.end - pat.start) / 30 - gain;
@@ -436,7 +438,7 @@ function topUp(plans: DayPlan[], staff: Staff[], avail: Record<string, Record<st
       p.assignments.push({ name: s.name, start: choice.start, end: choice.end, fixed: false, reason: `Hours top-up: nothing more was needed for coverage ${top > 0 ? "(this also closes part of a gap)" : "this day"}, but everyone needs ${WEEK_HOURS} hours a week. ${s.name.split(" ")[0]} had ${total} hours (paid leave counts as 8), so this ${shiftText(choice)} shift brings the week to ${Math.min(running, WEEK_HOURS + 8)}. Picked ${weekdayName(p.date)} so the days off stay together${s.lastResort?.includes(weekday(p.date)) ? ", though it is normally a day off for them" : ""}.` });
       p.assignments.sort((a, b) => a.start - b.start);
       p.notUsed = p.notUsed.filter((n) => n.name !== s.name);
-      p.gaps = gapsOf(p);
+      p.gaps = gapsOf(p,policy);
       p.notes = p.notes.filter((n) => !n.startsWith("Short-staffed"));
       if (p.gaps.length) p.notes.push(`Short-staffed ${p.gaps.map((g) => `${shiftText(g)} (${g.short} more)`).join(", ")}: nobody left who can legally or sensibly cover it.`);
     }
@@ -444,7 +446,7 @@ function topUp(plans: DayPlan[], staff: Staff[], avail: Record<string, Record<st
   }
 }
 /** True when this shift would leave someone who must not work alone on by themselves during a show. */
-const leavesAlone = (p: DayPlan, pat: { start: number; end: number }) => { const o = othersAt(p.assignments); for (let j = 0; j < SLOTS; j++) if (p.need[j]! > 0 && o[j] === 0 && pat.start < (j + 1) * 30 && pat.end > j * 30) return true; return false; };
+const leavesAlone = (p: DayPlan, pat: { start: number; end: number },policy:StaffingPolicy={}) => { const o = othersAt(p.assignments,policy); for (let j = 0; j < SLOTS; j++) if (p.need[j]! > 0 && o[j] === 0 && pat.start < (j + 1) * 30 && pat.end > j * 30) return true; return false; };
 const weekdayName = (d: string) => ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][weekday(d)]!;
 
 /**
@@ -490,11 +492,15 @@ export function planWeeks(dates: string[], entries: EventEntry[], avail: Record<
   const out: DayPlan[] = [];
   for (const m of mondays) {
     const week = Array.from({ length: 7 }, (_, i) => { const t = new Date(`${m}T12:00:00Z`); t.setUTCDate(t.getUTCDate() + i); return t.toISOString().slice(0, 10); });
-    const plans = planWeek(week, entries, staff, avail, ON_CALL, holds, policy);
-    trimToFive(plans, staff, avail);
-    topUp(plans, staff, avail, entries);
+    const team=policy.managerRegularLine&&!staff.some(s=>s.name===MARK_FLEX.name)
+      ?[...staff,{...MARK_FLEX,flexDays:undefined,baseline:{
+        weekdays:[0,1,2,3,4],pattern:{start:540,end:1080}
+       },notAlone:policy.managerMayWorkAlone!==true}]:staff;
+    const plans = planWeek(week, entries, team, avail, ON_CALL, holds, policy);
+    trimToFive(plans, team, avail,policy);
+    topUp(plans, team, avail, entries,policy);
     topUpDesk(plans, avail);
-    for (const s of staff) {
+    for (const s of team) {
       const on = plans.map((p) => p.assignments.some((a) => a.name === s.name));
       if (!on.some(Boolean)) continue;
       const pairOff = on.some((x, i) => !x && !on[(i + 1) % 7]); // Sunday + the following Monday count as a pair
