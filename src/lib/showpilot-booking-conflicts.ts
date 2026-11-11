@@ -28,6 +28,9 @@ const nextDay=(iso:string,days:number)=>{
 export function overlappingRoomBookings(entries:readonly EventEntry[]):RoomBookingOverlap[]{
  const byDayAndRoom=new Map<string,RoomInterval[]>();
  for(const entry of entries){
+  // MO? is an automatically inferred, unverified move-out window, not a
+  // confirmed reservation. It must never create a definite conflict alert.
+  if(entry.code==="MO?")continue;
   if(!/^\d{4}-\d{2}-\d{2}$/.test(entry.date) ||
    Number.isNaN(Date.parse(entry.date+"T00:00:00Z")) ||
    !Number.isFinite(entry.start)||!Number.isFinite(entry.end)||
