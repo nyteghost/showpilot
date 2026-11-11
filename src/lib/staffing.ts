@@ -154,6 +154,15 @@ const range = (slots: number[]) => {
 };
 
 /** Fills each day's needs from the staff, keeping fixed shifts and days off, 5 working days each. */
+/** A CGC weekend without actual scheduled CGC events is unavailable for
+ * automatically generated engineering shifts, even to meet weekly hours.
+ * Existing source-master fixed shifts remain authoritative and are flagged. */
+export function isEventFreeCgcWeekend(date: string, entries: readonly EventEntry[]): boolean {
+  const wd=weekday(date);
+  return (wd===5||wd===6) && !entries.some(e=>e.date===date &&
+    !/cepac|cobb energy|performing arts/i.test(e.space));
+}
+
 export function planWeek(
   dates: string[], entries: EventEntry[], staff: Staff[] = SHOW_STAFF, avail: Record<string, Record<string, Avail>> = {}, onCall: Staff | null = ON_CALL, holds: Hold[] = [], policy:StaffingPolicy=DEFAULT_STAFFING_POLICY,
 ): DayPlan[] {
@@ -168,6 +177,29 @@ export function planWeek(
   for (const s of staff) for (const d of dates) if (avail[s.name]?.[d]?.fixed || avail[s.name]?.[d]?.off) worked.set(s.name, worked.get(s.name)! + 1); // paid leave counts as one of the 5 days
   const plans: DayPlan[] = [];
   for (const date of dates) {
+    if(isEventFreeCgcWeekend(date,entries)){
+      // A quiet weekend is not a staffing top-up or airwall-work day.
+      // Keep fixed shifts from the uploaded master or an explicit override,
+      // but do not silently modify the source workbook to enforce this rule.
+      const assignments:DayPlan["assignments"]=[];
+      for(const person of staff){
+        const shift=avail[person.name]?.[date]?.fixed;
+        if(!shift)continue;
+        assignments.push({name:person.name,start:shift.start,end:shift.end,fixed:true,
+          reason:"Existing fixed shift retained; no CGC events this weekend. Verify with operator."});
+        days.get(person.name)?.add(date);
+      }
+      const notes=["No CGC events scheduled this weekend; no engineering shifts generated."];
+      if(assignments.length)notes.push("REVIEW: "+assignments.map(a=>a.name).join(", ")+
+        " already have fixed weekend shifts. These were preserved, not automatically removed.");
+      if(holds.some(h=>h.date===date))notes.push("REVIEW: Task/airwall hold falls on an event-free weekend; no automatic engineering coverage assigned.");
+      const notUsed:DayPlan["notUsed"]=[...staff,...(onCall?[onCall]:[])].filter(person=>
+        !assignments.some(a=>a.name===person.name)).map(person=>({name:person.name,
+          why:avail[person.name]?.[date]?.off?"Marked off in the workbook.":"No CGC events on this weekend; no shift needed."}));
+      plans.push({date,need:new Array<number>(SLOTS).fill(0),desk:null,
+        assignments:assignments.sort((a,b)=>a.start-b.start),notUsed,notes,gaps:[]});
+      continue;
+    }
     const need = dayNeed(entries, date, policy);
     for (const h of holds) if (h.date === date) for (let i = 0; i < SLOTS; i++) if (h.start < (i + 1) * 30 && h.end > i * 30) need[i] = Math.max(need[i]!, h.n);
     const day = entries.filter((e) => e.date === date && e.code !== "MO?");
@@ -430,10 +462,16 @@ function topUp(plans: DayPlan[], staff: Staff[], avail: Record<string, Record<st
     if (total >= WEEK_HOURS) continue;
     const cand = plans.map((p, i) => i).filter((i) => {
       const wd = weekday(plans[i]!.date);
-      return have[i] === 0 && !avail[s.name]?.[plans[i]!.date]?.off && !isOffDay(s, plans[i]!.date, entries) && (!s.baseline || s.baseline.weekdays.includes(wd) || !!s.lastResort?.includes(wd)) && (!s.notAlone || (s.patterns ?? PATTERNS).some((pat) => !leavesAlone(plans[i]!, pat,policy)));
+      return have[i] === 0 && !isEventFreeCgcWeekend(plans[i]!.date,entries) &&
+        !avail[s.name]?.[plans[i]!.date]?.off && !isOffDay(s, plans[i]!.date, entries) && (!s.baseline || s.baseline.weekdays.includes(wd) || !!s.lastResort?.includes(wd)) && (!s.notAlone || (s.patterns ?? PATTERNS).some((pat) => !leavesAlone(plans[i]!, pat,policy)));
     });
     const k = Math.min(cand.length, Math.ceil((WEEK_HOURS - total) / 8));
-    if (k <= 0) continue;
+    if (k <= 0){
+      // A 40-hour target must not reopen a quiet weekend.
+      if(total<WEEK_HOURS)plans[6]?.notes.push(s.name.split(" ")[0]+" only reaches "+total+
+        " hours this week; no allowed day remained. Event-free CGC weekends stay OFF.");
+      continue;
+    }
     let best: { pick: number[]; score: number } | null = null;
     for (const pick of weekdayCombinations(cand, k)) {
       const busy = plans.map((_, i) => have[i]! > 0 || pick.includes(i));
