@@ -184,9 +184,9 @@ export async function readEventSheet(file: File): Promise<EventRow[] | null> {
     }
     const raw=text(value),named=eventScheduleDate(raw);
     if(named)return named;
-    const iso=raw.match(/^(\\d{4})-(\\d{1,2})-(\\d{1,2})$/);
+    const iso=raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
     if(iso)return validIso(Number(iso[1]),Number(iso[2]),Number(iso[3]));
-    const us=raw.match(/^(\\d{1,2})\\/(\\d{1,2})\\/(\\d{2}|\\d{4})$/);
+    const us=raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/);
     if(us){
       const year=Number(us[3]);
       return validIso(year<100?2000+year:year,Number(us[1]),Number(us[2]));
@@ -205,14 +205,16 @@ export async function readEventSheet(file: File): Promise<EventRow[] | null> {
   let day="",eventName="",parentAttendance=0;
   ws.eachRow((row,n)=>{
     if(n<=headerRow+1)return;
+    const start=clock(row.getCell(cStart).value);
     const left=[1,2,3].map(c=>text(row.getCell(c).value)).filter(Boolean);
     const parsed=left.map(eventScheduleDate).find(Boolean)??"";
-    if(parsed){day=parsed;eventName="";parentAttendance=0;return;}
+    // A weekday in Start Date - Event belongs to the same activity row;
+    // only a standalone date line should end processing for that row.
+    if(parsed&&!start){day=parsed;eventName="";parentAttendance=0;return;}
     // In a flat report this is the authority for the function's day, not
     // whichever grouped heading happened to appear earlier in the workbook.
     const rowDate=cDate?readDate(row.getCell(cDate).value):"";
     if(rowDate)day=rowDate;
-    const start=clock(row.getCell(cStart).value);
     if(!start) {
       // A group title is generally in A or B; its attendance summary is at
       // the far right. Wrapped text inside Description is not a group title.
