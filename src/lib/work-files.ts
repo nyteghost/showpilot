@@ -603,8 +603,8 @@ function writeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans
       cell.alignment={vertical:"middle",horizontal:"center",wrapText:true};
     }
   }
-  // Section headers use the established CGC convention: green halls and
-  // pale-salmon ballrooms; no CEPAC block is created.
+  // Match the original November Week #3: black HALLS/BALLROOM headers
+  // with white text, peach Tasks rows; no CEPAC block is generated.
   for(let i=9+ENGINEER_ROSTER.length*3;i<r;i++){
     const name=String(ws.getRow(i).getCell(1).value??"").trim().toUpperCase();
     if(name==="CGC ESCALATOR AND SD")band(i,"FF000000");
