@@ -580,7 +580,10 @@ export function possibleActivityOnlyOccupancy(rows:readonly EventRow[]):Possible
 }
 
 // ---------- task suggestions ----------
-export type TaskNote = { date: string; section: "HALLS" | "BALLROOM"; text: string };
+export type TaskNote = { date: string; section: "HALLS" | "BALLROOM"; text: string;
+  /** Verified imported booking identity for the task-suggestion UI. */
+  showName?: string; eventId?: string;
+};
 
 /** Stage builds and room turns found in the report, ready for the Tasks rows. The user's own text is never overwritten. */
 export function taskSuggestions(rows: EventRow[]): TaskNote[] {
@@ -599,7 +602,12 @@ export function taskSuggestions(rows: EventRow[]): TaskNote[] {
     const where = section === "HALLS" ? `Hall ${room}` : `BR ${room}`;
     const clean = d.replace(/\s+/g, " ").trim();
     const text = `${turn ? (/^room/i.test(clean) ? "" : "Room turn: ") : "Stage: "}${clean} (${where} ${formatMinutes(parseReportTime(row.start))})`;
-    out.set(JSON.stringify([row.date, section, text]), { date: row.date, section, text });
+    const showName=row.event?.trim()&&!isFunctionOnlyTitle(row.event)?row.event.trim():"";
+    // Different Event IDs may request the same room work on the same day.
+    out.set(JSON.stringify([row.date, section, text, row.eventId??showName]), {
+      date: row.date, section, text,
+      ...(showName?{showName}:{}), ...(row.eventId?{eventId:row.eventId}:{})
+    });
   }
   return [...out.values()].sort((a, b) => a.date.localeCompare(b.date) || a.text.localeCompare(b.text));
 }
@@ -693,6 +701,16 @@ export function detailedAirwallTask(task:TaskNote,rows:readonly EventRow[]):Task
  if(!relevant.length)return task;
  const targetDay=relevant[0]!.date;
  const sameDate=relevant.filter(r=>r.date===targetDay);
+ // A wall move can serve multiple bookings. Name the event only when its
+ // identity is unique; never randomly attribute a shared wall to one show.
+ const identities=new Map<string,{showName:string;eventId?:string}>();
+ for(const row of sameDate){
+  const name=row.event?.trim()??"";
+  if(!name||isFunctionOnlyTitle(name))continue;
+  const key=row.eventId?.trim()||"name:"+name.toLowerCase();
+  identities.set(key,{showName:name,...(row.eventId?{eventId:row.eventId}:{})});
+ }
+ const related=identities.size===1?[...identities.values()][0]:undefined;
  const first=Math.min(...sameDate.map(r=>parseReportTime(r.start)));
  const period=first>=720?"PM":"AM";
  const shapes=[...new Set(sameDate.map(r=>letters(r.space??"")?.group).filter((x):x is string=>!!x))];
@@ -702,7 +720,8 @@ export function detailedAirwallTask(task:TaskNote,rows:readonly EventRow[]):Task
  const full=[...shapes,...unknown.map(x=>x+"?")].join("/");
  const clean=task.text.replace(/^(?:(?:AM|PM):\s*)?/i,"");
  return {...task,text:period+": "+clean+" (resulting "+(task.section==="HALLS"?"hall":"ballroom")+
-  " sections "+full+"; VERIFY EOC before moving walls)"};
+  " sections "+full+"; VERIFY EOC before moving walls)",
+  ...(related??{})};
 }
 
 /** Rooms with more than one event on the same day, so the person can see when shows share space. */
