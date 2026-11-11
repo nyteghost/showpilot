@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { airwallMinutes, planWeek, planWeeks, dayNeed, shiftText, workedHours, SHOW_STAFF, WEEK_HOURS } from "@/lib/staffing";
+import { airwallMinutes, planWeek, planWeeks, dayNeed, shiftText, workedHours, SHOW_STAFF, WEEK_HOURS, isEventFreeCgcWeekend } from "@/lib/staffing";
 import type { EventEntry } from "@/lib/work-tools";
 
 const e = (date: string, space: string, start: number, end: number, title = "Show", eventId = "1"): EventEntry =>
@@ -69,9 +69,18 @@ describe("staffing", () => {
 
   const weekHours = (plans: ReturnType<typeof planWeeks>, name: string, avail: Record<string, Record<string, { off: boolean }>> = {}) =>
     plans.reduce((t, p) => t + (p.assignments.filter((a) => a.name === name).reduce((x, a) => x + workedHours(a), 0)) + (avail[name]?.[p.date]?.off ? 8 : 0), 0);
-  it("gives everyone 40 hours in a week with no shows at all", () => {
+  it("does not put engineers on quiet weekends just to reach 40 hours", () => {
     const plans = planWeeks(dates, []);
-    for (const s of SHOW_STAFF) expect(weekHours(plans, s.name)).toBe(WEEK_HOURS);
+    for(const date of ["2026-11-14","2026-11-15"]){
+      const day=plans.find(p=>p.date===date)!;
+      expect(day.assignments).toHaveLength(0);
+      expect(day.desk).toBeNull();
+      expect(day.need.every(x=>x===0)).toBe(true);
+      expect(day.notes.join(" ")).toMatch(/No CGC events/);
+    }
+    // Some staff normally work weekends; the no-event rule has precedence
+    // over the 40-hour target. Underfilled weeks must be reported, not patched.
+    expect(SHOW_STAFF.some(staff=>weekHours(plans,staff.name)<WEEK_HOURS)).toBe(true);
     const desk = plans.reduce((t, p) => t + (p.desk ? workedHours(p.desk) : 0), 0);
     expect(desk).toBe(WEEK_HOURS);
   });
@@ -108,8 +117,10 @@ describe("staffing", () => {
   it("keeps Madjid to 5 days even when a power-heavy show brings him in on Tuesday", () => {
     const plans = planWeeks(dates, [e("2026-11-10", "Hall A", 480, 1000, "Gordon Food Service Show")]);
     expect(plans[1]!.assignments.some((a) => a.name.startsWith("Madjid"))).toBe(true);
-    expect(plans.filter((p) => p.assignments.some((a) => a.name.startsWith("Madjid"))).length).toBe(5);
-    expect(weekHours(plans, "Madjid Lakhdari")).toBe(WEEK_HOURS);
+    expect(plans.filter((p) => p.assignments.some((a) => a.name.startsWith("Madjid"))).length).toBeLessThanOrEqual(5);
+    expect(weekHours(plans,"Madjid Lakhdari")).toBeLessThanOrEqual(WEEK_HOURS);
+    expect(plans[5]!.assignments).toHaveLength(0);
+    expect(plans[6]!.assignments).toHaveLength(0);
   });
   it("never has anyone past 5 days across ordinary weeks", () => {
     const plans = planWeeks(dates, [e("2026-11-10", "Hall A", 480, 1000), e("2026-11-10", "Hall B", 480, 1000), e("2026-11-14", "Hall A", 480, 1300)]);
@@ -129,4 +140,46 @@ describe("staffing", () => {
     const p = planWeek(["2026-11-14"], [e("2026-11-14", "Hall A", 480, 1260), e("2026-11-14", "Hall B", 480, 1260)])[0]!;
     expect(p.assignments.some((a) => a.name.startsWith("Franck"))).toBe(true);
   });
+});
+
+describe("CGC-only: no engineering shifts on an event-free weekend",()=>{
+ it("excludes separate-venue events and does not treat task holds as an event",()=>{
+  expect(isEventFreeCgcWeekend("2026-11-14",[
+    e("2026-11-14","CEPAC Stage",480,1080)
+  ])).toBe(true);
+  const plans=planWeeks(dates,[],{},SHOW_STAFF,
+    [{date:"2026-11-14",start:480,end:600,n:2,text:"Make Hall AB"}]);
+  const saturday=plans.find(p=>p.date==="2026-11-14")!;
+  expect(saturday.assignments).toHaveLength(0);
+  expect(saturday.need.every(n=>n===0)).toBe(true);
+  expect(saturday.notes.join(" ")).toMatch(/hold.*weekend/i);
+ });
+ it("schedules Saturday when there is a CGC show, but keeps a quiet Sunday empty",()=>{
+  const day=e("2026-11-14","Hall A",480,1080);
+  const plans=planWeeks(dates,[day]);
+  expect(isEventFreeCgcWeekend("2026-11-14",[day])).toBe(false);
+  expect(plans[5]!.assignments.length).toBeGreaterThan(0);
+  expect(plans[6]!.assignments).toHaveLength(0);
+  expect(plans[6]!.desk).toBeNull();
+ });
+ it("keeps explicitly recorded weekend shifts and warns instead of silently deleting them",()=>{
+  const availability={
+   "Madjid Lakhdari":{"2026-11-15":{off:false,fixed:{start:360,end:870}}}
+  };
+  const plans=planWeeks(dates,[],availability);
+  const sunday=plans.find(p=>p.date==="2026-11-15")!;
+  expect(sunday.assignments).toMatchObject([{
+   name:"Madjid Lakhdari",fixed:true,start:360,end:870
+  }]);
+  expect(sunday.notes.join(" ")).toMatch(/REVIEW.*fixed weekend shifts/);
+  expect(sunday.assignments.every(a=>a.fixed)).toBe(true);
+ });
+ it("applies the empty-weekend rule in standalone day planning too",()=>{
+  for(const date of ["2026-11-14","2026-11-15"]){
+    const result=planWeek([date],[]);
+    expect(result).toHaveLength(1);
+    expect(result[0]!.assignments).toHaveLength(0);
+    expect(result[0]!.desk).toBeNull();
+  }
+ });
 });
