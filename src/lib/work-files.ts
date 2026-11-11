@@ -164,6 +164,35 @@ export async function readEventSheet(file: File): Promise<EventRow[] | null> {
   if(headerRow<0)return null;
   const header=firstRows[headerRow]!;
   const col=(name:string)=>header.findIndex(v=>v.toLowerCase()===name.toLowerCase())+1;
+  // Flat Event Schedule exports put the date on every function line. Older
+  // grouped exports instead have standalone weekday headings and no date column.
+  const cDate=col("Start Date")||col("Start Date - Event");
+  const validIso=(year:number,month:number,day:number):string=>{
+    const date=new Date(Date.UTC(year,month-1,day));
+    if(date.getUTCFullYear()!==year||date.getUTCMonth()+1!==month||date.getUTCDate()!==day)return "";
+    return year+"-"+String(month).padStart(2,"0")+"-"+String(day).padStart(2,"0");
+  };
+  const readDate=(value:unknown):string=>{
+    if(value instanceof Date)
+      return Number.isFinite(value.getTime())?validIso(value.getUTCFullYear(),value.getUTCMonth()+1,value.getUTCDate()):"";
+    if(typeof value==="number"){
+      // Excel's 1900 date system. A real Start Date cell can be an Excel
+      // serial even when Excel displays the day of week as formatted text.
+      if(!Number.isFinite(value)||value<1||value>100000)return "";
+      const date=new Date(Date.UTC(1899,11,30)+Math.floor(value)*86400000);
+      return validIso(date.getUTCFullYear(),date.getUTCMonth()+1,date.getUTCDate());
+    }
+    const raw=text(value),named=eventScheduleDate(raw);
+    if(named)return named;
+    const iso=raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if(iso)return validIso(Number(iso[1]),Number(iso[2]),Number(iso[3]));
+    const us=raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/);
+    if(us){
+      const year=Number(us[3]);
+      return validIso(year<100?2000+year:year,Number(us[1]),Number(us[2]));
+    }
+    return "";
+  };
   const cStart=col("Start Time"),cEnd=col("End Time"),cDesc=col("Description"),cSpace=col("Space"),
     cId=col("Event ID"),cStatus=col("Status - Event"),cEvent=col("Event"),
     cBookedStart=col("Start Time - Event"),cBookedEnd=col("End Time - Event"),
@@ -176,10 +205,18 @@ export async function readEventSheet(file: File): Promise<EventRow[] | null> {
   let day="",eventName="",parentAttendance=0;
   ws.eachRow((row,n)=>{
     if(n<=headerRow+1)return;
+    const start=clock(row.getCell(cStart).value);
     const left=[1,2,3].map(c=>text(row.getCell(c).value)).filter(Boolean);
     const parsed=left.map(eventScheduleDate).find(Boolean)??"";
-    if(parsed){day=parsed;eventName="";parentAttendance=0;return;}
-    const start=clock(row.getCell(cStart).value);
+    // A weekday in Start Date - Event belongs to the same activity row;
+    // only a standalone date line should end processing for that row.
+    if(parsed&&!start){day=parsed;eventName="";parentAttendance=0;return;}
+    // In a flat report this is the authority for the function's day, not
+    // whichever grouped heading happened to appear earlier in the workbook.
+    const rowDate=cDate?readDate(row.getCell(cDate).value):"";
+    // Never let a malformed/blank date borrow the previous activity's day.
+    if(cDate&&start&&!rowDate)return;
+    if(rowDate)day=rowDate;
     if(!start) {
       // A group title is generally in A or B; its attendance summary is at
       // the far right. Wrapped text inside Description is not a group title.
