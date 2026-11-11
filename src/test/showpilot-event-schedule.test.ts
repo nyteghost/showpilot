@@ -3,8 +3,9 @@ import {File as NodeFile} from "node:buffer";
 import ExcelJS from "exceljs";
 import {readShowPilotEventSchedulePages,eventScheduleDate,type ScheduleTextItem} from "@/lib/showpilot-event-schedule";
 import {readEventSheet} from "@/lib/work-files";
-import {summarizeEvents} from "@/lib/work-tools";
+import {summarizeEvents,assertNamedScheduleEntries} from "@/lib/work-tools";
 import {postConShowsFromReportRows} from "@/lib/showpilot-postcon";
+import {resolveScheduleEventNames} from "@/lib/showpilot-event-name-resolution";
 
 const line=(...values:[number,string][]):ScheduleTextItem[]=>
  values.map(([x,str])=>({str,x,y:500}));
@@ -122,6 +123,40 @@ describe("ShowPilot - Event Schedule Excel",()=>{
   expect(await readEventSheet(uploaded)).toMatchObject([
    {date:"2026-11-11",event:"Leadership Cobb",eventId:"42421",description:"PROGRAM START",bookingStart:"08:00 AM"}
   ]);
+ });
+ it("uses adjacent Event and Event ID columns for verified parent names through export",async()=>{
+  const wb=new ExcelJS.Workbook(),ws=wb.addWorksheet("Sheet1");
+  ws.getCell("A1").value="ShowPilot - Event Schedule";
+  // Exact 13-column order from the user's latest export.  The booking start
+  // (column B) is NOT the function date (column C).
+  ws.getRow(2).values=["Start Day of Week","Start Date - Event","Start Date","Start Time",
+   "End Time","Event","Event ID","Description","Space","Start Time - Event",
+   "End Time - Event","Status - Event","Contracted Attendance"];
+  const name="Paradies Lagardere Annual Management Seminar 2026", id=39702;
+  ws.getRow(3).values=["Monday",46341,46341,0.5,0.75,name,id,
+   "Decorator Day/RPM Move-In","Exhibit Hall D (EXD)",0.25,0.75,"Definite (30)",0];
+  ws.getRow(4).values=["Tuesday",46341,46342,0.3333333333333333,0.75,name,id,
+   "Exhibitor Move-In","Exhibit Hall D (EXD)",0.25,0.75,"Definite (30)",0];
+  ws.getRow(5).values=["Wednesday",46341,46343,0.375,0.7083333333333333,name,id,
+   "Paradies Lagardere Expo","Exhibit Hall D (EXD)",0.25,0.75,"Definite (30)",300];
+  ws.getRow(6).values=["Wednesday",46341,46343,0.7083333333333333,0.875,name,id,
+   "Exhibitor Move-Out","Exhibit Hall D (EXD)",0.25,0.875,"Definite (30)",0];
+  const file=new NodeFile([new Uint8Array(await wb.xlsx.writeBuffer())],"ShowPilotEventSchedule (5).xlsx") as unknown as File;
+  const rows=await readEventSheet(file);
+  expect(rows).toHaveLength(4);
+  expect(rows).toMatchObject([
+   {date:"2026-11-16",event:name,eventId:"39702",description:"Decorator Day/RPM Move-In"},
+   {date:"2026-11-17",event:name,eventId:"39702",description:"Exhibitor Move-In"},
+   {date:"2026-11-18",event:name,eventId:"39702",description:"Paradies Lagardere Expo"},
+   {date:"2026-11-18",event:name,eventId:"39702",description:"Exhibitor Move-Out"}
+  ]);
+  const proposed=summarizeEvents(rows??[],true);
+  const named=resolveScheduleEventNames(proposed,rows??[]);
+  expect(named.unresolved).toBe(0);
+  expect(named.entries.length).toBeGreaterThan(0);
+  expect(named.entries.every(entry=>entry.eventId==="39702"&&
+   entry.showName===name&&entry.title===name)).toBe(true);
+  expect(()=>assertNamedScheduleEntries(named.entries)).not.toThrow();
  });
  it("does not mistake a normal monthly staffing workbook for an event report",async()=>{
   const wb=new ExcelJS.Workbook(),ws=wb.addWorksheet("Week #1");
