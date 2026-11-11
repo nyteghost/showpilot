@@ -711,6 +711,7 @@ export function detailedAirwallTask(task:TaskNote,rows:readonly EventRow[]):Task
 export function sharedSpaces(entries: EventEntry[]): string[] {
   const spaces=new Map<string,Map<string,string>>();
   for(const entry of entries){
+    if(/cepac|cobb energy|performing arts/i.test(entry.space))continue;
     if(["MTG","Food","Dinner","Breakfast","Lunch","Arr","MO?"].includes(entry.code))continue;
     const id=entry.eventId?.trim();
     const verifiedName=(entry.showName??"").trim();
