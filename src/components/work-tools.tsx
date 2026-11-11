@@ -600,7 +600,7 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
             {entries.length>0&&aiScope?.view==="week"&&<Button size="sm" variant="outline" disabled={exportBusy}
               onClick={()=>void exportFreshWeek()}><Download className="size-4"/> Download week (fresh layout)</Button>}
             {entries.length>0&&aiScope?.view==="week"&&<Button size="sm" variant="outline"
-              onClick={printSelectedWeek}><Printer className="size-4"/> Print selected week (draft)</Button>
+              onClick={printSelectedWeek}><Printer className="size-4"/> Print selected week (draft)</Button>}
             {entries.length>0&&aiScope?.view==="week"&&<Button size="sm" variant="outline" disabled={exportBusy||masterTemplateState!=="saved"}
               title="Use your saved approved blank/master workbook and preserve its formulas, colors and staff rows"
               onClick={()=>void exportSelected("approved")}><Download className="size-4"/> Download week (saved master template)</Button>}
