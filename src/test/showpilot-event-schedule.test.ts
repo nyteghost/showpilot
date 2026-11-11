@@ -133,13 +133,13 @@ describe("ShowPilot - Event Schedule Excel",()=>{
    "End Time","Event","Event ID","Description","Space","Start Time - Event",
    "End Time - Event","Status - Event","Contracted Attendance"];
   const name="Paradies Lagardere Annual Management Seminar 2026", id=39702;
-  ws.getRow(3).values=["Monday",46341,46341,0.5,0.75,name,id,
+  ws.getRow(3).values=["Monday",46342,46342,0.5,0.75,name,id,
    "Decorator Day/RPM Move-In","Exhibit Hall D (EXD)",0.25,0.75,"Definite (30)",0];
-  ws.getRow(4).values=["Tuesday",46341,46342,0.3333333333333333,0.75,name,id,
+  ws.getRow(4).values=["Tuesday",46342,46343,0.3333333333333333,0.75,name,id,
    "Exhibitor Move-In","Exhibit Hall D (EXD)",0.25,0.75,"Definite (30)",0];
-  ws.getRow(5).values=["Wednesday",46341,46343,0.375,0.7083333333333333,name,id,
+  ws.getRow(5).values=["Wednesday",46342,46344,0.375,0.7083333333333333,name,id,
    "Paradies Lagardere Expo","Exhibit Hall D (EXD)",0.25,0.75,"Definite (30)",300];
-  ws.getRow(6).values=["Wednesday",46341,46343,0.7083333333333333,0.875,name,id,
+  ws.getRow(6).values=["Wednesday",46342,46344,0.7083333333333333,0.875,name,id,
    "Exhibitor Move-Out","Exhibit Hall D (EXD)",0.25,0.875,"Definite (30)",0];
   const file=new NodeFile([new Uint8Array(await wb.xlsx.writeBuffer())],"ShowPilotEventSchedule (5).xlsx") as unknown as File;
   const rows=await readEventSheet(file);
