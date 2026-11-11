@@ -32,6 +32,19 @@ In **Event Schedule**, expand **Claude scheduling preferences (experimental)**, 
 - **Important master-template limit:** An approved original workbook is the formatting/shift authority. If your added person is missing an authorized three-row block, export stops and tells you to add the person to the source master or choose **Download week (fresh layout)**. Existing master employee rows are not automatically deleted or rearranged.
 - Changes are saved **locally**, included in ShowPilot work-data backups, and isolated to the experimental Claude build. No Google Calendar events are created, altered or deleted by the roster editor.
 
+## Stage layout and print-ready weekly schedule
+
+The experimental Claude build no longer draws the printable stage-layout SVG as a second giant black canvas underneath the interactive layout. The interactive **Layout view** remains draggable and rotatable; a separate labeled, light-background diagram is reserved for actual printing.
+
+For a **weekly CGC schedule without the shared-room notices**:
+
+1. Open **Event Schedule**, select **Week** and the desired Monday–Sunday period.
+2. Select **Hide shared-room notices** to collapse the two advisory lists. This is display-only; it does not resolve bookings, change EOCs, or relax the exported workbook's validation.
+3. Select **Print selected week (draft)** to open the native printer/PDF dialog. The printed page shows all Hall A–D and Ballroom A–G room cells, the parent event names, dates, hours and review-only tasks. It is clearly marked **DRAFT**, and any activity without an independently verified parent event name is explicitly labeled **VERIFY parent event name**, not silently renamed.
+4. To **download a week as Excel**, use **Download week (fresh layout)**. For your exact engineering master, use **Choose master XLSX** and **Download selected week (original layout)**. Excel exports still require valid event names, CGC room mapping and human-entered shift protections.
+
+The old “rooms shared” list grouped distinct **function descriptions** as separate events. It now groups by verified **Event ID** (or a unique known show name when no ID exists), so move-in, doors, reception and move-out within the same event no longer appear as competing bookings. True different-Event-ID bookings remain reviewable. If a source row's verified event name appears only on an undated grouped Event-ID heading, that heading is now used when building the Excel preview too.
+
 ## Approved master workbook and AI review troubleshooting
 
 In **Event Schedule**, the **Original template** selector shows where your export layout will come from:
