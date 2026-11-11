@@ -595,7 +595,12 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
           {tasks.length > 0 && (
             <details className="rounded-md border border-border p-2 text-xs">
               <summary className="cursor-pointer font-medium">{tasks.length} task suggestions (air walls, stage builds, room turns)</summary>
-              <ul className="mt-1 space-y-0.5">{tasks.map((t, i) => <li key={i}><span className="text-muted-foreground">{dayLabel(t.date)}:</span> {t.text}</li>)}</ul>
+              <ul className="mt-1 space-y-1">{tasks.map((t, i) => <li key={i}>
+                <span className="text-muted-foreground">{dayLabel(t.date)}:</span> {t.text}
+                {(t.showName||t.eventId)&&<div className="pl-2 text-muted-foreground">
+                  Event: {t.showName||"VERIFY parent show"}{t.eventId?" · ID "+t.eventId:""}
+                </div>}
+              </li>)}</ul>
             </details>
           )}
           <div className="flex flex-wrap items-center gap-2">
