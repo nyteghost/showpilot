@@ -33,6 +33,24 @@ describe("Ungerboeck event rules", () => {
   it("show event is S", () => expect(classifyEvent(row({}))).toBe("S"));
   it("exhibitor move in is Exmi", () => expect(classifyEvent(row({ usage: "Move In (IN)", description: "Move In | Exhibitors" }))).toBe("Exmi"));
   it("decorator move in is MI", () => expect(classifyEvent(row({ usage: "Move In (IN)", description: "Decorator Move In" }))).toBe("MI"));
+  it("classifies Sneaker Con 6a–2p Banner Hang as MI, even if Usage says Event", () => {
+    const banner=row({
+      usage:"Event (EVT)",date:"2026-12-04",start:"06:00 AM",end:"02:00 PM",
+      description:"Banner Hang",space:"Exhibit Hall CD (EXCD)",
+      event:"Sneaker Con",eventId:"SNEAKER-ID"
+    });
+    expect(classifyEvent(banner)).toBe("MI");
+    expect(classifyEvent({...banner,usage:""})).toBe("MI");
+    const summary=summarizeEvents([banner],true);
+    expect(summary).toHaveLength(1);
+    expect(summary[0]).toMatchObject({
+      date:"2026-12-04",space:"Hall CD",code:"MI",start:360,end:840,
+      title:"Sneaker Con",showName:"Sneaker Con",eventId:"SNEAKER-ID"
+    });
+  });
+  it("keeps actual Sneaker Con show time separate from installation",()=>{
+    expect(classifyEvent(row({usage:"Event (EVT)",description:"Sneaker Con show open"}))).toBe("S");
+  });
   it("move out is MO", () => expect(classifyEvent(row({ usage: "Move Out (OUT)", description: "Move Out" }))).toBe("MO"));
   it("merges move-outs into one span", () => {
     const list = summarizeEvents([row({ usage: "Move Out (OUT)", start: "05:00 PM", end: "09:00 PM" }), row({ usage: "Move Out (OUT)", start: "05:00 PM", end: "11:59 PM" })]);
