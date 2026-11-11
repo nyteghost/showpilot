@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { Briefcase, CalendarClock, CalendarDays, CalendarPlus, CalendarSync, FolderOpen, Download, FileUp, GitBranch, Layers, Eye, Map as MapIcon, Store, Sun } from "lucide-react";
+import { Briefcase, CalendarClock, CalendarDays, CalendarPlus, CalendarSync, FolderOpen, Download, FileUp, Printer, GitBranch, Layers, Eye, Map as MapIcon, Store, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {ShowPilotRuleReview} from "@/components/showpilot-rule-review";
@@ -16,6 +16,8 @@ import { ScheduleReview } from "@/components/showpilot-review-panel";
 import {ClaudeStaffingSettingsPanel} from "@/components/showpilot-claude-settings";
 import {readClaudeSettings,saveClaudeSettings,type ClaudeStaffingSettings} from "@/lib/showpilot-claude-settings";
 import { ShowPilotExcelPreview } from "@/components/showpilot-excel-preview";
+import { ShowPilotWeekPrint } from "@/components/showpilot-week-print";
+import {printableWeek} from "@/lib/showpilot-week-print";
 import type {PreviewWorkbook} from "@/lib/showpilot-excel-preview";
 import {reviewScopeDates,type ReviewDateScope} from "@/lib/showpilot-review-months";
 import {scopedScheduleData} from "@/lib/showpilot-export-scope";
@@ -180,6 +182,8 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
   const selectedStaffingKey=selectedStaffingDates.join("|");
   const staffingContext=useMemo(()=>staffingPlanningContext(entries,selectedStaffingDates),[entries,selectedStaffingKey]);
   const [shared, setShared] = useState<string[]>([]);
+  const [hideSharedRoomNotices,setHideSharedRoomNotices]=useState(false);
+  const [printWeekDraft,setPrintWeekDraft]=useState<{week:string;entries:EventEntry[];tasks:TaskNote[]}|null>(null);
   const [conflictTarget,setConflictTarget] = useState<{date:string;space:string;title:string;nonce:number}|null>(null);
   const bookingConflicts = (() => {
     const byRoom = new Map<string, Map<string, EventEntry>>();
@@ -389,6 +393,20 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
     }catch(e){setExportStatus("Export not generated: "+(e as Error).message);}
     finally{setExportBusy(false)}
   }
+  function printSelectedWeek(){
+    setExportStatus("");
+    try{
+      const chosen=scopedScheduleData(entries,tasks,aiScope);
+      if(!chosen.singleWeek)throw new Error("Choose Week view first.");
+      const draft=printableWeek(chosen.entries,chosen.tasks,chosen.singleWeek);
+      setPrintWeekDraft({week:chosen.singleWeek,entries:chosen.entries,tasks:chosen.tasks});
+      setExportStatus("Opened print preview for the selected week (draft). "+
+       (draft.unverifiedNames?"VERIFY "+draft.unverifiedNames+" missing parent event name(s). ":"")+
+       "Room-sharing notices do not prevent printing. No shifts, EOCs, or original workbooks were changed.");
+    }catch(error){
+      setExportStatus("Week could not be printed: "+(error as Error).message);
+    }
+  }
   async function exportFreshWeek(){
     if(exportBusy||!aiScope)return;
     setExportBusy(true);setExportStatus("");
@@ -521,7 +539,12 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
       {suggestedEntries.length === 0 && !status && <ol className="list-decimal space-y-0.5 pl-5 text-xs text-muted-foreground"><li>Upload a ShowPilot - Event Schedule PDF or Excel export.</li><li>Optional: drop your monthly schedule .xlsx in the same box to fill it in (engineer shifts are kept).</li><li>Download the Excel file.</li></ol>}
       {source && (
         <>
-          {bookingConflicts.length > 0 && <section role="alert" className="rounded-lg border border-amber-500 bg-amber-500/10 p-3 text-sm">
+          {(bookingConflicts.length>0||shared.length>0)&&<label className="flex items-center gap-2 rounded-md border border-border p-2 text-xs">
+            <input type="checkbox" checked={hideSharedRoomNotices}
+             onChange={event=>setHideSharedRoomNotices(event.target.checked)}/>
+            Hide shared-room notices (does not remove conflicts or alter the schedule)
+          </label>}
+          {bookingConflicts.length > 0 && !hideSharedRoomNotices && <section role="alert" className="rounded-lg border border-amber-500 bg-amber-500/10 p-3 text-sm">
             <strong>Possible double-bookings: {bookingConflicts.length} room/day conflicts</strong>
             <p className="mt-1 text-xs">Two distinct shows use the same physical room on the same date. Select a show to jump to its review entry; times may not overlap.</p>
             <div className="mt-2 grid gap-2">{bookingConflicts.map(c=><div key={c.date+"|"+c.space} className="flex flex-wrap items-center gap-2">
@@ -542,12 +565,14 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
             <table className="w-full text-sm">
               <thead className="bg-muted text-left"><tr><th className="p-2">Day</th><th className="p-2">Space</th><th className="p-2">Entry</th></tr></thead>
               <tbody>{entries.map((e, i) => (
-                <tr key={i} className="border-t border-border"><td className="p-2">{dayLabel(e.date)}</td><td className="p-2">{e.space}</td><td className="p-2 font-mono">{entryLabel(e)} <span className="text-muted-foreground">{e.title}</span></td></tr>
+                <tr key={i} className="border-t border-border"><td className="p-2">{dayLabel(e.date)}</td><td className="p-2">{e.space}</td><td className="p-2 font-mono">{entryLabel(e)} <span className={e.showName?"text-muted-foreground":"font-semibold text-amber-600"}>
+                  {e.showName||(!e.eventId?e.title:"VERIFY parent show name · Event ID "+e.eventId)}
+                </span></td></tr>
               ))}</tbody>
             </table>
           </div>
           </details>
-          {shared.length > 0 && (
+          {shared.length > 0 && !hideSharedRoomNotices && (
             <details className="rounded-md border border-amber-500 p-2 text-xs">
               <summary className="cursor-pointer font-medium">{shared.length} rooms are shared by more than one event</summary>
               <ul className="mt-1 space-y-0.5">{shared.map((t, i) => <li key={i}>{t}</li>)}</ul>
@@ -574,6 +599,8 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
               {exportBusy?"Exporting…":"Download "+currentExportLabel+" (original layout)"}</Button>}
             {entries.length>0&&aiScope?.view==="week"&&<Button size="sm" variant="outline" disabled={exportBusy}
               onClick={()=>void exportFreshWeek()}><Download className="size-4"/> Download week (fresh layout)</Button>}
+            {entries.length>0&&aiScope?.view==="week"&&<Button size="sm" variant="outline"
+              onClick={printSelectedWeek}><Printer className="size-4"/> Print selected week (draft)</Button>
             {entries.length>0&&aiScope?.view==="week"&&<Button size="sm" variant="outline" disabled={exportBusy||masterTemplateState!=="saved"}
               title="Use your saved approved blank/master workbook and preserve its formulas, colors and staff rows"
               onClick={()=>void exportSelected("approved")}><Download className="size-4"/> Download week (saved master template)</Button>}
@@ -595,6 +622,8 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
             {exportStatus&&<p role="status" className="w-full text-xs text-muted-foreground">{exportStatus}</p>}
           </div>
           <ClaudeStaffingSettingsPanel value={claudePolicy} onChange={changeClaudePolicy}/>
+          {printWeekDraft&&<ShowPilotWeekPrint week={printWeekDraft.week} entries={printWeekDraft.entries}
+            tasks={printWeekDraft.tasks} onClose={()=>setPrintWeekDraft(null)}/>}
           <ShowPilotExcelPreview open={previewOpen} onOpenChange={setPreviewOpen} book={previewWorkbook} title={previewTitle}/>
           <ShowPilotRuleReview evidence={exportRuleEvidence("reviewed workbook",entries.length,new Set(entries.map(e=>e.date)).size,exportStatus)}/>
           <p className="text-xs text-muted-foreground">ShowPilot uses the original Excel template as its layout authority. It will not create a new room section or reformat staffing, dates, colors or borders. Upload your master XLSX alongside the event report, or select it under Settings &amp; AI. Other spaces must be reviewed before export.</p>
