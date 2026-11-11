@@ -1,3 +1,4 @@
+import {localNoticeDate,currentNoticeEntries} from "@/lib/showpilot-notice-dates";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Briefcase, CalendarClock, CalendarDays, CalendarPlus, CalendarSync, FolderOpen, Download, FileUp, Printer, GitBranch, Layers, Eye, Map as MapIcon, Store, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -181,13 +182,27 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
   const selectedStaffingDates=aiScope?reviewScopeDates(entries,aiScope):[];
   const selectedStaffingKey=selectedStaffingDates.join("|");
   const staffingContext=useMemo(()=>staffingPlanningContext(entries,selectedStaffingDates),[entries,selectedStaffingKey]);
-  const [shared, setShared] = useState<string[]>([]);
+  const [noticeToday,setNoticeToday] = useState(localNoticeDate);
+  useEffect(() => {
+    const refresh = () => setNoticeToday(localNoticeDate());
+    const timer = window.setInterval(refresh, 30_000);
+    window.addEventListener("focus",refresh);
+    document.addEventListener("visibilitychange",refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus",refresh);
+      document.removeEventListener("visibilitychange",refresh);
+    };
+  },[]);
+  // Filter notices only: keep complete source/history for review and exports.
+  const noticeEntries = currentNoticeEntries(entries,noticeToday);
+  const shared = sharedSpaces(noticeEntries);
   const [hideSharedRoomNotices,setHideSharedRoomNotices]=useState(false);
   const [printWeekDraft,setPrintWeekDraft]=useState<{week:string;entries:EventEntry[];tasks:TaskNote[]}|null>(null);
   const [conflictTarget,setConflictTarget] = useState<{date:string;space:string;title:string;nonce:number}|null>(null);
   const bookingConflicts = (() => {
     const byRoom = new Map<string, Map<string, EventEntry>>();
-    for (const e of entries) for (const space of expandSpace(e.space)) {
+    for (const e of noticeEntries) for (const space of expandSpace(e.space)) {
       const key = e.date + "|" + space;
       const bookings = byRoom.get(key) ?? new Map<string, EventEntry>();
       const identity = e.eventId?.trim() ? "id:" + e.eventId : "title:" + e.title.trim().toLowerCase();
@@ -242,7 +257,6 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
     const named=resolveScheduleEventNames(approved.entries,originalRows,verifiedShowCatalog.current);
     setEntries(named.entries);
     setTasks(approved.tasks);
-    setShared(sharedSpaces(named.entries));
   }
   async function build(src: { rows: EventRow[]; existing?: File; sources: number }, includePending: boolean, approved: string[] = [], overrideDraft?: ReviewDraft) {
     const nextDraft = draftFor(src.rows, overrideDraft);
@@ -545,7 +559,7 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
             Hide shared-room notices (does not remove conflicts or alter the schedule)
           </label>}
           {bookingConflicts.length > 0 && !hideSharedRoomNotices && <section role="alert" className="rounded-lg border border-amber-500 bg-amber-500/10 p-3 text-sm">
-            <strong>Possible double-bookings: {bookingConflicts.length} room/day conflicts</strong>
+            <strong>Possible double-bookings: {bookingConflicts.length} room/day conflicts (today onward)</strong>
             <p className="mt-1 text-xs">Two distinct shows use the same physical room on the same date. Select a show to jump to its review entry; times may not overlap.</p>
             <div className="mt-2 grid gap-2">{bookingConflicts.map(c=><div key={c.date+"|"+c.space} className="flex flex-wrap items-center gap-2">
               <strong>{c.date} · {c.space}:</strong>
@@ -574,7 +588,7 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
           </details>
           {shared.length > 0 && !hideSharedRoomNotices && (
             <details className="rounded-md border border-amber-500 p-2 text-xs">
-              <summary className="cursor-pointer font-medium">{shared.length} rooms are shared by more than one event</summary>
+              <summary className="cursor-pointer font-medium">{shared.length} rooms are shared by more than one event (today onward)</summary>
               <ul className="mt-1 space-y-0.5">{shared.map((t, i) => <li key={i}>{t}</li>)}</ul>
             </details>
           )}
