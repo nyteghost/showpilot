@@ -60,11 +60,14 @@ export function resolveScheduleEventNames(
  const sourceByRoomDay=new Map<string,string[]>();
  for(const row of rows){
   const name=realShowName(row.event);
-  if(!name||!row.date)continue;
-  if(row.eventId){
+  if(!name)continue;
+  // Grouped schedule exports may show the parent Event ID and name on a
+  // header row with NO function date. Preserve that authoritative join.
+  if(row.eventId?.trim()){
    const id=row.eventId.trim();
    sourceById.set(id,[...(sourceById.get(id)??[]),name]);
   }
+  if(!row.date)continue;
   for(const room of normalizedRoom(row.space))
    sourceByRoomDay.set(row.date+"|"+room,[...(sourceByRoomDay.get(row.date+"|"+room)??[]),name]);
  }
