@@ -82,3 +82,37 @@ describe("Claude CGC-only safety during template re-dating",()=>{
   expect(sheet.getCell("B74").value).toBe("Other venue entry must remain unchanged");
  });
 });
+
+describe("November 2026 Week #3: fresh export matches owner master styling",()=>{
+ it("keeps CGC BARS day cells white, both section bars black, and both Tasks rows peach",async()=>{
+  const blob=await eventsWorkbook([],undefined,[],{singleWeek:"2026-11-16"});
+  const wb=new ExcelJS.Workbook();
+  await wb.xlsx.read(Readable.from([new Uint8Array(await blob.arrayBuffer())]));
+  const ws=wb.getWorksheet("Week #1")!;
+  const fill=(r:number,c:number)=>{
+   const color=ws.getRow(r).getCell(c).fill;
+   return color.type==="pattern"&&color.pattern==="solid"?color.fgColor?.argb:undefined;
+  };
+  const sectionRow=(label:string)=>{
+   let found=0;
+   ws.eachRow((r,n)=>{if(String(r.getCell(1).value??"").trim().toUpperCase()===label)found=n;});
+   return found;
+  };
+  expect(fill(8,1)).toBe("FF000000");
+  expect(fill(8,9)).toBe("FF000000");
+  for(let c=2;c<=8;c++)expect(fill(8,c)).toBeUndefined();
+  expect(fill(53,2)).toBe("FFD9F2D0");
+  for(const section of ["HALLS","BALLROOM","LOCATION"]){
+   const row=sectionRow(section);
+   expect(row).toBeGreaterThan(0);
+   for(let c=1;c<=8;c++){
+    expect(fill(row,c)).toBe("FF000000");
+    expect(ws.getRow(row).getCell(c).font.color?.argb).toBe("FFFFFFFF");
+   }
+  }
+  const tasks:number[]=[];
+  ws.eachRow((r,n)=>{if(String(r.getCell(1).value??"").trim().toUpperCase()==="TASKS")tasks.push(n);});
+  expect(tasks).toHaveLength(2);
+  for(const row of tasks)for(let c=1;c<=8;c++)expect(fill(row,c)).toBe("FFF6C7AE");
+ });
+});
