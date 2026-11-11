@@ -48,3 +48,33 @@ html, body, #root { height: 100%; min-height: 0; overflow: hidden; }
 /* Keep the correction conversation above the venue label without squeezing the sidebar controls. */
 .sp-sidebar-footer-open{flex-wrap:wrap;align-items:center}
 .sp-sidebar-footer-open > [aria-label="ShowPilot correction chat"]{width:100%;min-width:0;flex-basis:100%}
+
+
+/* Deck Planner: keep the print SVG out of the interactive screen. Without this
+ * screen rule it appears a second time as a solid black unstyled diagram. */
+@media screen {
+  .deck-planner .print-only { display:none !important; }
+}
+.deck-planner .layout-deck { fill:#e1eaf5; stroke:#334e68; }
+.deck-planner .layout-bridge { fill:#add0ed; stroke:#2a587a; }
+.deck-planner .layout-holder { fill:none; stroke:#19669d; }
+.deck-planner .print-layout-outline { fill:#ffffff; stroke:#172536; stroke-width:.35; }
+.deck-planner .print-layout-number { fill:#152b40; font-weight:700; }
+@media print {
+  .deck-planner .print-only { display:block !important; }
+  .deck-planner .no-print, .deck-planner .print-hide { display:none !important; }
+  .deck-planner .print-layout-diagram {
+    display:block; width:100%; max-width:100%; max-height:65vh;
+    background:#ffffff; color:#101828;
+  }
+  .deck-planner .print-layout-key { border-collapse:collapse; color:#111; }
+  .deck-planner .print-layout-key th, .deck-planner .print-layout-key td {
+    border:1px solid #64748b; padding:5px;
+  }
+  .deck-planner .print-layout-outline { fill:#ffffff !important; stroke:#111 !important; }
+  .deck-planner .layout-deck { fill:#e5e7eb !important; stroke:#334155 !important; }
+  .deck-planner .layout-bridge { fill:#c8d9ec !important; stroke:#294860 !important; }
+  .deck-planner .layout-holder { fill:none !important; stroke:#111 !important; }
+  .deck-planner .print-layout-number { fill:#111 !important; }
+  .deck-planner, .deck-planner * { print-color-adjust:exact; }
+}
