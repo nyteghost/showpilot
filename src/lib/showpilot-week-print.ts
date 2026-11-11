@@ -25,6 +25,8 @@ export function printableWeek(
  for(const e of entries){
   if(reviewWeekStart(e.date)!==monday)
    throw new Error("Only the currently selected week can be printed.");
+  if(/cepac|cobb energy|performing arts/i.test(e.space))
+   throw new Error("Unverified CGC room "+e.space+". Other-venue schedules cannot be printed.");
   const expanded=expandSpace(e.space);
   if(!expanded.length||expanded.some(space=>!rooms.has(space)))
    throw new Error("Unverified CGC room "+e.space+". Review the venue and room before printing.");
