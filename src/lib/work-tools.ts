@@ -66,6 +66,11 @@ const SKIP_RE = /inspection|walk-?through|early access|advance freight|deliver|g
 /** Service lines inside a show (drinks, food vendors, breaks, entry lines, side rooms). They are not move in, show or move out, so they never get a line of their own. */
 const NOISE_RE = /water cooler|coffee|chic?k?-?fil-?a|papa john|concession|coat check|\bbreaks?\b|beverage|refresh|room turn|queue|rehears|speakers? room|conference theat|networking|lip sync|poster|wellness|volunteers? arrive/;
 
+/** Banner hanging is physical installation / move-in work, not show-open
+ * time. This also applies when a legacy report mistakenly marks the function
+ * as Usage "Event (EVT)" (e.g. Sneaker Con Hall CD, 6a–2p). */
+const BANNER_HANG_RE=/\b(?:banners?\s+(?:hang(?:ing)?|instal(?:l|lation)|set[\s-]*up)|hang(?:ing)?\s+(?:the\s+)?banners?)\b/i;
+
 /** The "For Scheduling" report has no Usage column, so the code comes from the description alone. */
 export function classifyByDescription(description: string): EventCode | null {
   const d = description.toLowerCase();
@@ -74,6 +79,7 @@ export function classifyByDescription(description: string): EventCode | null {
   if (/end of show/.test(d)) return "S"; // vendors leaving at the end of the show is still the show
   if (/client arrival/.test(d)) return "Arr";
   if (/move.?out|tear ?down|load.?out|dismantle|out of the building/.test(d)) return "MO";
+  if (BANNER_HANG_RE.test(d)) return "MI";
   if (/exhibitor/.test(d) && /move.?in|load.?in/.test(d)) return "Exmi";
   if (/move.?in|march in|load.?in|set ?up|install|decorator day/.test(d)) return "MI";
   if (NOISE_RE.test(d)) return null;
@@ -91,6 +97,7 @@ export function classifyEvent(row: EventRow): EventCode | null {
   if (!row.usage.trim()) return classifyByDescription(row.description);
   const usage = row.usage.toLowerCase(), desc = row.description.toLowerCase();
   if (usage.includes("move out")) return "MO";
+  if (BANNER_HANG_RE.test(desc) && !/move.?out|tear.?down|dismantle|remov(?:al|e)/.test(desc)) return "MI";
   if (usage.includes("move in")) {
     if (/service desk/.test(desc)) return "Exmi";
     if (/early access|freight|registration/.test(desc)) return null;

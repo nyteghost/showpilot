@@ -1,4 +1,5 @@
 import {localNoticeDate,currentNoticeEntries} from "@/lib/showpilot-notice-dates";
+import {overlappingRoomBookings} from "@/lib/showpilot-booking-conflicts";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Briefcase, CalendarClock, CalendarDays, CalendarPlus, CalendarSync, FolderOpen, Download, FileUp, Printer, GitBranch, Layers, Eye, Map as MapIcon, Store, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -9,7 +10,7 @@ import {shiftRuleEvidence,calendarRuleEvidence,eventScheduleRuleEvidence,exportR
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { KeepAliveTabContent } from "@/components/showpilot-keep-alive-tab";
-import { buildIcs, DEFAULT_SCHEDULE_NAME, editShift, entryLabel, formatMinutes, googleCalendarLink, isIsoDate, minutesToTime, newShiftId, nextMondayIso, parsePastedShiftsWithReview, shiftLabel, shiftNeedsReview, airwallTasks, detailedAirwallTask, isCancelledRow, isPendingRow, sharedSpaces, expandSpace, summarizeEvents, taskSuggestions, timeToMinutes, withShiftIds, type EventEntry, type EventRow, type Shift, type TaskNote } from "@/lib/work-tools";
+import { buildIcs, DEFAULT_SCHEDULE_NAME, editShift, entryLabel, formatMinutes, googleCalendarLink, isIsoDate, minutesToTime, newShiftId, nextMondayIso, parsePastedShiftsWithReview, shiftLabel, shiftNeedsReview, airwallTasks, detailedAirwallTask, isCancelledRow, isPendingRow, sharedSpaces, summarizeEvents, taskSuggestions, timeToMinutes, withShiftIds, type EventEntry, type EventRow, type Shift, type TaskNote } from "@/lib/work-tools";
 import { StandaloneVendors } from "@/components/showpilot-vendors";
 import { FloorMapPanel } from "@/components/floor-map-panel";
 import { scopeShowPilotRows } from "@/lib/showpilot-venue";
@@ -200,20 +201,9 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
   const [hideSharedRoomNotices,setHideSharedRoomNotices]=useState(false);
   const [printWeekDraft,setPrintWeekDraft]=useState<{week:string;entries:EventEntry[];tasks:TaskNote[]}|null>(null);
   const [conflictTarget,setConflictTarget] = useState<{date:string;space:string;title:string;nonce:number}|null>(null);
-  const bookingConflicts = (() => {
-    const byRoom = new Map<string, Map<string, EventEntry>>();
-    for (const e of noticeEntries) for (const space of expandSpace(e.space)) {
-      const key = e.date + "|" + space;
-      const bookings = byRoom.get(key) ?? new Map<string, EventEntry>();
-      const identity = e.eventId?.trim() ? "id:" + e.eventId : "title:" + e.title.trim().toLowerCase();
-      if (!bookings.has(identity)) bookings.set(identity,e);
-      byRoom.set(key,bookings);
-    }
-    return [...byRoom].filter(([,shows])=>shows.size>1).map(([key,shows])=>{
-      const [date,space]=key.split("|");
-      return {date,space,shows:[...shows.values()]};
-    }).sort((a,b)=>a.date.localeCompare(b.date)||a.space.localeCompare(b.space));
-  })();
+  // Actual function-time intersections only. Two bookings using the same
+  // room on the same date but at different times are NOT double-bookings.
+  const bookingConflicts=overlappingRoomBookings(noticeEntries);
   const [source, setSource] = useState<{ rows: EventRow[]; existing?: File; sources: number } | null>(null);
   const verifiedShowCatalog=useRef<PostConShow[]>([]);
   const [withPending, setWithPending] = useState(false);
@@ -556,14 +546,17 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
           {(bookingConflicts.length>0||shared.length>0)&&<label className="flex items-center gap-2 rounded-md border border-border p-2 text-xs">
             <input type="checkbox" checked={hideSharedRoomNotices}
              onChange={event=>setHideSharedRoomNotices(event.target.checked)}/>
-            Hide shared-room notices (does not remove conflicts or alter the schedule)
+            Hide room-sharing and time-overlap notices (does not alter the schedule)
           </label>}
           {bookingConflicts.length > 0 && !hideSharedRoomNotices && <section role="alert" className="rounded-lg border border-amber-500 bg-amber-500/10 p-3 text-sm">
-            <strong>Possible double-bookings: {bookingConflicts.length} room/day conflicts (today onward)</strong>
-            <p className="mt-1 text-xs">Two distinct shows use the same physical room on the same date. Select a show to jump to its review entry; times may not overlap.</p>
-            <div className="mt-2 grid gap-2">{bookingConflicts.map(c=><div key={c.date+"|"+c.space} className="flex flex-wrap items-center gap-2">
+            <strong>Possible double-bookings: {bookingConflicts.length} physical room/day overlap(s) (today onward)</strong>
+            <p className="mt-1 text-xs">Different bookings have overlapping function times in the same physical room. Back-to-back events are not conflicts. Confirm any separate booking holds or room turnover with EOC.</p>
+            <div className="mt-2 grid gap-2">{bookingConflicts.map(c=><div key={c.date+"|"+c.space} className="space-y-1">
               <strong>{c.date} · {c.space}:</strong>
-              {c.shows.map((e,i)=><button type="button" key={i} className="rounded border border-amber-500 px-2 py-1 text-xs underline" onClick={()=>setConflictTarget({date:e.date,space:e.space,title:e.title,nonce:Date.now()})}>{e.title}</button>)}
+              {c.pairs.map((pair,i)=><div key={i} className="flex flex-wrap items-center gap-2 text-xs">
+                <span className="font-medium">Overlaps {formatMinutes(pair.start)}–{formatMinutes(pair.end)}:</span>
+                {[pair.first,pair.second].map((e,j)=><button type="button" key={j} className="rounded border border-amber-500 px-2 py-1 underline" onClick={()=>setConflictTarget({date:e.date,space:e.space,title:e.title,nonce:Date.now()})}>{e.showName||e.title}{e.eventId?" · ID "+e.eventId:""}</button>)}
+              </div>)}
             </div>)}</div>
           </section>}
           <ScheduleReview key={fingerprintRows(source.rows)} initialScope={restoredScope} conflictTarget={conflictTarget} onScopeChange={setAiScope} originalRows={source.rows} proposed={suggestedEntries} suggestedTasks={suggestedTasks} draft={draft} onChange={reviewChanged} onSaveProject={saveProject} />
@@ -587,8 +580,9 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
           </div>
           </details>
           {shared.length > 0 && !hideSharedRoomNotices && (
-            <details className="rounded-md border border-amber-500 p-2 text-xs">
-              <summary className="cursor-pointer font-medium">{shared.length} rooms are shared by more than one event (today onward)</summary>
+            <details className="rounded-md border border-border p-2 text-xs">
+              <summary className="cursor-pointer font-medium">{shared.length} same-day shared-room notice(s) (not necessarily time conflicts)</summary>
+              <p className="my-1 text-muted-foreground">Different events can use the same room at separate times. Review room turnovers and any separately booked holds with EOC.</p>
               <ul className="mt-1 space-y-0.5">{shared.map((t, i) => <li key={i}>{t}</li>)}</ul>
             </details>
           )}
