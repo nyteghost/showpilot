@@ -1,4 +1,7 @@
 import {describe,it,expect} from "vitest";
+import {Readable} from "node:stream";
+import ExcelJS from "exceljs";
+import {eventsWorkbook} from "../lib/work-files";
 import {resolveScheduleEventNames,resolveEventRowNames} from "../lib/showpilot-event-name-resolution";
 import {weekLayouts,assertNamedScheduleEntries,type EventRow,type EventEntry} from "../lib/work-tools";
 import type {PostConShow} from "../lib/showpilot-postcon";
@@ -28,6 +31,29 @@ describe("event name attribution in reviewed engineering schedules",()=>{
   expect(text).toContain("Fictional Lantern Conference 2026");
   expect(text).not.toMatch(/^Exhibitor Move-In/);
   expect(()=>assertNamedScheduleEntries(result.entries)).not.toThrow();
+ });
+ it("restores a parent show recorded on an undated grouped Event ID heading",()=>{
+  const heading={...row("99002","Fictional Lantern Convention","2026-11-16"),
+   date:"",level:1,space:""};
+  const activity=row("99002","","2026-11-16");
+  const result=resolveScheduleEventNames(
+    [entry("99002","Exhibitor Move-In","2026-11-16")],[heading,activity]);
+  expect(result.entries[0]?.showName).toBe("Fictional Lantern Convention");
+ });
+ it("writes the attached show name to the actual Excel week preview cell",async()=>{
+  const named=resolveScheduleEventNames(
+    [entry("99002","Exhibitor Move-In","2026-11-16")],
+    [row("99002","Fictional Lantern Convention","2026-11-16")]);
+  const blob=await eventsWorkbook(named.entries,undefined,[],{singleWeek:"2026-11-16"});
+  const workbook=new ExcelJS.Workbook();
+  await workbook.xlsx.read(Readable.from([new Uint8Array(await blob.arrayBuffer())]));
+  const ws=workbook.worksheets[0]!;
+  const hallD=ws.getColumn(1).values.findIndex(x=>x==="Hall D");
+  expect(hallD).toBeGreaterThan(0);
+  const text=ws.getRow(hallD).getCell(2).text;
+  expect(text).toContain("Fictional Lantern Convention");
+  expect(text).toContain("Exmi 12p-7p");
+  expect(text).not.toContain("Exhibitor Move-In");
  });
  it("finds the attached show from an exact Event ID when the group heading is missing",()=>{
   const old=entry("99002","Move In Exhibitors","2026-11-20");
