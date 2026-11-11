@@ -462,7 +462,10 @@ function topUp(plans: DayPlan[], staff: Staff[], avail: Record<string, Record<st
     if (total >= WEEK_HOURS) continue;
     const cand = plans.map((p, i) => i).filter((i) => {
       const wd = weekday(plans[i]!.date);
+      // Last-resort weekdays are for actual uncovered event work, not a
+      // substitute 40-hour top-up when a quiet weekend was correctly closed.
       return have[i] === 0 && !isEventFreeCgcWeekend(plans[i]!.date,entries) &&
+        !(s.lastResort?.includes(wd) && !plans[i]!.gaps.length) &&
         !avail[s.name]?.[plans[i]!.date]?.off && !isOffDay(s, plans[i]!.date, entries) && (!s.baseline || s.baseline.weekdays.includes(wd) || !!s.lastResort?.includes(wd)) && (!s.notAlone || (s.patterns ?? PATTERNS).some((pat) => !leavesAlone(plans[i]!, pat,policy)));
     });
     const k = Math.min(cand.length, Math.ceil((WEEK_HOURS - total) / 8));
