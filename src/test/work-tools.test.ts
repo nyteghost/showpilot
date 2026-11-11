@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyEvent, escalatorHours, escalatorLabel, expandSpace, parsePastedShifts, parseShift, summarizeEvents, entryLabel, type EventRow } from "@/lib/work-tools";
+import { classifyEvent, escalatorHours, escalatorLabel, expandSpace, parsePastedShifts, parseShift, summarizeEvents, entryLabel, taskSuggestions, detailedAirwallTask, type EventRow } from "@/lib/work-tools";
 import { deckReply, planStage, stairsFor } from "@/lib/deck-solver";
 
 const row = (p: Partial<EventRow>): EventRow => ({ level: 2, usage: "Event (EVT)", start: "08:30 AM", end: "07:00 PM", description: "The COBB Tradeshow", space: "Exhibit Hall AB (EXAB)", date: "2026-10-11", ...p });
@@ -89,4 +89,27 @@ describe("weekly engineering layout", () => {
     expect(w[0]!.rows["Hall A"]![4]!.text).toBe("Cobb Trade Show\nMI 6a-5p");
     expect(w[0]!.cgc[0]).toBe("DARK");
   });
+});
+
+describe("task suggestion parent-event identity",()=>{
+ it("uses the exact booking on stage and room-turn tasks rather than a function label",()=>{
+  const source:EventRow={level:2,usage:"",date:"2026-11-19",start:"07:00 AM",end:"01:00 PM",
+   description:"Stage Build 16 x 24",space:"Ballroom AB (BRAB)",
+   event:"Southeast Multifamily Conference",eventId:"41630"};
+  const result=taskSuggestions([source]);
+  expect(result).toHaveLength(1);
+  expect(result[0]).toMatchObject({showName:"Southeast Multifamily Conference",
+   eventId:"41630",section:"BALLROOM"});
+ });
+ it("does not assign a shared wall task to one unrelated event",()=>{
+  const source:EventRow[]=[
+   {level:2,usage:"Event (EVT)",date:"2026-11-19",start:"07:00 AM",end:"01:00 PM",
+    description:"General Session",space:"Ballroom AB (BRAB)",event:"Event One",eventId:"40001"},
+   {level:2,usage:"Event (EVT)",date:"2026-11-19",start:"08:00 AM",end:"02:00 PM",
+    description:"General Session",space:"Ballroom AB (BRAB)",event:"Event Two",eventId:"40002"}
+  ];
+  const task=detailedAirwallTask({date:"2026-11-19",section:"BALLROOM",text:"Make AB"},source);
+  expect(task.showName).toBeUndefined();
+  expect(task.eventId).toBeUndefined();
+ });
 });
