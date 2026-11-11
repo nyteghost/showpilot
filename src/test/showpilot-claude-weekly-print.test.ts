@@ -36,7 +36,8 @@ describe("Claude shared-room notices and CGC weekly print",()=>{
   const preview=printableWeek([unknown],[],"2026-11-16");
   expect(preview.unverifiedNames).toBe(1);
   expect(preview.layout.rows["Hall D"]?.[0]?.text).toContain("VERIFY parent event name (Event ID 993)");
-  expect(sharedSpaces([unknown,entry()])).toHaveLength(0);
+  expect(sharedSpaces([unknown,entry()])).toHaveLength(1); // Distinct Event IDs still need review.
+  expect(sharedSpaces([unknown,entry({eventId:"993",title:"Program Start"})])).toHaveLength(0);
  });
  it("prevents printing a different week or an unmapped other-venue room",()=>{
   expect(()=>printableWeek([entry({date:"2026-11-23"})],[],"2026-11-16")).toThrow(/selected week/);
