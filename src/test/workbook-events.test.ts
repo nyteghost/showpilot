@@ -166,7 +166,8 @@ describe("Week-view Excel export and compact CGC layout",()=>{
    expect(ws.getColumn(1).width).toBeLessThan(30);
    expect(ws.getColumn(2).width).toBeLessThan(30);
    expect(ws.getRow(12).height).toBeLessThan(25);
-   expect(ws.getCell("A4").fill).toMatchObject({fgColor:{argb:"FF131313"}});
+   // CGC's original November engineering schedule uses pure black heading bars.
+   expect(ws.getCell("A4").fill).toMatchObject({fgColor:{argb:"FF000000"}});
    expect(ws.getCell("B5").fill).toMatchObject({fgColor:{argb:"FFFFFF99"}});
  });
  it("keeps ONLY the matching original template week without overwriting its border style",async()=>{
