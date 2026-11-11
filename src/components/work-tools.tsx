@@ -1,4 +1,5 @@
 import {localNoticeDate,currentNoticeEntries} from "@/lib/showpilot-notice-dates";
+import {googleSyncDisplay} from "@/lib/showpilot-google-sync-feedback";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Briefcase, CalendarClock, CalendarDays, CalendarPlus, CalendarSync, FolderOpen, Download, FileUp, Printer, GitBranch, Layers, Eye, Map as MapIcon, Store, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -673,9 +674,21 @@ function UpdateInGoogle({ shifts, title, onStatus }: {
   shifts: Shift[]; title: string; onStatus: (message: string) => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [feedback,setFeedback] = useState<{
+    kind:"info"|"progress"|"success"|"warning"|"error"; message:string; signature:string
+  }|null>(null);
+  // A previous success must never look like confirmation of subsequent edits.
+  const signature=JSON.stringify([title,shifts.map(s=>[s.id,s.date,s.start,s.end,s.note])]);
+  const changedSinceSync=feedback?.kind==="success"&&feedback.signature!==signature;
+  const visible=changedSinceSync?{kind:"warning" as const,
+    message:"Your shifts have changed since the last successful Google Calendar update. Click Update in Google again to sync the changes."}:feedback;
+  const inform=(kind:"info"|"progress"|"success"|"warning"|"error",message:string)=>{
+    setFeedback({kind,message,signature});
+    onStatus(message);
+  };
   async function run() {
     if (!window.showpilotCalendar) {
-      onStatus("Update in Google needs the portable Windows ShowPilot app. Use Download all (.ics) in the browser version.");
+      inform("error","Update in Google needs the portable Windows ShowPilot app. Use Download all (.ics) in the browser version.");
       return;
     }
     if (busy || !shifts.length) return;
@@ -685,26 +698,43 @@ function UpdateInGoogle({ shifts, title, onStatus }: {
       const state = await bridge.status();
       if (!state.available) throw new Error("Secure Windows credential storage is unavailable. Use .ics export.");
       if (!state.configured) {
-        onStatus("One-time Google setup required: open Settings & AI → Google Calendar and import a Google Desktop OAuth JSON file.");
+        inform("warning","One-time Google setup required: open Settings & AI → Google Calendar and import a Google Desktop OAuth JSON file.");
         return;
       }
-      if (!window.confirm("Update all " + shifts.length + " shifts in Google Calendar? ShowPilot will create missing shifts and update matching ShowPilot events. It will NOT delete any events.")) return;
+      if (!window.confirm("Update all " + shifts.length + " shifts in Google Calendar? ShowPilot will create missing shifts and update matching ShowPilot events. It will NOT delete any events.")) {
+        inform("info","Google Calendar update canceled. No sync was attempted.");
+        return;
+      }
       if (!state.connected) {
-        onStatus("Opening Google sign-in in your browser. Complete approval, then return to ShowPilot.");
+        inform("progress","Opening Google sign-in in your browser. Complete approval, then return to ShowPilot.");
         await bridge.connect();
       }
-      onStatus("Updating " + shifts.length + " shift(s) in Google Calendar…");
+      inform("progress","Updating " + shifts.length + " shift(s) in Google Calendar…");
       const response = await bridge.updateAll({ title, shifts: withShiftIds(shifts) });
-      onStatus(response.message + (response.errors.length ? " Problems: " + response.errors.join(" · ") : ""));
+      const display=googleSyncDisplay(response);
+      inform(display.kind,display.message);
     } catch (e) {
-      onStatus("Could not update Google Calendar: " + (e as Error).message);
+      inform("error","Could not update Google Calendar: " + (e as Error).message);
     } finally {
       setBusy(false);
     }
   }
-  return <Button size="sm" disabled={!shifts.length || busy} onClick={() => void run()}>
-    <CalendarSync className="size-4" /> {busy ? "Updating Google…" : "Update in Google"}
-  </Button>;
+  return <div className="space-y-2">
+    <Button size="sm" disabled={!shifts.length || busy} onClick={() => void run()}>
+      <CalendarSync className="size-4" /> {busy ? "Updating Google…" : "Update in Google"}
+    </Button>
+    {visible && <div className={
+      "max-w-lg rounded border p-2 text-xs " +
+      (visible.kind==="success"?"border-green-600/70 bg-green-600/10":
+       visible.kind==="error"?"border-destructive bg-destructive/10":
+       visible.kind==="warning"?"border-amber-500 bg-amber-500/10":"border-border")
+    } role={visible.kind==="error"||visible.kind==="warning"?"alert":"status"} aria-live="polite">
+      <p>{visible.message}</p>
+      {(visible.kind==="success"||visible.kind==="warning")&&<a className="mt-1 inline-block underline" href="https://calendar.google.com/calendar/u/0/r" target="_blank" rel="noreferrer">
+        Verify in Google Calendar
+      </a>}
+    </div>}
+  </div>;
 }
 
 function ShiftsTab() {
