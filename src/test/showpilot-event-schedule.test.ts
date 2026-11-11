@@ -91,6 +91,26 @@ describe("ShowPilot - Event Schedule Excel",()=>{
   expect(new Set(shows.map(show=>show.key))).toEqual(new Set(["id:42389","id:53820"]));
   expect(shows.every(show=>show.showName==="Atlanta Convention")).toBe(true);
  });
+ it("prefers each activity Start Date over the event-level Start Date - Event with weekday column",async()=>{
+  const wb=new ExcelJS.Workbook(),ws=wb.addWorksheet("Sheet1");
+  ws.getCell("A1").value="ShowPilot - Event Schedule";
+  ws.getRow(2).values=["Start Day of Week","Start Date","Start Date - Event","Start Time","End Time",
+   "Event","Description","Space","Start Time - Event","End Time - Event","Event ID",
+   "Status - Event","Contracted Attendance"];
+  ws.getRow(3).values=["Monday",46328,46329,0.7083333333333333,0.75,
+   "Coldwell Banker Realty Atlanta Unlocking Home Parties","Vendor Load-In",
+   "Ballroom ABE (BRABE)",0.25,0.5416666666666667,42389,"Definite (30)",0];
+  ws.getRow(4).values=["Tuesday",46329,46329,0.3125,0.3125,
+   "Coldwell Banker Realty Atlanta Unlocking Home Parties","Client Move-In",
+   "Ballroom ABE (BRABE)",0.25,0.5416666666666667,42389,"Definite (30)",0];
+  const uploaded=new NodeFile([new Uint8Array(await wb.xlsx.writeBuffer())],"ShowPilotEventSchedule (4).xlsx") as unknown as File;
+  expect(await readEventSheet(uploaded)).toMatchObject([
+   {date:"2026-11-02",event:"Coldwell Banker Realty Atlanta Unlocking Home Parties",
+    eventId:"42389",description:"Vendor Load-In",space:"Ballroom ABE (BRABE)"},
+   {date:"2026-11-03",event:"Coldwell Banker Realty Atlanta Unlocking Home Parties",
+    eventId:"42389",description:"Client Move-In"}
+  ]);
+ });
  it("supports Start Date - Event and literal weekday date text on each activity row",async()=>{
   const wb=new ExcelJS.Workbook(),ws=wb.addWorksheet("Sheet1");
   ws.getCell("A1").value="ShowPilot - Event Schedule";
