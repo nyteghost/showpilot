@@ -706,14 +706,36 @@ export function detailedAirwallTask(task:TaskNote,rows:readonly EventRow[]):Task
 }
 
 /** Rooms with more than one event on the same day, so the person can see when shows share space. */
+/** Actual competing bookings, not multiple functions of one Event ID.
+ * Advisory only: the list cannot authorize or block an Excel export. */
 export function sharedSpaces(entries: EventEntry[]): string[] {
-  const map = new Map<string, Set<string>>();
-  for (const e of entries) {
-    if (e.code === "MTG" || e.code === "Food" || e.code === "Dinner" || e.code === "Breakfast" || e.code === "Lunch" || e.code === "Arr" || e.code === "MO?") continue;
-    const key = `${e.date}|${e.space}`;
-    map.set(key, new Set([...(map.get(key) ?? []), e.title]));
+  const spaces=new Map<string,Map<string,string>>();
+  for(const entry of entries){
+    if(["MTG","Food","Dinner","Breakfast","Lunch","Arr","MO?"].includes(entry.code))continue;
+    const id=entry.eventId?.trim();
+    const verifiedName=(entry.showName??"").trim();
+    const verifiedWithoutId=!id&&!isFunctionOnlyTitle(verifiedName||entry.title)
+      ?(verifiedName||entry.title).trim():"";
+    const identity=id?"id:"+id:verifiedWithoutId?"name:"+verifiedWithoutId.toLowerCase():"";
+    // No ID or verified show name: a room may be in use, but don't invent a
+    // competing event from the function label.
+    if(!identity)continue;
+    const name=verifiedName||verifiedWithoutId||
+      "VERIFY parent show (Event ID "+id+")";
+    for(const space of expandSpace(entry.space)){
+      if(![...HALL_ROWS,...BALLROOM_ROWS].includes(space))continue;
+      const key=entry.date+"|"+space;
+      const bookings=spaces.get(key)??new Map<string,string>();
+      bookings.set(identity,name);
+      spaces.set(key,bookings);
+    }
   }
-  return [...map.entries()].filter(([, t]) => t.size > 1).sort(([a], [b]) => a.localeCompare(b)).map(([k, t]) => `${k.split("|")[0]} · ${k.split("|")[1]}: ${[...t].join(" + ")}`);
+  return [...spaces].filter(([,bookings])=>bookings.size>1)
+    .sort(([a],[b])=>a.localeCompare(b))
+    .map(([key,bookings])=>{
+      const [date,space]=key.split("|");
+      return date+" · "+space+": "+[...new Set(bookings.values())].join(" + ");
+    });
 }
 
 /** Pending, tentative or hold events are not guaranteed yet; PDFs carry no status, so those rows count as confirmed. */
