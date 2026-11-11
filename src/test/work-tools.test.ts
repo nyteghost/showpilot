@@ -42,11 +42,13 @@ describe("Ungerboeck event rules", () => {
     expect(classifyEvent(banner)).toBe("MI");
     expect(classifyEvent({...banner,usage:""})).toBe("MI");
     const summary=summarizeEvents([banner],true);
-    expect(summary).toHaveLength(1);
-    expect(summary[0]).toMatchObject({
+    // A separate unconfirmed MO? can be synthesized for an MI-only report;
+    // that is not a show and must not change the confirmed Banner Hang phase.
+    expect(summary.filter(e=>e.code==="S")).toHaveLength(0);
+    expect(summary.filter(e=>e.code==="MI")).toMatchObject([{
       date:"2026-12-04",space:"Hall CD",code:"MI",start:360,end:840,
       title:"Sneaker Con",showName:"Sneaker Con",eventId:"SNEAKER-ID"
-    });
+    }]);
   });
   it("keeps actual Sneaker Con show time separate from installation",()=>{
     expect(classifyEvent(row({usage:"Event (EVT)",description:"Sneaker Con show open"}))).toBe("S");
