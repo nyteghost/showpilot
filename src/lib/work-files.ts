@@ -562,7 +562,20 @@ function writeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans
     }
     ws.getRow(row).height=18;
   };
-  band(4,"FF131313");band(6,"FF131313");band(8,"FF131313");
+  band(4,"FF000000");band(6,"FF000000");
+  // Match the November 2026 engineering master: CGC BARS has black
+  // end-labels, but B:H are white attendance cells until entered/verified.
+  // Coloring the whole row black hides the attendance traffic-light colors.
+  for(const c of [1,9]){
+    const cell=ws.getRow(8).getCell(c);
+    cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF000000"}};
+    cell.font={name:"Calibri",size:9,bold:true,color:{argb:"FFFFFFFF"}};
+  }
+  ws.getRow(8).height=18;
+  // Original source has a pale-green Service Desk strip.
+  for(let c=1;c<=9;c++)ws.getRow(53).getCell(c).fill={
+    type:"pattern",pattern:"solid",fgColor:{argb:"FFD9F2D0"}
+  };
   for(let c=2;c<=8;c++){
     const cell=ws.getRow(5).getCell(c);
     cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFFFFF99"}};
@@ -594,11 +607,19 @@ function writeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans
   // pale-salmon ballrooms; no CEPAC block is created.
   for(let i=9+ENGINEER_ROSTER.length*3;i<r;i++){
     const name=String(ws.getRow(i).getCell(1).value??"").trim().toUpperCase();
-    if(name==="CGC ESCALATOR AND SD")band(i,"FF131313");
-    else if(name==="HALLS")band(i,"FF92D050","FF111111");
-    else if(name==="BALLROOM")band(i,"FFF5B79F","FF111111");
-    else if(name==="OTHER SPACES")band(i,"FF131313");
-    else if(name==="TASKS")ws.getRow(i).height=38;
+    if(name==="CGC ESCALATOR AND SD")band(i,"FF000000");
+    else if(name==="HALLS"||name==="BALLROOM"||name==="LOCATION")band(i,"FF000000");
+    else if(name==="OTHER SPACES")band(i,"FF000000");
+    else if(name==="TASKS"){
+      // Both Tasks rows are peach; BALLROOM itself is black with white text.
+      // The color is sampled from the approved November Week #3 workbook.
+      ws.getRow(i).height=38;
+      for(let c=1;c<=9;c++){
+        const cell=ws.getRow(i).getCell(c);
+        cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFF6C7AE"}};
+        cell.font={name:"Calibri",size:9,bold:c===1,color:{argb:"FF000000"}};
+      }
+    }
   }
   mergeEventSpaces(ws, w, byLabel, new Map(w.dates.map((d, i) => [d, i + 2])));
   fitRows(ws);
