@@ -72,6 +72,9 @@ describe("ShowPilot - Event Schedule Excel",()=>{
   ws.getCell("A4").numFmt="mm/dd/yyyy";
   ws.getRow(5).values=[46337,0.5,0.75,
    "Atlanta Convention","General Session","Exhibit Hall C (EXC)",0.5,0.75,53820,"Pending Contract (32)",150];
+  // A missing function date is NOT silently borrowed from the previous row.
+  ws.getRow(6).values=[null,0.5,0.75,
+   "Atlanta Convention","General Session","Exhibit Hall D (EXD)",0.5,0.75,53820,"Definite (30)",150];
   const uploaded=new NodeFile([new Uint8Array(await wb.xlsx.writeBuffer())],"ShowPilotEventSchedule.xlsx") as unknown as File;
   const rows=await readEventSheet(uploaded);
   expect(rows).toHaveLength(3);
