@@ -214,6 +214,8 @@ export async function readEventSheet(file: File): Promise<EventRow[] | null> {
     // In a flat report this is the authority for the function's day, not
     // whichever grouped heading happened to appear earlier in the workbook.
     const rowDate=cDate?readDate(row.getCell(cDate).value):"";
+    // Never let a malformed/blank date borrow the previous activity's day.
+    if(cDate&&start&&!rowDate)return;
     if(rowDate)day=rowDate;
     if(!start) {
       // A group title is generally in A or B; its attendance summary is at
