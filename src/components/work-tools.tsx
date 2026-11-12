@@ -1,5 +1,6 @@
 import {localNoticeDate,currentNoticeEntries} from "@/lib/showpilot-notice-dates";
 import {googleSyncDisplay} from "@/lib/showpilot-google-sync-feedback";
+import {GoogleCalendarSettings} from "@/components/showpilot-calendar-settings";
 import {overlappingRoomBookings} from "@/lib/showpilot-booking-conflicts";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Briefcase, CalendarClock, CalendarDays, CalendarPlus, CalendarSync, FolderOpen, Download, FileUp, Printer, GitBranch, Layers, Eye, Map as MapIcon, Store, Sun } from "lucide-react";
@@ -668,6 +669,7 @@ function UpdateInGoogle({ shifts, title, onStatus }: {
   shifts: Shift[]; title: string; onStatus: (message: string) => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [setupOpen,setSetupOpen] = useState(false);
   const [feedback,setFeedback] = useState<{
     kind:"info"|"progress"|"success"|"warning"|"error"; message:string; signature:string
   }|null>(null);
@@ -692,7 +694,8 @@ function UpdateInGoogle({ shifts, title, onStatus }: {
       const state = await bridge.status();
       if (!state.available) throw new Error("Secure Windows credential storage is unavailable. Use .ics export.");
       if (!state.configured) {
-        inform("warning","One-time Google setup required: open Settings & AI → Google Calendar and import a Google Desktop OAuth JSON file.");
+        setSetupOpen(true);
+        inform("warning","One-time Google setup needed. Follow the step-by-step guide and import the Desktop OAuth JSON in the setup panel below. The Google Calendar website is only for viewing your calendar.");
         return;
       }
       if (!window.confirm("Update all " + shifts.length + " shifts in Google Calendar? ShowPilot will create missing shifts and update matching ShowPilot events. It will NOT delete any events.")) {
@@ -724,9 +727,19 @@ function UpdateInGoogle({ shifts, title, onStatus }: {
        visible.kind==="warning"?"border-amber-500 bg-amber-500/10":"border-border")
     } role={visible.kind==="error"||visible.kind==="warning"?"alert":"status"} aria-live="polite">
       <p>{visible.message}</p>
-      {(visible.kind==="success"||visible.kind==="warning")&&<a className="mt-1 inline-block underline" href="https://calendar.google.com/calendar/u/0/r" target="_blank" rel="noreferrer">
-        Verify in Google Calendar
+      {(visible.kind==="success"||(visible.kind==="warning"&&visible.message.startsWith("Google Calendar update incomplete")))&&<a className="mt-1 inline-block underline" href="https://calendar.google.com/calendar/u/0/r" target="_blank" rel="noreferrer">
+        View Calendar to verify synced shifts (not for setup)
       </a>}
+    </div>}
+    <button type="button" className="text-xs text-primary underline" aria-expanded={setupOpen}
+      onClick={()=>setSetupOpen(value=>!value)}>
+      {setupOpen?"Hide Google setup instructions":"Google setup / reconnect instructions"}
+    </button>
+    {setupOpen&&<div className="max-w-3xl">
+      <GoogleCalendarSettings onConnected={()=>{
+        inform("info","Google authorization saved. Click Update in Google again to add or update your shifts.");
+        setSetupOpen(false);
+      }}/>
     </div>}
   </div>;
 }
