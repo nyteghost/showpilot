@@ -17,8 +17,8 @@ describe("Google OAuth configuration survives ShowPilot portable upgrades",()=>{
   const cryptoStub={
    isEncryptionAvailable:()=>true,
    getSelectedStorageBackend:()=>"kwallet",
-   encryptString:(value:string)=>Buffer.from(value,"utf8").map(v=>v^0xa5),
-   decryptString:(value:Buffer)=>Buffer.from(value).map(v=>v^0xa5).toString("utf8"),
+   encryptString:(value:string)=>Buffer.from([...Buffer.from(value,"utf8")].map(v=>v^0xa5)),
+   decryptString:(value:Buffer)=>Buffer.from([...value].map(v=>v^0xa5)).toString("utf8"),
   };
   const launch=()=>{
    const handlers=new Map<string, (...args:any[])=>any>();
