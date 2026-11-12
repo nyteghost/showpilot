@@ -15,6 +15,9 @@ const SCOPES = 'https://www.googleapis.com/auth/calendar.events';
 const ZONE = 'America/New_York';
 const GOOGLE = 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
 const FAIL = (reason) => { throw new Error(reason); };
+// Version-neutral OS user-data location. A new portable ZIP or ShowPilot.exe
+// lives in its own installation folder, but must never move OAuth credentials
+// with the executable. The protected file stays on this Windows user account.
 const FILE = () => path.join(app.getPath('userData'), 'showpilot-calendar-credentials.v1.json');
 let connecting = false;
 let syncing = false;
@@ -85,7 +88,16 @@ async function tokenRequest(params) {
     body:new URLSearchParams(params),signal:AbortSignal.timeout(18000),
   });
   const data=await response.json().catch(()=>({}));
-  if(!response.ok||typeof data.access_token!=='string')FAIL('Google authorization failed (HTTP '+response.status+'). Check the OAuth client and account permissions.');
+  if(!response.ok||typeof data.access_token!=='string'){
+    // A successful initial sign-in can later expire without any change in
+    // ShowPilot. In particular Google expires External/Testing refresh tokens
+    // after seven days. Do not erase encrypted settings on an API error.
+    if(params.grant_type==='refresh_token'&&data.error==='invalid_grant')
+      FAIL('Saved Google authorization expired or was revoked. Open Google setup / reconnect in My Shifts or Settings & AI, then choose Reconnect Google Calendar. If your Google OAuth app is External / Testing, Google may expire its authorization after 7 days; publishing or your Workspace administrator must address that Google limit.');
+    if(data.error==='invalid_client')
+      FAIL('Google rejected the saved Desktop OAuth client. In Settings & AI → Google Calendar, import an updated Desktop OAuth JSON and reconnect.');
+    FAIL('Google authorization failed (HTTP '+response.status+'). Check the OAuth client and account permissions.');
+  }
   return data;
 }
 async function connect() {
