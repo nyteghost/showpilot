@@ -124,14 +124,25 @@ To start a new release series, update the major/minor parts of the source `packa
 - Bulk sync does **not** automatically delete events when a shift is removed from ShowPilot. Confirm changes before syncing.
 - Date/time handling uses the venue's **America/New_York** time zone.
 
-#### One-time Google Calendar connection
+#### Google Calendar — first-time setup, step by step
 
-1. In Google Cloud Console, enable **Google Calendar API** and configure an OAuth consent screen. Create an OAuth client with type **Desktop app**, and download its JSON credentials. A testing app may require adding your Google account as a test user.
-2. Open **Settings → Google Calendar** in the Windows or Linux desktop app and import that Desktop OAuth JSON file.
-3. Click **Connect Google Calendar**. Your system browser opens Google's authorization screen; ShowPilot never requests your Google password.
-4. Return to **My Shifts** and click **Update in Google** after checking the schedule.
+**Important: The “View Calendar” link is only to inspect your events. It will not authorize ShowPilot.**
+You can complete the full setup within **ShowPilot → My Shifts → Update in Google → Google setup / reconnect instructions**,
+or under **Settings & AI → Google Calendar** in the portable desktop app.
 
-Google Calendar access depends on your Google account, API access and any company-managed IT restrictions. Direct account sync is still subject to real-account testing. **Offline .ics export works without connecting Google.** Credentials and OAuth refresh tokens are encrypted using Windows-provided protection or a supported Linux OS keyring (KWallet/libsecret); they are not included in work-data backups.
+1. Go to [Google Cloud — Create project](https://console.cloud.google.com/projectcreate). Sign in and create/select a project.
+2. In that project, [enable the Google Calendar API](https://console.cloud.google.com/apis/library/calendar-json.googleapis.com).
+3. Open [Google Auth Platform → Branding](https://console.cloud.google.com/auth/branding). Click **Get started**, if shown, provide an app name and email. Under [Audience](https://console.cloud.google.com/auth/audience), use **Internal** if your organization supports it, or **External** for a personal account. For External/Testing, add your own Gmail as a test user.
+4. Visit [Clients](https://console.cloud.google.com/auth/clients), **Create client**, **Desktop app**. Name the client and **Download JSON**. Do not select a Web app, API key or service-account JSON.
+5. Back in ShowPilot’s Google Calendar settings, choose **Select downloaded Desktop OAuth JSON** and open that downloaded file.
+6. Click **Connect Google Calendar**. Choose the correct Google account in the normal browser, approve permission, and return to ShowPilot.
+7. In **My Shifts**, verify your dates and click **Update in Google**. The result beside the button shows the number of events **added**, **updated**, **failed**, or **not processed**. Only use **View Calendar to verify synced shifts** after a sync.
+
+**Will I have to sign in with each portable update?** No, not normally. The OAuth Desktop client and Google refresh authorization are encrypted with the OS credential protection and kept in ShowPilot’s **per-user application-data directory**, separate from the extracted `ShowPilot.exe` folder. Installing newer versions of the **same branch on the same Windows account** preserves the connection. The same settings are intentionally not copied into USB backups or another machine. The Claude experimental branch stores its own data separately from Beta/Main, so switching branches is not automatically the same account configuration.
+
+**Google’s seven-day Testing limit:** For an OAuth consent project with Audience **External** and publishing status **Testing**, Google expires refresh authorization after about seven days when Calendar scopes are involved. Even persistent local storage cannot prevent this. Google’s **In production** publishing status or an eligible Workspace **Internal** app can avoid that specific Testing limit, subject to Google verification/administrator requirements. See [Google’s OAuth refresh-token rules](https://developers.google.com/identity/protocols/oauth2). ShowPilot will explain an expired authorization and provide **Reconnect Google Calendar**; reconnect does not erase existing calendar events.
+
+Company-managed Google accounts may require IT approval. **Offline .ics export** still works without Google OAuth. ShowPilot never requests your Google password, and the OAuth JSON/refresh tokens should never be shared or committed to GitHub.
 
 ### 3. Stage & Deck Planner
 
