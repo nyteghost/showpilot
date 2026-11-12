@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CalendarSync, CheckCircle2, ExternalLink, ShieldCheck, Trash2, Upload } from "lucide-react";
+import { CalendarSync, CheckCircle2, ShieldCheck, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { GoogleCalendarStatus } from "@/lib/showpilot-calendar-bridge";
 import {GoogleCalendarSetupGuide} from "@/components/showpilot-google-calendar-setup-guide";
