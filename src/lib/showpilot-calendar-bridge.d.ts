@@ -7,7 +7,8 @@ export type GoogleCalendarSyncResult = {
 };
 export interface ShowPilotCalendarBridge {
   status(): Promise<GoogleCalendarStatus>;
-  saveClient(json: string): Promise<GoogleCalendarStatus>;
+  /** Opens a native desktop file picker. OAuth JSON never enters renderer JS. */
+  chooseClient(): Promise<{cancelled:boolean;status:GoogleCalendarStatus}>;
   connect(): Promise<GoogleCalendarStatus>;
   disconnect(): Promise<GoogleCalendarStatus>;
   forget(): Promise<GoogleCalendarStatus>;

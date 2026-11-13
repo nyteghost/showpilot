@@ -42,7 +42,7 @@ contextBridge.exposeInMainWorld("showpilotAI", Object.freeze({
 
 contextBridge.exposeInMainWorld("showpilotCalendar", Object.freeze({
   status: () => ipcRenderer.invoke("showpilot-calendar:status"),
-  saveClient: (json) => ipcRenderer.invoke("showpilot-calendar:save-client",json),
+  chooseClient: () => ipcRenderer.invoke("showpilot-calendar:choose-client"),
   connect: () => ipcRenderer.invoke("showpilot-calendar:connect"),
   disconnect: () => ipcRenderer.invoke("showpilot-calendar:disconnect"),
   forget: () => ipcRenderer.invoke("showpilot-calendar:forget"),

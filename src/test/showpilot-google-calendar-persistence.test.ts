@@ -38,14 +38,16 @@ describe("Google OAuth configuration survives ShowPilot portable upgrades",()=>{
    };
    runInNewContext(code,sandbox,{filename:"google-calendar.cjs"});
    module.exports.setupGoogleCalendarIpc();
-   return handlers;
+   return {handlers,api:module.exports};
   };
-  const action=(handlers:Map<string,(...args:any[])=>any>,suffix:string)=>
-   handlers.get("showpilot-calendar:"+suffix)!;
+  const action=(session:{handlers:Map<string,(...args:any[])=>any>},suffix:string)=>
+   session.handlers.get("showpilot-calendar:"+suffix)!;
   try{
    const first=launch(),client="1234-test.apps.googleusercontent.com";
    expect(action(first,"status")()).toMatchObject({configured:false,connected:false});
-   action(first,"save-client")(null,JSON.stringify({installed:{client_id:client,client_secret:"test-only"}}));
+   // Native file chooser uses setClient inside Electron, not an IPC call
+   // carrying raw OAuth credentials through the renderer.
+   first.api.setClient(JSON.stringify({installed:{client_id:client,client_secret:"test-only"}}));
    expect(action(first,"status")()).toMatchObject({configured:true,connected:false});
    const file=join(dir,"showpilot-calendar-credentials.v1.json");
    expect(readFileSync(file,"utf8")).not.toContain(client);

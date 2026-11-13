@@ -3,7 +3,7 @@
  * Renderer receives summaries/statuses; never credentials, tokens, arbitrary URLs or raw API access.
  */
 'use strict';
-const { app, ipcMain, safeStorage, shell } = require('electron');
+const { app, ipcMain, safeStorage, shell, dialog, BrowserWindow } = require('electron');
 const {secureStorageAvailable,secureStorageRequirement}=require('./secure-storage.cjs');
 const { createServer } = require('node:http');
 const { randomBytes, createHash } = require('node:crypto');
@@ -69,6 +69,25 @@ function setClient(input) {
   if(current.client_id===creds.client_id)writeSettings({...current,...creds});
   else writeSettings(creds); // Changing OAuth client must invalidate tokens.
   return status();
+}
+/** Select and read Google Desktop JSON in the trusted native process.
+ * No OAuth file bytes go through a Chromium <input type="file">, React state
+ * or the renderer IPC bridge. This also avoids renderer file-picker crashes. */
+async function chooseClient(){
+  if(connecting||syncing)FAIL('Finish the current Google Calendar operation first.');
+  const chooser={title:'Select your Google Desktop OAuth JSON file',
+    properties:['openFile'],filters:[{name:'Google Desktop OAuth JSON',extensions:['json']}]};
+  const parent=BrowserWindow.getFocusedWindow();
+  const selected=parent?await dialog.showOpenDialog(parent,chooser):await dialog.showOpenDialog(chooser);
+  if(selected.canceled||!selected.filePaths?.length)return {cancelled:true,status:status()};
+  const filepath=selected.filePaths[0];
+  // The user explicitly chose this file; reject directory/symlink and large
+  // files without importing or logging private data.
+  const st=fs.lstatSync(filepath);
+  if(!st.isFile()||st.isSymbolicLink()||st.size<1||st.size>12000)
+    FAIL('Choose a regular Google Desktop OAuth JSON file smaller than 12 KB.');
+  const json=fs.readFileSync(filepath,'utf8');
+  return {cancelled:false,status:setClient(json)};
 }
 function disconnect() {
   if(connecting||syncing)FAIL('Finish the current Google Calendar operation first.');
@@ -286,10 +305,10 @@ async function updateAll(payload) {
 }
 function setupGoogleCalendarIpc(){
   ipcMain.handle('showpilot-calendar:status',()=>status());
-  ipcMain.handle('showpilot-calendar:save-client',(_,json)=>setClient(json));
+  ipcMain.handle('showpilot-calendar:choose-client',()=>chooseClient());
   ipcMain.handle('showpilot-calendar:connect',()=>connect());
   ipcMain.handle('showpilot-calendar:disconnect',()=>disconnect());
   ipcMain.handle('showpilot-calendar:forget',()=>forget());
   ipcMain.handle('showpilot-calendar:update-all',(_,input)=>updateAll(input));
 }
-module.exports={setupGoogleCalendarIpc,credentialFromJson,validateSync,localDateTime,calendarBody,managedSyncWindow};
+module.exports={setupGoogleCalendarIpc,credentialFromJson,validateSync,localDateTime,calendarBody,managedSyncWindow,setClient,chooseClient};
