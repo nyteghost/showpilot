@@ -63,7 +63,7 @@ describe("Today separates active, upcoming, finished and date-only CGC shows",()
    {start:540,end:780},{start:840,end:1020}
   ]);
   expect(parseShowTimeWindows(["MI 25a–4p","S 9:77a–4p","MI 4p–4p"]))
-   .toEqual([{start:960,end:2400}]); // Explicit same-clock end = overnight, NOT instantaneous.
+   .toEqual([]); // Invalid or equal endpoints must never prove an ongoing show.
  });
 });
 
