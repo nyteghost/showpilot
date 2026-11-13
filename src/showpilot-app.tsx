@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
 import {
   CalendarDays, CalendarClock, Layers3, Store, Map, FolderOpen,
-  LayoutDashboard, Menu, Moon, Sun, ChevronRight, PanelLeftClose, PanelLeftOpen, Settings2
+  LayoutDashboard, Menu, Moon, Sun, ChevronRight, PanelLeftClose, PanelLeftOpen, Settings2, PanelsTopLeft, Rows3
 } from "lucide-react";
 import { ShowServicesTools, type WorkTabId, type OpenEventRequest } from "@/components/work-tools";
+import {ShowPilotWindowWorkspace} from "@/components/showpilot-window-workspace";
+import {focusWorkspaceWindow,readSavedOpenWindows,
+ type WorkspaceWindowId} from "@/lib/showpilot-window-workspace";
 import { BackupPanel } from "@/components/showpilot-backup";
 import { ShowPilotLocalFoundation } from "@/components/showpilot-local-foundation";
 import { ShowPilotAiSettings } from "@/components/showpilot-ai-settings";
@@ -35,14 +38,21 @@ export function App() {
     if(v==="precon"||v==="postcon"||v==="deck")return "eventhub"; // Older standalone pages now live inside Events.
     return v==="dashboard"||v==="settings"||sections.some(s=>s.id===v)?v as Screen:"dashboard";
   });
-  // Mount the workspace only after its first visit, then keep it alive across
-  // sidebar navigation. Its Event Schedule stores imported File objects and
-  // unsaved reviewer choices in React state, which unmounting would destroy.
-  const [lastWorkTab,setLastWorkTab] = useState<WorkTabId|null>(()=>{
-    const v=saved("showpilot:screen","dashboard");
-    if(v==="precon"||v==="postcon")return "eventhub";
-    return sections.some(s=>s.id===v)?v as WorkTabId:null;
+  // Each visited tool stays mounted even when its window is closed or
+  // minimized, preserving pending Excel imports, reviewed shifts and editors.
+  const [openWindows,setOpenWindows]=useState<WorkspaceWindowId[]>(()=>{
+    const initial=readSavedOpenWindows(saved("showpilot:workspace:open","[]"));
+    const old=saved("showpilot:screen","dashboard");
+    const id=old==="precon"||old==="postcon"||old==="deck"?"eventhub":old;
+    if(id==="settings"||sections.some(s=>s.id===id))
+      return focusWorkspaceWindow(initial,id as WorkspaceWindowId);
+    return initial;
   });
+  const [visitedWindows,setVisitedWindows]=useState<WorkspaceWindowId[]>(()=>[...openWindows]);
+  const [minimizedWindows,setMinimizedWindows]=useState<WorkspaceWindowId[]>([]);
+  const [windowedMode,setWindowedMode]=useState(()=>saved("showpilot:workspace:windowed","true")!=="false");
+  const [compact,setCompact]=useState(()=>typeof window!=="undefined"&&window.innerWidth<=780);
+  const windowsActive=windowedMode&&!compact;
   const [dark,setDark] = useState(()=>saved("showpilot:theme","light")==="dark");
   const [expanded,setExpanded] = useState(()=>saved("showpilot:sidebar","true")!=="false");
   const [mobileOpen,setMobileOpen] = useState(false);
@@ -81,6 +91,15 @@ export function App() {
   },[dark]);
   useEffect(()=>{try{localStorage.setItem("showpilot:screen",screen)}catch{}},[screen]);
   useEffect(()=>{try{localStorage.setItem("showpilot:sidebar",String(expanded))}catch{}},[expanded]);
+  useEffect(()=>{try{localStorage.setItem("showpilot:workspace:open",JSON.stringify(openWindows))}catch{}},[openWindows]);
+  useEffect(()=>{try{localStorage.setItem("showpilot:workspace:windowed",String(windowedMode))}catch{}},[windowedMode]);
+  useEffect(()=>{
+    const mq=window.matchMedia("(max-width: 780px)");
+    const update=()=>setCompact(mq.matches);
+    update();
+    mq.addEventListener("change",update);
+    return ()=>mq.removeEventListener("change",update);
+  },[]);
   useEffect(()=>subscribeLocalAiRuntimeState(setLocalAiRuntime),[]);
   useEffect(()=>{if(localAiRuntime.status==="ready")setLocalAiOn(true);},[localAiRuntime.status]);
 
@@ -95,14 +114,59 @@ export function App() {
             revision:(previous?.revision??0)+1
           }));
         }
-        setLastWorkTab(tab as WorkTabId);setScreen(tab as WorkTabId);setMobileOpen(false);
+        const id=tab as WorkspaceWindowId;
+        setVisitedWindows(previous=>previous.includes(id)?previous:[...previous,id]);
+        setOpenWindows(previous=>focusWorkspaceWindow(previous,id));
+        setMinimizedWindows(previous=>previous.filter(x=>x!==id));
+        setScreen(tab as WorkTabId);setMobileOpen(false);
       }
     };
     window.addEventListener("showpilot:navigate",open);
     return ()=>window.removeEventListener("showpilot:navigate",open);
   },[]);
-  const select=(next:Screen)=>{if(sections.some(s=>s.id===next))setLastWorkTab(next as WorkTabId);setScreen(next);setMobileOpen(false)};
+  const focusWindow=(id:WorkspaceWindowId)=>{
+    setVisitedWindows(previous=>previous.includes(id)?previous:[...previous,id]);
+    setOpenWindows(previous=>focusWorkspaceWindow(previous,id));
+    setMinimizedWindows(previous=>previous.filter(x=>x!==id));
+    setScreen(id);setMobileOpen(false);
+  };
+  const select=(next:Screen)=>{
+    if(next==="dashboard"){setScreen("dashboard");setMobileOpen(false);}
+    else focusWindow(next);
+  };
+  const closeWindow=(id:WorkspaceWindowId)=>{
+    const remaining=openWindows.filter(x=>x!==id);
+    setOpenWindows(remaining);
+    setMinimizedWindows(previous=>previous.filter(x=>x!==id));
+    if(screen===id)setScreen(remaining[remaining.length-1]??"dashboard");
+  };
+  const minimizeWindow=(id:WorkspaceWindowId)=>{
+    setMinimizedWindows(previous=>previous.includes(id)?previous:[...previous,id]);
+    if(screen===id){
+      const next=openWindows.filter(x=>x!==id&&!minimizedWindows.includes(x));
+      if(next.length)setScreen(next[next.length-1]!);
+    }
+  };
   const current=sections.find(s=>s.id===screen);
+  const windowItems=[
+   ...sections.filter(item=>visitedWindows.includes(item.id)).map(item=>({
+    id:item.id as WorkspaceWindowId,label:item.label,description:item.note,
+    icon:<item.Icon size={15}/>,
+    content:<section className="sp-panel"><ShowServicesTools
+     selectedTab={item.id} hideTabBar page venueOnly
+     active={screen!=="dashboard"&&openWindows.includes(item.id)&&
+       !minimizedWindows.includes(item.id)&&(windowsActive||screen===item.id)}
+     openEventRequest={openEventRequest}/></section>
+   })),
+   ...(visitedWindows.includes("settings")?[{
+    id:"settings" as WorkspaceWindowId,label:"Settings & AI",description:"Local providers, data and integrations",
+    icon:<Settings2 size={15}/>,
+    content:<section className="sp-panel space-y-5">
+     <ShowPilotUpdates/><ShowPilotDiagnosticsPanel/><ShowPilotMemorySettings/>
+     <ShowPilotLocalFoundation/><GoogleCalendarSettings/><ShowPilotAiSettings/>
+    </section>
+   }]:[])
+  ];
   return <div className="sp-shell">
     {mobileOpen&&<button className="sp-backdrop" aria-label="Close navigation" onClick={()=>setMobileOpen(false)}/>}
     <aside className={"sp-sidebar "+(expanded?"":"sp-collapsed ")+(mobileOpen?"sp-open":"")}>
@@ -113,8 +177,8 @@ export function App() {
       <div className="sp-nav">
         {expanded&&<span className="sp-nav-label">WORKSPACE</span>}
         <button title="Dashboard" className={"sp-nav-item "+(screen==="dashboard"?"sp-selected":"")} onClick={()=>select("dashboard")}><LayoutDashboard size={19}/>{expanded&&<span>Dashboard</span>}</button>
-        {sections.map(({id,label,Icon})=><button title={label} key={id} className={"sp-nav-item "+(screen===id?"sp-selected":"")} onClick={()=>select(id)}><Icon size={19}/>{expanded&&<span>{label}</span>}</button>)}
-        <button title="Settings & AI Providers" className={"sp-nav-item "+(screen==="settings"?"sp-selected":"")} onClick={()=>select("settings")}><Settings2 size={19}/>{expanded&&<span>Settings & AI</span>}</button>
+        {sections.map(({id,label,Icon})=><button title={label} key={id} className={"sp-nav-item "+(screen===id?"sp-selected":"")} onClick={()=>select(id)}><Icon size={19}/>{expanded&&<span>{label}{openWindows.includes(id)&&<span className="sp-nav-window-dot" title="Window open"/>}</span>}</button>)}
+        <button title="Settings & AI Providers" className={"sp-nav-item "+(screen==="settings"?"sp-selected":"")} onClick={()=>select("settings")}><Settings2 size={19}/>{expanded&&<span>Settings & AI{openWindows.includes("settings")&&<span className="sp-nav-window-dot" title="Window open"/>}</span>}</button>
       </div>
       <div className={"sp-sidebar-footer"+(expanded?" sp-sidebar-footer-open":"")}>
         {expanded&&<ShowPilotCorrectionChat />}
@@ -143,16 +207,23 @@ export function App() {
             {localAiBusy?"Working…":localAiRuntime.status==="ready"?"AI On":localAiOn?"Load AI":"AI Off"}
           </button>
           {localAiError&&<span role="alert" className="max-w-48 text-xs text-amber-600" title={localAiError}>{localAiError}</span>}
+          <button className="sp-workspace-mode" type="button" onClick={()=>setWindowedMode(v=>!v)}
+            aria-pressed={windowedMode} title={windowsActive?"Switch to classic tab view":"Open independent movable windows"}
+            aria-label={windowsActive?"Switch to classic tab view":"Switch to movable window workspace"}>
+            {windowsActive?<Rows3 size={15}/>:<PanelsTopLeft size={15}/>}
+            <span>{windowsActive?"Classic tabs":"Windows"}</span>
+          </button>
           <button className="sp-icon-button" onClick={()=>setDark(v=>!v)} aria-label={dark?"Use light theme":"Use dark theme"}>{dark?<Sun size={19}/>:<Moon size={19}/>}</button>
         </div>
       </header>
-      <main className="sp-main">
+      <main className={"sp-main"+(windowsActive&&screen!=="dashboard"?" sp-main-desktop":"")}>
         <div className="sp-page-head">
-          <div><p className="sp-eyebrow">COBB CONVENTION CENTER-ATLANTA</p><h1>{current?.label??(screen==="settings"?"Settings & AI Providers":"Operations Overview")}</h1>
-            <p className="sp-subtitle">{current?.desc??(screen==="settings"?"Configure on-device GPU AI and encrypted online provider keys.":"Your venue operations tools, together in one workspace.")}</p></div>
+          <div><p className="sp-eyebrow">COBB CONVENTION CENTER-ATLANTA</p><h1>{screen==="dashboard"?"Operations Overview":windowsActive?"Operations Workspace":current?.label??"Settings & AI Providers"}</h1>
+            <p className="sp-subtitle">{windowsActive&&screen!=="dashboard"?
+              "Each tool opens as a movable, resizable window. Open additional tools from the sidebar or arrange the workspace below.":
+              current?.desc??(screen==="settings"?"Configure on-device GPU AI and encrypted online provider keys.":"Your venue operations tools, together in one workspace.")}</p></div>
         </div>
-        {screen==="settings" ? <section className="sp-panel space-y-5"><ShowPilotUpdates /><ShowPilotDiagnosticsPanel /><ShowPilotMemorySettings /><ShowPilotLocalFoundation /><GoogleCalendarSettings /><ShowPilotAiSettings /></section>
-        : screen==="dashboard"
+        {screen==="dashboard"
           ? <div className="space-y-5">
               <div className="sp-banner"><img src={showpilotIcon} width={52} height={52} alt="" aria-hidden="true" /><div><h2>Welcome to ShowPilot</h2><p>Open a tool below to begin. Scheduling and reports run locally, with no uploaded report data sent to a server.</p></div></div>
               <div className="sp-cards">
@@ -166,11 +237,13 @@ export function App() {
             </div>
           : null
         }
-        {lastWorkTab && <div hidden={!current}>
-          <section className="sp-panel"><ShowServicesTools selectedTab={lastWorkTab} openEventRequest={openEventRequest} hideTabBar page venueOnly /></section>
-        </div>}
+        <ShowPilotWindowWorkspace items={windowItems} openIds={openWindows}
+         minimizedIds={minimizedWindows}
+         activeId={screen==="dashboard"?null:screen}
+         windowed={windowsActive} visible={screen!=="dashboard"}
+         onFocus={focusWindow} onClose={closeWindow} onMinimize={minimizeWindow}/>
       </main>
-      <footer className="sp-footer">ShowPilot v{__APP_VERSION__} · Cobb Convention Center-Atlanta · {__APP_VERSION__.includes("-beta") ? "Beta" : "Main"} channel</footer>
+      <footer className="sp-footer">ShowPilot v{__APP_VERSION__} · Cobb Convention Center-Atlanta · {__APP_VERSION__.includes("-claude")?"Claude test":__APP_VERSION__.includes("-beta")?"Beta":"Main"} channel</footer>
     </div>
   </div>;
 }
