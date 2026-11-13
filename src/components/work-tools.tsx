@@ -73,7 +73,7 @@ const startTab = (): TabId => {
 };
 
 export type OpenEventRequest={key:string;section:"documents"|"overview";revision:number};
-export function ShowServicesTools({ page = false, selectedTab, hideTabBar = false, venueOnly = false, openEventRequest }: { page?: boolean; selectedTab?: WorkTabId; hideTabBar?: boolean; venueOnly?: boolean; openEventRequest?:OpenEventRequest|null } = {}) {
+export function ShowServicesTools({ page = false, selectedTab, hideTabBar = false, venueOnly = false, active = true, openEventRequest }: { page?: boolean; selectedTab?: WorkTabId; hideTabBar?: boolean; venueOnly?: boolean; active?:boolean; openEventRequest?:OpenEventRequest|null } = {}) {
   const [tab, setTab] = useState<TabId>("events");
   // Keep each visited tab mounted. Radix normally unmounts inactive TabsContent,
   // which used to erase imported files, review edits, and unresolved booth work.
@@ -96,9 +96,9 @@ export function ShowServicesTools({ page = false, selectedTab, hideTabBar = fals
             <p className="text-sm text-muted-foreground">{cur.hint}</p>
 
           </div>
-          {visited.includes("today") && <KeepAliveTabContent value="today"><ShowPilotTodayPanel active={activeTab==="today"}/></KeepAliveTabContent>}
+          {visited.includes("today") && <KeepAliveTabContent value="today"><ShowPilotTodayPanel active={active&&activeTab==="today"}/></KeepAliveTabContent>}
           {visited.includes("events") && <KeepAliveTabContent value="events"><EventsTab venueOnly={venueOnly} /></KeepAliveTabContent>}
-          {visited.includes("eventhub") && <KeepAliveTabContent value="eventhub"><ShowPilotEventsPanel active={activeTab==="eventhub"} openEventRequest={openEventRequest} stagePlanner={<DeckTab/>} floorMaps={(files,eventId)=><FloorMapPanel initialEventDocuments={files} selectedEventId={eventId}/>} /></KeepAliveTabContent>}
+          {visited.includes("eventhub") && <KeepAliveTabContent value="eventhub"><ShowPilotEventsPanel active={active&&activeTab==="eventhub"} openEventRequest={openEventRequest} stagePlanner={<DeckTab/>} floorMaps={(files,eventId)=><FloorMapPanel initialEventDocuments={files} selectedEventId={eventId}/>} /></KeepAliveTabContent>}
           {visited.includes("shifts") && <KeepAliveTabContent value="shifts"><ShiftsTab /></KeepAliveTabContent>}
           {visited.includes("vendors") && <KeepAliveTabContent value="vendors"><StandaloneVendors /></KeepAliveTabContent>}
           {visited.includes("floor") && <KeepAliveTabContent value="floor"><FloorMapPanel /></KeepAliveTabContent>}

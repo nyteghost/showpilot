@@ -32,6 +32,46 @@ The existing **Automatic install (optional)** button remains available if you wa
 4. The Linux artifacts contain a **`ShowPilot-Linux-SHA256SUMS.txt`** file with both package checksums. Use `sha256sum -c` in a directory containing the downloaded files if you want to check integrity.
 5. Windows, Linux, and company IT policies may restrict unsigned apps. Do not bypass your organization's restrictions without approval.
 
+
+### Movable windows for each ShowPilot tool (Claude test branch)
+
+On a Windows desktop, ShowPilot now starts with **Windowed workspace** enabled. Clicking
+**Today**, **Event Schedule**, **Events**, **My Shifts**, **Floor Maps**, **Vendors**, or
+**Settings & AI** in the sidebar opens that tool in a separate, movable window **inside the ShowPilot app**.
+You can leave several open at the same time—for example, Event Schedule beside Floor Maps and My Shifts.
+
+- **Move a window:** drag its title bar. To move using the keyboard, focus the title bar
+  and press **Alt + arrow keys**; add **Shift** for larger steps.
+- **Resize:** drag the bottom-right corner. Keyboard: focus the resize handle and press
+  **Alt + arrow keys**.
+- **Maximize or restore:** use the square icon at the top right or double-click the title bar.
+- **Minimize:** click the minus icon. Reopen from the **window bar along the bottom** or the
+  sidebar. The contents and in-progress form inputs stay mounted.
+- **Close a window:** click **X**. This hides its contents, without deleting saved reports
+  or unloading its React editor during the current session. Clicking its sidebar tab reopens it
+  with in-session edits intact.
+- **Tile:** arrange all open windows side by side, with as much room as available.
+  **Cascade:** stagger windows for quick switching.
+- **Classic tabs:** click the **Classic tabs** control in ShowPilot's header. Only the selected
+  tool is displayed at full width; the others remain mounted and can be restored by
+  turning **Windows** back on. On narrower screens ShowPilot automatically displays
+  the classic single-tool layout.
+- **Dashboard:** hides the workspace to show the home screen. Returning to any tool
+  restores the other open windows, preserving their content for the current app session.
+
+Window sizes, positions, and the list of open windows are stored locally in the same
+ShowPilot Windows user profile and persist across portable updates. This saves **window
+layout**, not the content of unsaved forms across a complete app restart. Event Schedule
+and other tools retain their own established autosave/project workflows; please
+save important edits before closing ShowPilot. No personal work files, credentials,
+or Event Schedule content are placed in the window-layout preference.
+
+This feature runs all windows in **one** secured Electron renderer: it does not create
+separate OS-level Windows, a web server, extra app copies, or concurrent writers to
+the same SQLite/Excel file. Shared Google Calendar credentials and offline files
+continue using ShowPilot's existing protected storage. The `main` branch and any
+running production deployment are unchanged.
+
 ### Run ShowPilot on CachyOS / KDE Plasma
 
 **Recommended — Linux AppImage** (choose your extracted filename, starting with `ShowPilot-v`):
