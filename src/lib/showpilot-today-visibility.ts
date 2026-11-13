@@ -34,7 +34,8 @@ export function parseShowTimeWindows(lines:readonly string[]):Window[]{
   for(const match of line.matchAll(re)){
    const start=clock(match[1]??""),endRaw=clock(match[2]??"");
    if(start===null||endRaw===null)continue;
-   const end=endRaw<=start?endRaw+1440:endRaw;
+   if(endRaw===start)continue; // Equal endpoints do not establish a 24-hour booking.
+   const end=endRaw<start?endRaw+1440:endRaw;
    if(end>start&&end-start<=1440)spans.push({start,end});
   }
  }
