@@ -16,7 +16,7 @@ import {parseZipSchedule,type ZipScheduleHint} from "@/lib/showpilot-zip-schedul
 import {cgcVenueClock,showPhaseForToday,showHasOvernightActivity,scopeDatedRuleFindings} from "@/lib/showpilot-today-visibility";
 import type {EventFileRecord} from "@/lib/showpilot-event-assets";
 import {
- todayIso,addIsoDays,mondayFor,daysOfWeek,
+ addIsoDays,mondayFor,daysOfWeek,
  airwallsForEvent,scheduledWallChanges,type AirwallAssessment
 } from "@/lib/showpilot-today";
 import {
