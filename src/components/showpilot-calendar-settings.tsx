@@ -12,16 +12,21 @@ export function GoogleCalendarSettings({onConnected}:{onConnected?:()=>void}={})
     if (window.showpilotCalendar) void window.showpilotCalendar.status().then(setState).catch(e => setMessage(String(e)));
   }, []);
 
-  async function loadClient(file: File) {
-    if (!window.showpilotCalendar) return;
+  async function chooseClient(){
+    if(!window.showpilotCalendar)return;
     setBusy(true);setMessage("");
-    try {
-      if (file.size > 12000) throw new Error("The Google OAuth JSON is too large.");
-      const status=await window.showpilotCalendar.saveClient(await file.text());
-      setState(status);
-      setMessage("Desktop OAuth credentials saved securely. Now click Connect Google Calendar.");
-    } catch(e){setMessage("Could not configure Calendar: "+(e as Error).message)}
-    finally{setBusy(false)}
+    try{
+      // Native Windows dialog: Google JSON stays in the protected desktop
+      // process, never inside a browser File object or React state.
+      const result=await window.showpilotCalendar.chooseClient();
+      if(result.cancelled){setMessage("File selection canceled. Existing Google settings were not changed.");return;}
+      setState(result.status);
+      setMessage(result.status.connected?
+        "Google Desktop OAuth configuration saved. The existing Google authorization is retained for this same OAuth client. You can update shifts in My Shifts.":
+        "Desktop OAuth configuration saved securely. Click Connect Google Calendar to authorize your account.");
+    }catch(e){
+      setMessage("Could not import Google OAuth JSON: "+(e instanceof Error?e.message:String(e)));
+    }finally{setBusy(false);}
   }
   async function connect(){
     if(!window.showpilotCalendar)return;
@@ -56,9 +61,10 @@ export function GoogleCalendarSettings({onConnected}:{onConnected?:()=>void}={})
           <div className="rounded-lg bg-muted p-3 space-y-2">
             <p className="text-sm font-semibold">Import your downloaded Google Desktop OAuth JSON</p>
             <p className="text-xs">After following the steps above, choose the downloaded <strong>Desktop app</strong> OAuth JSON file below. This is not your Google password and is never uploaded to ShowPilot's servers.</p>
-            <label className="flex w-fit cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm"><Upload size={16}/> {state.configured?"Replace Desktop OAuth JSON":"Select downloaded Desktop OAuth JSON"}
-              <input type="file" accept=".json,application/json" className="sr-only" disabled={busy} onChange={e=>{const file=e.target.files?.[0];if(file)void loadClient(file);e.target.value="";}}/>
-            </label>
+            <Button type="button" variant="outline" size="sm" disabled={busy} onClick={()=>void chooseClient()}>
+              <Upload size={16}/> {busy?"Opening secure file picker…":state.configured?"Replace Desktop OAuth JSON":"Select downloaded Desktop OAuth JSON"}
+            </Button>
+            <p className="text-xs text-muted-foreground">This opens Windows’ file selector. The JSON is validated and encrypted directly by ShowPilot, not read through the browser interface.</p>
             <p className="text-xs">For personal/testing OAuth applications, Google may require adding your Google account as an allowed test user. Company-managed Google accounts may require your IT administrator to approve access.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
