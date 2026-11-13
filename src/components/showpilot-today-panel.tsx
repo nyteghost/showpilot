@@ -13,9 +13,10 @@ import type {EventRow} from "@/lib/work-tools";
 import {loadDurableShowCatalog,type PostConShow} from "@/lib/showpilot-postcon";
 import type {TaskNote} from "@/lib/work-tools";
 import {parseZipSchedule,type ZipScheduleHint} from "@/lib/showpilot-zip-schedule";
+import {cgcVenueClock,showPhaseForToday,showHasOvernightActivity,scopeDatedRuleFindings} from "@/lib/showpilot-today-visibility";
 import type {EventFileRecord} from "@/lib/showpilot-event-assets";
 import {
- todayIso,addIsoDays,mondayFor,daysOfWeek,
+ addIsoDays,mondayFor,daysOfWeek,
  airwallsForEvent,scheduledWallChanges,type AirwallAssessment
 } from "@/lib/showpilot-today";
 import {
@@ -41,7 +42,8 @@ function openSavedEvent(key:string){
 
 export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
  const bridge=window.showpilotMemory;
- const [today,setToday]=useState(todayIso);
+ const [today,setToday]=useState(()=>cgcVenueClock().date);
+ const [minuteNow,setMinuteNow]=useState(()=>cgcVenueClock().minute);
  const [week,setWeek]=useState(()=>mondayFor(todayIso()));
  const [shows,setShows]=useState<PostConShow[]>([]);
  const [scheduleActivities,setScheduleActivities]=useState<DailyActivity[]>([]);
@@ -117,8 +119,11 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
  ],[inferredLayouts,hallWarnings,joined.unlinkedFunctions]);
 
  const acknowledgedKeys=useMemo(()=>new Set(acknowledged.map(x=>x.key)),[acknowledged]);
- const visibleRuleFindings=useMemo(()=>ruleFindings.filter(x=>
-  !acknowledgedKeys.has(findingKey("rule",x))),[ruleFindings,acknowledgedKeys]);
+ const datedFindings=useMemo(()=>scopeDatedRuleFindings(ruleFindings,today),[ruleFindings,today]);
+ const unacknowledged=(items:string[])=>items.filter(x=>!acknowledgedKeys.has(findingKey("rule",x)));
+ const visibleRuleFindings=unacknowledged(datedFindings.today);
+ const visiblePastFindings=unacknowledged(datedFindings.past);
+ const visibleFutureFindings=unacknowledged(datedFindings.future);
  const visibleSourceWarnings=useMemo(()=>sourceWarnings.filter(x=>
   !acknowledgedKeys.has(findingKey("source",x))),[sourceWarnings,acknowledgedKeys]);
  const acknowledgedCount=ruleFindings.length+sourceWarnings.length-visibleRuleFindings.length-visibleSourceWarnings.length;
@@ -149,8 +154,20 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
   return ()=>{alive=false;};
  },[active,aiRuntime.status,inferenceWarnings,feedbackRevision,findingsDismissed,aiRefreshRevision]);
 
- const currentShows=useMemo(()=>joined.shows.filter(show=>showHasActivityOnDay(show,today,joined))
-  .sort((a,b)=>a.showName.localeCompare(b.showName)),[joined,today]);
+ // A date range proves a booking is associated with the day, NOT that it
+ // is currently taking place. Use only explicit function start and end times
+ // for "in progress". Keep future, completed and uncertain shows elsewhere.
+ const datedShows=useMemo(()=>joined.shows.filter(show=>
+  showHasActivityOnDay(show,today,joined)||
+  showHasOvernightActivity(show,today,minuteNow,joined))
+  .sort((a,b)=>a.showName.localeCompare(b.showName)),[joined,today,minuteNow]);
+ const showPhases=useMemo(()=>datedShows.map(show=>({
+  show,phase:showPhaseForToday(show,today,minuteNow,joined)
+ })),[datedShows,today,minuteNow,joined]);
+ const currentShows=useMemo(()=>showPhases.filter(x=>x.phase==="in-progress").map(x=>x.show),[showPhases]);
+ const upcomingToday=useMemo(()=>showPhases.filter(x=>x.phase==="upcoming").map(x=>x.show),[showPhases]);
+ const finishedToday=useMemo(()=>showPhases.filter(x=>x.phase==="finished").map(x=>x.show),[showPhases]);
+ const timeUnverifiedToday=useMemo(()=>showPhases.filter(x=>x.phase==="time-unverified").map(x=>x.show),[showPhases]);
  const currentWeekShows=useMemo(()=>joined.shows.filter(show=>
   dates.some(date=>showHasActivityOnDay(show,date,joined))),[joined,dates]);
  const todayChanges=useMemo(()=>scheduledWallChanges(suggestions,today),[suggestions,today]);
@@ -164,8 +181,9 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
  useEffect(()=>{
   if(!active)return;
   const check=()=>{
-   const next=todayIso();
-   setToday(old=>old===next?old:next);
+   const clock=cgcVenueClock();
+   setToday(old=>old===clock.date?old:clock.date);
+   setMinuteNow(old=>old===clock.minute?old:clock.minute);
   };
   check();
   const timer=window.setInterval(check,60000);
@@ -310,7 +328,7 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
   <div className="flex flex-wrap items-start justify-between gap-3">
    <div>
     <h2 className="flex items-center gap-2 text-lg font-semibold"><CalendarDays size={20}/> Today · {fmt(today,{weekday:"long",month:"long",day:"numeric",year:"numeric"})}</h2>
-    <p className="text-sm text-muted-foreground">Today combines saved Event records with actual dated activity from Event Schedule and the engineering Excel workbook. EOC links attach only to confirmed Events records.</p>
+    <p className="text-sm text-muted-foreground">Active-now status uses scheduled activity start/end times in the CGC time zone, not physical check-in. Upcoming, completed and time-unverified shows are kept separately. EOC links attach only to confirmed Events records.</p>
    </div>
    <div className="flex flex-wrap items-center gap-2">
     <input ref={uploadPicker} className="sr-only" type="file" accept=".xlsx" aria-label="Choose dated weekly engineering Excel workbook"
@@ -327,7 +345,7 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
   {message&&<p role="status" className="rounded-lg border p-3 text-sm">{message}</p>}
   {(sourceWarnings.length>0||ruleFindings.length>0)&&<div className="rounded-lg border border-amber-500 p-3 text-xs" role="region" aria-label="Rule findings and Local AI review">
    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-    <div className="font-semibold">{findingsDismissed?"Review cleared from view":"Rule findings and Local AI review"}</div>
+    <div className="font-semibold">{findingsDismissed?"Review cleared from view":"Today's rule findings and Local AI review"}</div>
     <div className="flex flex-wrap gap-2">
      <Button size="sm" variant="outline" disabled={loading} onClick={refreshAiReview}>
       <RefreshCw size={14}/>{loading?"Refreshing…":"Refresh AI Review"}
@@ -349,7 +367,19 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
      <p key={note.warningIndex} className="mt-1 text-muted-foreground"><strong>Local AI opinion (not verified):</strong> {note.interpretation} <strong>Verify:</strong> {note.check}</p>)}
    </div>)}
    {visibleSourceWarnings.length===0&&visibleRuleFindings.length===0&&
-    <p role="status" className="text-muted-foreground">All current findings have been acknowledged. New or changed findings will still appear.</p>}
+    <p role="status" className="text-muted-foreground">No unacknowledged findings for today's date. Historic and future planning notices are not current-day alerts.</p>}
+   {visibleFutureFindings.length>0&&<details className="mt-3 rounded border border-border p-2">
+    <summary className="cursor-pointer font-semibold">Future planning notices ({visibleFutureFindings.length}) — not happening today</summary>
+    <div className="mt-2 space-y-2">{visibleFutureFindings.map((finding,i)=><div key={"future"+i} className="flex items-start gap-2 border-t pt-2">
+     <p className="min-w-0 flex-1">{finding}</p><Button variant="outline" size="sm" onClick={()=>okayFinding("rule",finding)}>OK</Button>
+    </div>)}</div>
+   </details>}
+   {visiblePastFindings.length>0&&<details className="mt-2 rounded border border-border p-2">
+    <summary className="cursor-pointer font-semibold">Previous-date findings ({visiblePastFindings.length}) — history only</summary>
+    <div className="mt-2 space-y-2">{visiblePastFindings.map((finding,i)=><div key={"past"+i} className="flex items-start gap-2 border-t pt-2">
+     <p className="min-w-0 flex-1">{finding}</p><Button variant="outline" size="sm" onClick={()=>okayFinding("rule",finding)}>OK</Button>
+    </div>)}</div>
+   </details>}
    {acknowledgedCount>0&&<div className="mt-2 flex items-center gap-3 text-muted-foreground">
     <span>{acknowledgedCount} acknowledged</span>
     {lastAcknowledged&&<button type="button" className="underline" onClick={undoLastOkay}>Undo last OK</button>}
@@ -358,12 +388,18 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
    <p className="mt-2 text-muted-foreground">Independent AI review covers currently detected rule findings. It does not change approved bookings, physical setup work or EOC records. Other tools have separate review paths.</p>
    </>}
   </div>}
-  <div className="grid gap-3 sm:grid-cols-3">
-   <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Actual shows on today's date</p>
+  <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-6">
+   <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">In progress (scheduled times)</p>
     <strong className="text-2xl tabular-nums">{currentShows.length}</strong></div>
-   <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Shows with attached EOCs</p>
+   <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Upcoming later today</p>
+    <strong className="text-2xl tabular-nums">{upcomingToday.length}</strong></div>
+   <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Finished earlier today</p>
+    <strong className="text-2xl tabular-nums">{finishedToday.length}</strong></div>
+   <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Times not verified</p>
+    <strong className="text-2xl tabular-nums">{timeUnverifiedToday.length}</strong></div>
+   <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Active shows with EOCs</p>
     <strong className="text-2xl tabular-nums">{eocCount}</strong></div>
-   <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Events with airwall notes</p>
+   <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Active shows with airwall notes</p>
     <strong className="text-2xl tabular-nums">{wallEvidenceCount}</strong></div>
   </div>
   {loading&&<p role="status" className="text-sm text-muted-foreground">Loading the local event catalog and EOC notes…</p>}
@@ -371,12 +407,27 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
    airwalls={todayAirwalls} workbookWalls={todayWorkbookWalls} suggestions={todayChanges}
    transitions={inferredLayouts.transitions}/>}
   {!loading&&!warning&&currentShows.length===0&&<div className="rounded-xl border p-5">
-   <strong>No saved CGC activity is available for today's date.</strong>
-   <p className="mt-1 text-sm text-muted-foreground">Use engineering workbook above to import the dated Excel schedule, or import an Ungerboeck Event Schedule. No saved activity does not mean the building is inactive.</p>
+   <strong>No CGC show is confirmed in progress by today's saved function times.</strong>
+   <p className="mt-1 text-sm text-muted-foreground">Upcoming, completed and time-unverified bookings are listed below. This is not a live occupancy or physical check-in confirmation; verify your actual room status and EOCs before making operational decisions.</p>
    <Button className="mt-3" variant="outline" size="sm" onClick={()=>
     window.dispatchEvent(new CustomEvent("showpilot:navigate",{detail:{tab:"events"}}))
    }>Open Event Schedule</Button>
   </div>}
+  {([
+   {label:"Upcoming later today",shows:upcomingToday,note:"Scheduled function start times are in the future; not yet started."},
+   {label:"Finished earlier today",shows:finishedToday,note:"All known scheduled function times have ended. Verify actual move-out and occupancy before treating rooms as vacant."},
+   {label:"Time unverified",shows:timeUnverifiedToday,note:"Saved date or single-ended activity has no reliable start/end interval. It is not proof the show is active."}
+  ]).filter(group=>group.shows.length>0).map(group=>
+   <details key={group.label} className="rounded-xl border p-3">
+    <summary className="cursor-pointer font-semibold">{group.label} ({group.shows.length})</summary>
+    <p className="mt-2 text-xs text-muted-foreground">{group.note}</p>
+    <div className="mt-2 space-y-2">{group.shows.map(show=><div key={show.key} className="flex flex-wrap items-start justify-between gap-2 border-t pt-2 text-sm">
+      <div><strong>{show.showName}</strong><p className="text-xs text-muted-foreground">Event {show.eventId||"(no ID)"} · {show.rooms}</p>
+      <p className="text-xs text-muted-foreground">{(joined.daily[show.key]?.[today]??[]).join(" · ")||"No exact function times supplied"}</p></div>
+      {!isUnlinkedTodayShow(show,joined)&&<Button size="sm" variant="outline" onClick={()=>openSavedEvent(show.key)}>View in Events</Button>}
+     </div>)}</div>
+   </details>
+  )}
   <div className="space-y-3">
    {currentShows.map(show=>{
     const info=detail(show);
@@ -389,6 +440,7 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
        <h3 className="font-semibold">{show.showName}</h3>
        <p className="text-xs text-muted-foreground">Event {show.eventId?"#"+show.eventId:"(no ID)"} · {show.rooms||"Rooms not listed"}</p>
        <p className="text-xs text-muted-foreground">{show.startDate??show.showDate} – {show.showDate}</p>
+       <p className="text-xs font-semibold text-emerald-600">Scheduled function is in progress now — occupancy not independently verified</p>
        {joined.origin[show.key]&&<p className="text-xs text-muted-foreground">Today's source: {joined.origin[show.key]==="engineering-workbook"?"engineering Excel workbook":"reviewed Event Schedule"}</p>}
        {dayDetails.length>0&&<p className="mt-2 text-xs font-medium break-words">Today: {dayDetails.join(" · ")}</p>}
       </div>
