@@ -44,7 +44,7 @@ export function ShowPilotTodayPanel({active=true}:{active?:boolean}){
  const bridge=window.showpilotMemory;
  const [today,setToday]=useState(()=>cgcVenueClock().date);
  const [minuteNow,setMinuteNow]=useState(()=>cgcVenueClock().minute);
- const [week,setWeek]=useState(()=>mondayFor(todayIso()));
+ const [week,setWeek]=useState(()=>mondayFor(cgcVenueClock().date));
  const [shows,setShows]=useState<PostConShow[]>([]);
  const [scheduleActivities,setScheduleActivities]=useState<DailyActivity[]>([]);
  const [reviewRows,setReviewRows]=useState<EventRow[]>([]);
