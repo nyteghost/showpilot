@@ -724,6 +724,56 @@ function weekDates(monday:string):string[]{
  return Array.from({length:7},(_,i)=>{const next=new Date(d);next.setUTCDate(d.getUTCDate()+i);return next.toISOString().slice(0,10);});
 }
 
+/** Monday-through-Sunday worksheets intersecting a selected calendar month.
+ * December 2026 is Nov 30, Dec 7, Dec 14, Dec 21, Dec 28 (five sheets).
+ * This is used only when the owner explicitly selects "Create new month". */
+export function approvedMonthWeeks(month:string):string[]{
+ if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month))throw new Error("Select a valid YYYY-MM month.");
+ const [year,m]=month.split("-").map(Number);
+ const first=new Date(Date.UTC(year!,m!-1,1,12));
+ const last=new Date(Date.UTC(year!,m!,0,12));
+ const mondays:string[]=[];
+ const monday=mondayIso(first.toISOString().slice(0,10));
+ const cursor=new Date(monday+"T12:00:00Z");
+ while(cursor<=last){
+  mondays.push(cursor.toISOString().slice(0,10));
+  cursor.setUTCDate(cursor.getUTCDate()+7);
+ }
+ return mondays;
+}
+
+/** A NEW month must not inherit any old dated attendance, engineering shift,
+ * PTO, room booking, task, service desk or performing-arts entries. This only
+ * edits a loaded COPY, never the approved source file. A:I labels, weekly
+ * totals formulae, styles, borders, widths, and printed layout are retained.
+ * Event-specific vertical merges are released so new show geometry can be
+ * safely computed by mergeWeekSheet based on the new reviewed bookings. */
+function clearOldMonthActivity(ws:XSheet,dateRow:number){
+ const cgc=cgcTemplateRows(ws);
+ if(!cgc)throw new Error("The master is not a recognized CGC engineering workbook.");
+ const rooms=new Set([...HALL_ROWS,...BALLROOM_ROWS].map(label=>cgc.get(label.toLowerCase())));
+ for(const range of [...(ws.model.merges??[])]){
+  const [from,to]=range.split(":");
+  if(!from||!to)continue;
+  const start=ws.getCell(from),end=ws.getCell(to);
+  if(start.col!==end.col||start.row===end.row||start.col<2||start.col>8)continue;
+  const rows=Array.from({length:end.row-start.row+1},(_,i)=>start.row+i);
+  if(!rows.every(row=>rooms.has(row)))continue;
+  ws.unMergeCells(range);
+ }
+ const cleared=new Set<string>();
+ for(let r=dateRow+1;r<=ws.rowCount;r++){
+  // Keep the four dark section headings that repeat MON...SUN.
+  const values=Array.from({length:7},(_,i)=>String(ws.getRow(r).getCell(i+2).value??"").trim().toUpperCase());
+  if(["MON","TUE","WED","THU","FRI","SAT","SUN"].every((day,i)=>values[i]===day))continue;
+  for(let col=2;col<=8;col++){
+   const master=ws.getRow(r).getCell(col).master;
+   if(master.col<2||master.col>8||cleared.has(master.address))continue;
+   cleared.add(master.address);
+   master.value=null;
+  }
+ }
+}
 /** A reusable master may contain event text from a DIFFERENT week. Clear only
  * the event grid in the exported copy before writing reviewed CGC events.
  * Engineer shifts, PTO, titles, borders, fills, formulas and user data in the
@@ -893,7 +943,7 @@ function mergeWeekSheet(ws: XSheet, w: WeekLayout, tasks: TaskNote[] = [], plans
 /** Fail closed when an approved template does not contain every event date.
  * The legacy in-place merger cannot yet re-date historical template sheets.
  */
-export async function validateApprovedTemplate(file: File, entries: EventEntry[], options:{retargetWeek?:boolean}={}): Promise<void> {
+export async function validateApprovedTemplate(file: File, entries: EventEntry[], options:{retargetWeek?:boolean;retargetMonth?:string}={}): Promise<void> {
  const module=await import("exceljs");
  const ExcelJS=module.default??module;
  const wb:XWorkbook=new ExcelJS.Workbook();
@@ -904,6 +954,23 @@ export async function validateApprovedTemplate(file: File, entries: EventEntry[]
   if(!dayRow)continue;
   const weekRow=findWeekDateRow(ws,dayRow);
   if(weekRow)for(const date of weekRow.dates)covered.add(date);
+ }
+ // Explicit new-month mode uses the same verified CGC weekly layout, but
+ // resets dated cells in a COPY; a matching month is never silently overwritten.
+ if(options.retargetMonth){
+  const mondays=approvedMonthWeeks(options.retargetMonth);
+  const donor=wb.worksheets.filter(sheet=>/^Week\s*#\d+$/i.test(sheet.name));
+  if(donor.length<mondays.length)throw new Error("This month needs "+mondays.length+
+   " weekly sheets, but the saved master has only "+donor.length+
+   ". Choose an approved CGC master with enough week sheets; existing schedules are unchanged.");
+  if(donor.some(sheet=>!isExactCgcEngineeringTemplate(sheet)))throw new Error(
+   "The master has an incompatible CGC weekly section. Cannot create a new month safely.");
+  for(const sheet of donor.slice(0,mondays.length)){
+   const header=scheduleDayHeaderRow(sheet);
+   if(!header||(!findWeekDateRow(sheet,header)&&!formulaWeekRow(sheet,header)))
+    throw new Error("The master has a missing date row on "+sheet.name+". No new month was generated.");
+  }
+  return;
  }
  // A template with formula-only dates is valid as a layout. When exporting
  // one selected week, make a COPY and stamp date values into its seven cells.
@@ -943,7 +1010,7 @@ export function isExactCgcEngineeringTemplate(ws:XSheet):boolean{
 }
 
 /** Builds the weekly engineering workbook (Week #1, #2 …) or, given an existing schedule, fills its event rows. */
-export async function eventsWorkbook(entries: EventEntry[], existing?: File, tasks: TaskNote[] = [], options: {singleWeek?:string;preserveTemplateLayout?:boolean;retargetTemplateWeek?:boolean;planning?:StaffingPolicy} = {}): Promise<Blob> {
+export async function eventsWorkbook(entries: EventEntry[], existing?: File, tasks: TaskNote[] = [], options: {singleWeek?:string;preserveTemplateLayout?:boolean;retargetTemplateWeek?:boolean;retargetTemplateMonth?:string;planning?:StaffingPolicy} = {}): Promise<Blob> {
   const module = await import("exceljs");
   const ExcelJS = module.default ?? module;
   const wb: XWorkbook = new ExcelJS.Workbook();
@@ -957,7 +1024,9 @@ export async function eventsWorkbook(entries: EventEntry[], existing?: File, tas
     ". Review the source room labels; the uploaded engineering template has no Other Spaces section.");
   // Expand a combined hall such as "Hall AB" to existing Hall A and Hall B.
   const sheetEntries = entries.flatMap(e => expandSpace(e.space).map(space => ({ ...e, space })));
-  const weeks = weekLayouts(sheetEntries,options.singleWeek?[options.singleWeek]:[]);
+  const targetMonth=options.retargetTemplateMonth;
+  const weeks = weekLayouts(sheetEntries,targetMonth?approvedMonthWeeks(targetMonth):
+    options.singleWeek?[options.singleWeek]:[]);
   if (existing) await wb.xlsx.load(await existing.arrayBuffer());
   if(options.singleWeek){
     if(!/^\d{4}-\d{2}-\d{2}$/.test(options.singleWeek))throw new Error("Invalid selected week.");
@@ -1001,6 +1070,38 @@ export async function eventsWorkbook(entries: EventEntry[], existing?: File, tas
       if(originalPrintArea)selected.pageSetup.printArea=originalPrintArea;
     }
   }
+  if(targetMonth){
+    if(!existing||options.singleWeek||!options.preserveTemplateLayout)
+      throw new Error("A new month can only be created from a saved approved master, with original layout preservation.");
+    if(entries.some(e=>!e.date.startsWith(targetMonth+"-")))
+      throw new Error("Some reviewed event entries are outside "+targetMonth+"; select Month view before creating a month.");
+    const mondays=approvedMonthWeeks(targetMonth);
+    const templateSheets=wb.worksheets.filter(ws=>/^Week\s*#\d+$/i.test(ws.name))
+      .sort((a,b)=>Number(a.name.match(/\d+$/)?.[0]??0)-Number(b.name.match(/\d+$/)?.[0]??0));
+    if(templateSheets.length<mondays.length)
+      throw new Error("Cannot make "+targetMonth+": need "+mondays.length+
+       " CGC weekly sheets; saved master contains only "+templateSheets.length+". No source data was changed.");
+    for(let i=0;i<mondays.length;i++){
+      const sheet=templateSheets[i]!,monday=mondays[i]!;
+      if(!isExactCgcEngineeringTemplate(sheet))
+        throw new Error("Unrecognized CGC room rows on "+sheet.name+". No dates were changed.");
+      const dayHeader=scheduleDayHeaderRow(sheet);
+      const dateRow=findWeekDateRow(sheet,dayHeader)?.row||formulaWeekRow(sheet,dayHeader);
+      if(!dateRow)throw new Error("Missing weekday date row in "+sheet.name+". No month was generated.");
+      clearOldMonthActivity(sheet,dateRow);
+      const dates=weekDates(monday);
+      for(let col=2;col<=8;col++)sheet.getRow(dateRow).getCell(col).value=toDate(dates[col-2]!);
+      // The original uses D3/F3 as FROM/TO, previously linked to Extra.
+      if(String(sheet.getCell("C3").value??"").trim()==="FROM:")sheet.getCell("D3").value=toDate(dates[0]!);
+      if(String(sheet.getCell("E3").value??"").trim()==="TO:")sheet.getCell("F3").value=toDate(dates[6]!);
+      sheet.name="Week #"+(i+1);
+    }
+    // Historical November extras, prior "Full" staffing summary, and any
+    // unused weeks must never appear in a newly generated December workbook.
+    for(const sheet of [...wb.worksheets])if(!templateSheets.slice(0,mondays.length).includes(sheet))
+      wb.removeWorksheet(sheet.id);
+    wb.definedNames.model=[];
+  }
   const sheets = wb.worksheets.filter((ws) => /^Week\s*#\d+$/i.test(ws.name));
   if(existing && (!sheets.length || sheets.some(ws=>!isExactCgcEngineeringTemplate(ws))))
     throw new Error("The uploaded workbook is missing the ordered CGC HALLS and BALLROOM sections. Check the Hall A–D, Ballroom A–G, Tasks and LOCATION labels; section row numbers may vary.");
@@ -1034,7 +1135,7 @@ export async function eventsWorkbook(entries: EventEntry[], existing?: File, tas
   for(const note of sourceStaffNotes)plans.get(note.date)?.notes.push(note.name+": "+note.text+" (operator workbook note)");
   let n = sheets.length;
   for (const w of weeks) {
-    if (sheets.some((s) => mergeWeekSheet(s, w, tasks, plans,!!options.preserveTemplateLayout,options.planning?.aliasesByName,scheduleDisplayRoster(options.planning),options.planning?.extraPeople?.map(p=>p.name)))) continue;
+    if (sheets.some((s) => mergeWeekSheet(s, w, tasks, plans,!!options.preserveTemplateLayout&&!targetMonth,options.planning?.aliasesByName,scheduleDisplayRoster(options.planning),options.planning?.extraPeople?.map(p=>p.name)))) continue;
     if(existing)throw new Error("The exact engineering template has no worksheet for week "+w.monday+". A differently formatted worksheet will not be generated.");
     writeWeekSheet(wb.addWorksheet(`Week #${++n}`), w, tasks, plans,scheduleDisplayRoster(options.planning));
   }
