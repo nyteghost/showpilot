@@ -33,6 +33,40 @@ The existing **Automatic install (optional)** button remains available if you wa
 5. Windows, Linux, and company IT policies may restrict unsigned apps. Do not bypass your organization's restrictions without approval.
 
 
+### Create a new monthly CGC engineering schedule from the saved master
+
+You do **not** need to supply a different pre-dated engineering XLSX each month.
+The original **ShowPilot - Event Schedule** report is an event list, not the
+formatting template. Save your November CGC engineering workbook once in
+**Settings & AI → Approved master XLSX**.
+
+To export December 2026 from your approved November workbook:
+
+1. Import the latest `ShowPilotEventSchedule.xlsx` in **Event Schedule**.
+   Use its adjacent **Event** and **Event ID** columns; it is not a master template.
+2. Open **Edit schedule → Month**, choose **December 2026**.
+3. Under **Original template**, choose **Saved master workbook (Settings & AI)**.
+4. Click **Preview new month from master** to inspect the *new* dates, attendance,
+   room assignments, and staffing suggestions.
+5. Click **Create 2026-12 from saved master**. Confirm the clear-old-month warning.
+   Save the downloaded `ShowPilot-2026-12-NEW-from-master.xlsx`.
+
+**Safety behavior:** This creates a new COPY. The approved source workbook is
+never overwritten. The five template worksheets are re-dated to Nov 30–Jan 3;
+November's shift times, PTO, attendance, room notes, tasks, and show text are
+cleared from daily cells. Existing row labels, week headers, borders, widths,
+black Hall/Ballroom section bars, and peach Tasks rows are retained. Current
+reviewed CGC events and draft engineer staffing are entered into the new month.
+The resulting staffing and PTO MUST be reviewed before sending/publishing.
+CEPAC entries are excluded and old CEPAC dated activity is removed, but any
+legacy CEPAC layout labels from the original template remain untouched.
+
+If the approved master lacks enough weekly sheets (some calendar months require
+six), the operation fails visibly instead of creating malformed sheets.
+For already-dated schedules containing real manual shifts/PTO that must be
+kept, use the normal matching-period original-layout export instead of
+**Create new month**. This feature never silently retargets that mode.
+
 ### Movable windows for each ShowPilot tool (Claude test branch)
 
 On a Windows desktop, ShowPilot now starts with **Windowed workspace** enabled. Clicking
