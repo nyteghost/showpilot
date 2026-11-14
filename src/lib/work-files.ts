@@ -771,6 +771,18 @@ function clearOldMonthActivity(ws:XSheet,dateRow:number){
    if(master.col<2||master.col>8||cleared.has(master.address))continue;
    cleared.add(master.address);
    master.value=null;
+   // A removed old booking/PTO/attendance value must not leave its old
+   // event color behind on the new month. Preserve borders/widths/merges and
+   // the black/peach/green section-header bands.
+   const section=String(ws.getRow(r).getCell(1).value??"").trim().toUpperCase();
+   const isRoom=[...HALL_ROWS,...BALLROOM_ROWS].some(label=>
+     label.toUpperCase()===section);
+   const inRoster=r>dateRow&&r<(cgc.get("halls")??Number.MAX_SAFE_INTEGER);
+   const inOtherVenue=r>(cgc.get("location")??Number.MAX_SAFE_INTEGER);
+   if(isRoom||inRoster||inOtherVenue||section==="CGC BARS"){
+     master.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFFFFFFF"}};
+     if(inRoster)master.font={...master.font,color:{argb:"FF000000"}};
+   }
   }
  }
 }
