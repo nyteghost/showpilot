@@ -57,6 +57,8 @@ describe("Create December from approved November CGC master",()=>{
   expect(first.getCell("B12").value).not.toBe("PTO");
   expect(first.getCell("C8").value).toBeNull();
   expect(first.getCell("C8").fill).toMatchObject({type:"pattern",fgColor:{argb:"FFFFFFFF"}});
+  expect(first.getCell("A6").fill).toMatchObject({fgColor:{argb:"FF000000"}});
+  expect(first.getCell("C6").fill).toMatchObject({fgColor:{argb:"FF000000"}});
   expect(first.getCell("B55").value).toBeNull();
   expect(first.getCell("B59").value).toBeNull();
   expect(first.getCell("A54").fill).toMatchObject({fgColor:{argb:"FF000000"}});
