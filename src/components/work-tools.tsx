@@ -357,9 +357,11 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
   const selectedTemplate:ExportFormat=activeExportMaster(previewKind,Boolean(source?.existing));
   const masterTemplateMissing=!canUseExportMaster(selectedTemplate,Boolean(source?.existing),masterTemplateState);
   // Preview and Download share exactly the same generator.
-  async function makeSelectedWorkbook(kind:ExportFormat):Promise<{blob:Blob;period:string;week:boolean}>{
+  async function makeSelectedWorkbook(kind:ExportFormat,newMonth=false):Promise<{blob:Blob;period:string;week:boolean}>{
     if(!aiScope)throw new Error("Choose a Month, Week or Day in Edit Schedule first.");
     const chosen=scopedScheduleData(entries,tasks,aiScope);
+    if(newMonth&&(kind!=="approved"||aiScope.view!=="month"||!aiScope.value))
+      throw new Error("Choose Month view and the Saved master workbook to create a new month.");
     const lib=await import("@/lib/work-files");
     let original:File|undefined;
     if(kind==="original"){
@@ -369,20 +371,26 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
       const bytes=await window.showpilotLocal?.readTemplate();
       if(!bytes)throw new Error("No saved master workbook found. Choose master XLSX next to the export controls, or upload the original workbook with the event report.");
       original=new File([new Uint8Array(bytes)],"approved-schedule-template.xlsx");
-      await lib.validateApprovedTemplate(original,chosen.entries,{retargetWeek:!!chosen.singleWeek});
+      await lib.validateApprovedTemplate(original,chosen.entries,{
+        retargetWeek:!!chosen.singleWeek,retargetMonth:newMonth?aiScope.value:undefined
+      });
     }
     const blob=await lib.eventsWorkbook(chosen.entries,original,chosen.tasks,
       chosen.singleWeek?{singleWeek:chosen.singleWeek,preserveTemplateLayout:true,retargetTemplateWeek:kind==="approved",planning:claudePolicy}:
-        {preserveTemplateLayout:true,planning:claudePolicy});
+        {preserveTemplateLayout:true,retargetTemplateMonth:newMonth?aiScope.value:undefined,planning:claudePolicy});
     return {blob,period:chosen.period,week:!!chosen.singleWeek};
   }
-  async function exportSelected(kind:ExportFormat){
+  async function exportSelected(kind:ExportFormat,newMonth=false){
     if(exportBusy)return;
     setExportBusy(true);setExportStatus("");
     try{
-      const out=await makeSelectedWorkbook(kind);
+      if(newMonth&&!window.confirm("Create a NEW "+aiScope?.value+" CGC engineering workbook from your approved template?\n\nThis will update the dates and intentionally CLEAR old months' shifts, PTO, attendance, tasks and events in the downloaded copy. New staffing suggestions are generated from the current Event Schedule. Your saved master and approved event records are not changed.\n\nReview staffing and PTO before publishing.")){
+        setExportStatus("New-month export canceled. Your saved master was not changed.");return;
+      }
+      const out=await makeSelectedWorkbook(kind,newMonth);
       const lib=await import("@/lib/work-files");
-      lib.downloadBlob(out.blob,"ShowPilot-"+fileSuffix(out.period)+"-original-template.xlsx");
+      lib.downloadBlob(out.blob,newMonth?"ShowPilot-"+aiScope?.value+"-NEW-from-master.xlsx":
+        "ShowPilot-"+fileSuffix(out.period)+"-original-template.xlsx");
       let memoryMessage="";
       if(window.showpilotMemory&&aiScope){
         try{
@@ -394,7 +402,9 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
           }
         }catch(e){memoryMessage=" Local memory could not be updated: "+(e as Error).message;}
       }
-      setExportStatus("Exported "+currentExportLabel+" using the unchanged source workbook structure."+
+      setExportStatus(newMonth?
+        "New "+aiScope?.value+" CGC month created from a COPY of your saved master. Old shifts/PTO/attendance/events were cleared; new suggestions need your review before publication. The original master remains unchanged.":
+        "Exported "+currentExportLabel+" using the unchanged source workbook structure."+
         (out.week?" Exactly one visible worksheet.":"")+memoryMessage);
     }catch(e){setExportStatus("Export not generated: "+(e as Error).message);}
     finally{setExportBusy(false)}
@@ -426,15 +436,16 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
     }catch(e){setExportStatus("Fresh week not downloaded: "+(e as Error).message);}
     finally{setExportBusy(false);}
   }
-  async function openExcelPreview(){
+  async function openExcelPreview(newMonth=false){
     if(previewBusy)return;
     setPreviewBusy(true);setExportStatus("");
     try{
-      const out=await makeSelectedWorkbook(selectedTemplate);
+      const out=await makeSelectedWorkbook(newMonth?"approved":selectedTemplate,newMonth);
       const lib=await import("@/lib/showpilot-excel-preview");
       const book=await lib.readWorkbookPreview(out.blob);
       setPreviewWorkbook(book);
-      setPreviewTitle(currentExportLabel+" · original engineering workbook");
+      setPreviewTitle(newMonth?"New "+aiScope?.value+" · COPY of approved master (staffing draft)":
+        currentExportLabel+" · original engineering workbook");
       setPreviewOpen(true);
     }catch(e){setExportStatus("Could not preview Excel: "+(e as Error).message);}
     finally{setPreviewBusy(false)}
@@ -612,6 +623,17 @@ function EventsTab({ venueOnly = false }: { venueOnly?: boolean }) {
             {entries.length>0 && <Button size="sm" disabled={!aiScope||exportBusy||masterTemplateMissing}
               onClick={()=>void exportSelected(selectedTemplate)}><Download className="size-4"/>
               {exportBusy?"Exporting…":"Download "+currentExportLabel+" (original layout)"}</Button>}
+            {entries.length>0&&aiScope?.view==="month"&&masterTemplateState==="saved"&&<Button
+              size="sm" variant="outline" disabled={previewBusy||exportBusy||!aiScope.value}
+              onClick={()=>void openExcelPreview(true)}><Eye className="size-4"/> Preview new month from master</Button>}
+            {entries.length>0&&aiScope?.view==="month"&&masterTemplateState==="saved"&&<Button
+              size="sm" disabled={exportBusy||!aiScope.value}
+              onClick={()=>void exportSelected("approved",true)}><Download className="size-4"/>
+              Create {aiScope.value} from saved master</Button>}
+            {entries.length>0&&aiScope?.view==="month"&&masterTemplateState==="saved"&&
+              <p className="w-full text-xs text-muted-foreground">For a new month, ShowPilot copies your master format,
+              changes the weekly dates, clears old shifts/PTO/events and creates a draft for review.
+              Your master XLSX is not modified. Select a matching monthly workbook if you need pre-entered shifts retained.</p>}
             {entries.length>0&&aiScope?.view==="week"&&<Button size="sm" variant="outline" disabled={exportBusy}
               onClick={()=>void exportFreshWeek()}><Download className="size-4"/> Download week (fresh layout)</Button>}
             {entries.length>0&&aiScope?.view==="week"&&<Button size="sm" variant="outline"
