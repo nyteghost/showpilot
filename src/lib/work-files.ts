@@ -1149,6 +1149,11 @@ export async function eventsWorkbook(entries: EventEntry[], existing?: File, tas
   }
   const dates = [...new Set(weeks.flatMap(w=>w.dates))].sort();
   const plans = new Map(planWeeks(dates, sheetEntries, avail, undefined, airwallHolds(tasks, sheetEntries),options.planning).map((p) => [p.date, p] as const));
+  if(targetMonth)for(const date of [...plans.keys()]){
+    // The Nov30/Jan1–3 border cells belong to a different month's real
+    // staffing workbook. Do not invent an OFF, PTO or working shift there.
+    if(!date.startsWith(targetMonth+"-"))plans.delete(date);
+  }
   // Preserve operator-entered title-row notes in the reviewable Staffing Why.
   for(const note of sourceStaffNotes)plans.get(note.date)?.notes.push(note.name+": "+note.text+" (operator workbook note)");
   let n = sheets.length;

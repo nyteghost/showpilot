@@ -54,6 +54,11 @@ describe("Create December from approved November CGC master",()=>{
   expect((first.getCell("B5").value as Date).toISOString().slice(0,10)).toBe("2026-11-30");
   expect((second.getCell("B5").value as Date).toISOString().slice(0,10)).toBe("2026-12-07");
   expect((last.getCell("H5").value as Date).toISOString().slice(0,10)).toBe("2027-01-03");
+  // Adjacent Nov/Jan days have dates for the full Mon–Sun grid but must
+  // not get predicted engineer shifts or OFF/PTO from a December-only report.
+  for(const dateCell of [first.getCell("B9"),first.getCell("B10"),
+    last.getCell("F9"),last.getCell("G10"),last.getCell("H9")])
+    expect(dateCell.value).toBeNull();
   expect(first.getCell("B12").value).not.toBe("PTO");
   expect(first.getCell("C8").value).toBeNull();
   expect(first.getCell("C8").fill).toMatchObject({type:"pattern",fgColor:{argb:"FFFFFFFF"}});
