@@ -756,8 +756,10 @@ function clearOldMonthActivity(ws:XSheet,dateRow:number){
   const [from,to]=range.split(":");
   if(!from||!to)continue;
   const start=ws.getCell(from),end=ws.getCell(to);
-  if(start.col!==end.col||start.row===end.row||start.col<2||start.col>8)continue;
-  const rows=Array.from({length:end.row-start.row+1},(_,i)=>start.row+i);
+  const startCol=Number(start.col),endCol=Number(end.col);
+  const startRow=Number(start.row),endRow=Number(end.row);
+  if(startCol!==endCol||startRow===endRow||startCol<2||startCol>8)continue;
+  const rows=Array.from({length:endRow-startRow+1},(_,i)=>startRow+i);
   if(!rows.every(row=>rooms.has(row)))continue;
   ws.unMergeCells(range);
  }
@@ -768,7 +770,7 @@ function clearOldMonthActivity(ws:XSheet,dateRow:number){
   if(["MON","TUE","WED","THU","FRI","SAT","SUN"].every((day,i)=>values[i]===day))continue;
   for(let col=2;col<=8;col++){
    const master=ws.getRow(r).getCell(col).master;
-   if(master.col<2||master.col>8||cleared.has(master.address))continue;
+   if(Number(master.col)<2||Number(master.col)>8||cleared.has(master.address))continue;
    cleared.add(master.address);
    master.value=null;
    // A removed old booking/PTO/attendance value must not leave its old
