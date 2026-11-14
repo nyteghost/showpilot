@@ -764,6 +764,10 @@ function clearOldMonthActivity(ws:XSheet,dateRow:number){
   ws.unMergeCells(range);
  }
  const cleared=new Set<string>();
+ let barsRow=0;
+ ws.eachRow((row,r)=>{
+  if(!barsRow&&/^(?:CGC|CCC) BARS$/i.test(String(row.getCell(1).value??"").trim()))barsRow=r;
+ });
  for(let r=dateRow+1;r<=ws.rowCount;r++){
   // Keep the four dark section headings that repeat MON...SUN.
   const values=Array.from({length:7},(_,i)=>String(ws.getRow(r).getCell(i+2).value??"").trim().toUpperCase());
@@ -779,7 +783,7 @@ function clearOldMonthActivity(ws:XSheet,dateRow:number){
    const section=String(ws.getRow(r).getCell(1).value??"").trim().toUpperCase();
    const isRoom=[...HALL_ROWS,...BALLROOM_ROWS].some(label=>
      label.toUpperCase()===section);
-   const inRoster=r>dateRow&&r<(cgc.get("halls")??Number.MAX_SAFE_INTEGER);
+   const inRoster=barsRow>0&&r>barsRow&&r<(cgc.get("halls")??Number.MAX_SAFE_INTEGER);
    const inOtherVenue=r>(cgc.get("location")??Number.MAX_SAFE_INTEGER);
    if(isRoom||inRoster||inOtherVenue||section==="CGC BARS"){
      master.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFFFFFFF"}};
@@ -1152,6 +1156,26 @@ export async function eventsWorkbook(entries: EventEntry[], existing?: File, tas
     if (sheets.some((s) => mergeWeekSheet(s, w, tasks, plans,!!options.preserveTemplateLayout&&!targetMonth,options.planning?.aliasesByName,scheduleDisplayRoster(options.planning),options.planning?.extraPeople?.map(p=>p.name)))) continue;
     if(existing)throw new Error("The exact engineering template has no worksheet for week "+w.monday+". A differently formatted worksheet will not be generated.");
     writeWeekSheet(wb.addWorksheet(`Week #${++n}`), w, tasks, plans,scheduleDisplayRoster(options.planning));
+  }
+  if(targetMonth){
+    // Late writer steps and shared ExcelJS cell styles may recolor empty
+    // attendance cells. A blank new-month CGC Bars cell must NEVER inherit a
+    // previous month's green/yellow/orange/red occupancy indication.
+    for(const ws of sheets){
+      ws.eachRow(row=>{
+        if(!/^(?:CGC|CCC) BARS$/i.test(String(row.getCell(1).value??"").trim()))return;
+        for(let c=2;c<=8;c++){
+          const cell=row.getCell(c);
+          if(cell.value!==null&&cell.value!==undefined&&String(cell.value).trim())
+            throw new Error("Unexpected old attendance value in "+ws.name+"!"+cell.address+". New-month export blocked.");
+          cell.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFFFFFFF"}};
+          cell.font={...cell.font,color:{argb:"FF000000"}};
+        }
+      });
+    }
+    // Staff totals are derived from new shifts; Excel must recalculate when
+    // opened, not display stale cached totals from the donated workbook.
+    wb.calcProperties.fullCalcOnLoad=true;
   }
   if(!options.singleWeek && !existing)addStaffingSheets(wb, [...plans.values()]);
   const out = await wb.xlsx.writeBuffer();
