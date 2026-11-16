@@ -387,7 +387,9 @@ function StagePanel({
       if(typeof s.looseBridges==="number"&&Number.isInteger(s.looseBridges)&&s.looseBridges>=0&&s.looseBridges<=72)
         setLooseBridges(s.looseBridges);
       const restored=restoredManualPieces(s.manualPieces);
-      if(s.manual===true&&restored.length){
+      // An intentionally empty hand-built canvas must stay empty after a
+      // restart. Do not silently replace it with an automatic plan.
+      if(s.manual===true){
         setManual(true);setPieces(restored);
         nextId.current=restored.reduce((max,p)=>Math.max(max,Number(p.id.slice(1))+1),0);
       }
