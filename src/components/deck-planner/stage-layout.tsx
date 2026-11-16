@@ -19,8 +19,39 @@ export type LayoutStage = {
 export type Position = { x: number; y: number };
 export type PositionedLayoutStage = LayoutStage & { position: Position };
 
-export function StageLayout({ stages: sourceStages, onSnapshotChange }: { stages: LayoutStage[]; onSnapshotChange?: (stages: PositionedLayoutStage[]) => void }) {
-  const [rotations, setRotations] = useState<Record<string, boolean>>({});
+type StoredArrangement={positions:Record<string,Position>;rotations:Record<string,boolean>};
+function readLayout(storageKey?:string):StoredArrangement{
+ const empty:StoredArrangement={positions:{},rotations:{}};
+ if(!storageKey||typeof window==="undefined")return empty;
+ try{
+  const raw=localStorage.getItem(storageKey);
+  if(!raw||raw.length>35000)return empty;
+  const parsed:unknown=JSON.parse(raw);
+  if(!parsed||typeof parsed!=="object"||Array.isArray(parsed))return empty;
+  const data=parsed as Record<string,unknown>;
+  const positions:Record<string,Position>={},rotations:Record<string,boolean>={};
+  const incoming=data.positions&&typeof data.positions==="object"&&!Array.isArray(data.positions)?
+    data.positions as Record<string,unknown>:{};
+  for(const [key,value] of Object.entries(incoming).slice(0,140)){
+   if(!/^(?:s\d+)(?:-copy-\d+|-bridge-\d+)?$/.test(key)||!value||typeof value!=="object")continue;
+   const v=value as Record<string,unknown>;
+   if(typeof v.x==="number"&&typeof v.y==="number"&&Number.isFinite(v.x)&&Number.isFinite(v.y)
+     &&v.x>=0&&v.y>=0&&v.x<=3000&&v.y<=3000)positions[key]={x:v.x,y:v.y};
+  }
+  const incomingRotations=data.rotations&&typeof data.rotations==="object"&&!Array.isArray(data.rotations)?
+    data.rotations as Record<string,unknown>:{};
+  for(const [key,value] of Object.entries(incomingRotations).slice(0,140))
+   if(/^(?:s\d+)(?:-copy-\d+|-bridge-\d+)?$/.test(key)&&typeof value==="boolean")
+    rotations[key]=value;
+  return {positions,rotations};
+ }catch{return empty;}
+}
+export function StageLayout({ stages: sourceStages, onSnapshotChange,storageKey }: {
+ stages: LayoutStage[]; onSnapshotChange?: (stages: PositionedLayoutStage[]) => void; storageKey?:string
+}) {
+  const saved=useRef<StoredArrangement|null>(null);
+  if(!saved.current)saved.current=readLayout(storageKey);
+  const [rotations, setRotations] = useState<Record<string, boolean>>(()=>saved.current!.rotations);
   const stages = useMemo(() => sourceStages.map(stage => {
     const singleDeck = stage.decks.length === 1 && stage.width * stage.length === 32;
     if (!rotations[stage.id] || !singleDeck) return stage;
@@ -30,7 +61,12 @@ export function StageLayout({ stages: sourceStages, onSnapshotChange }: { stages
     return { ...stage, width: stage.length, length: stage.width,
       decks: stage.decks.map(turn), holders: stage.holders.map(turn) };
   }), [sourceStages, rotations]);
-  const [positions, setPositions] = useState<Record<string, Position>>({});
+  const [positions, setPositions] = useState<Record<string, Position>>(()=>saved.current!.positions);
+  useEffect(()=>{
+   if(!storageKey||typeof window==="undefined")return;
+   try{localStorage.setItem(storageKey,JSON.stringify({positions,rotations}));}
+   catch{/* private storage unavailable: keep session layout */}
+  },[storageKey,positions,rotations]);
   const [selectedId, setSelectedId] = useState("s1");
   const [zoom, setZoom] = useState(8);
   const [error, setError] = useState("");
