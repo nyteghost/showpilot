@@ -69,6 +69,7 @@ type SavedStage = {
 };
 type SavedApp = {
   stageCount?: number;
+  removedIndexes?:number[];
   showSecond?: boolean;
   showThird?: boolean;
   showFourth?: boolean;
@@ -1390,6 +1391,9 @@ export function DeckPlanner({event}:{event:LinkedStageEvent}) {
       if (s.showSecond && s.showThird && s.showFourth && s.showFifth) count = 5;
       setStageCount(count);
     }
+    if(Array.isArray(s.removedIndexes))
+      setRemovedIndexes(s.removedIndexes.filter((n):n is number=>
+        Number.isInteger(n)&&n>=0&&n<10).slice(0,10));
     if (typeof s.eventName === "string"&&s.eventName.trim()) setEventName(s.eventName);
     if (typeof s.showDate === "string"&&/^\d{4}-\d{2}-\d{2}$/.test(s.showDate)) setShowDate(s.showDate);
     if (typeof s.buildByDate === "string"&&/^\d{4}-\d{2}-\d{2}$/.test(s.buildByDate)) setBuildByDate(s.buildByDate);
@@ -1400,8 +1404,8 @@ export function DeckPlanner({event}:{event:LinkedStageEvent}) {
       skipAppSave.current = false;
       return;
     }
-    writeStored(keys.app, { stageCount, eventName, showDate, buildByDate });
-  }, [stageCount, eventName, showDate, buildByDate]);
+    writeStored(keys.app, { stageCount, removedIndexes, eventName, showDate, buildByDate });
+  }, [stageCount, removedIndexes, eventName, showDate, buildByDate]);
 
   // Chain stock only through the stages that are still enabled, in order.
   const { remainingBefore, remainingFinal } = useMemo(() => {
@@ -1519,7 +1523,8 @@ export function DeckPlanner({event}:{event:LinkedStageEvent}) {
     skipAppSave.current = true;
     setUsedByStage([]);
     setPartsByStage({});
-    setRemovedIndexes([]);
+    setRemovedIndexes(Array.isArray(a.removedIndexes)?
+      a.removedIndexes.filter((n:unknown)=>typeof n==="number"&&Number.isInteger(n)&&n>=0&&n<10):[]);
     setLayoutStages({});
     setRebuildKey((k) => k + 1);
     setClearKey((k) => k + 1);
