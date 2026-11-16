@@ -23,7 +23,7 @@ const preFields=[["overview","Pre-show overview"],["staffing","Staffing and engi
 const postFields=[["wentWell","What went well"],["issues","Issues and outcomes"],["staffing","Staffing lessons"],["stage","Stage notes"],["floor","Floor-map improvements"],["followUp","Follow-ups"]] as const;
 
 type EventSection="overview"|"documents"|"precon"|"postcon"|"stage"|"floor";
-export function ShowPilotEventsPanel({active=true,stagePlanner,floorMaps,openEventRequest}:{active?:boolean;stagePlanner?:ReactNode;floorMaps?:(files:File[],eventId:string)=>ReactNode;openEventRequest?:{key:string;section:"documents"|"overview";revision:number}|null}){
+export function ShowPilotEventsPanel({active=true,stagePlanner,floorMaps,openEventRequest}:{active?:boolean;stagePlanner?:(show:PostConShow)=>ReactNode;floorMaps?:(files:File[],eventId:string)=>ReactNode;openEventRequest?:{key:string;section:"documents"|"overview";revision:number}|null}){
  const bridge=window.showpilotMemory;
  const [shows,setShows]=useState<PostConShow[]>(()=>loadPostConShows());
  const [selectedKey,setSelectedKey]=useState("");
@@ -293,7 +293,10 @@ export function ShowPilotEventsPanel({active=true,stagePlanner,floorMaps,openEve
   </div>}
   <div hidden={section!=="precon"}>{visited.includes("precon")&&<PreConPanel focusShow={show}/>}</div>
   <div hidden={section!=="postcon"}>{visited.includes("postcon")&&<PostConPanel focusShow={show}/>}</div>
-  <div hidden={section!=="stage"}>{visited.includes("stage")&&stagePlanner}</div>
+  <div hidden={section!=="stage"}>{visited.includes("stage")&&
+    (show?stagePlanner?.(show):<p className="rounded-xl border p-4 text-sm text-muted-foreground">
+      Choose a saved CGC event above before building its stage. Each Event ID has its own stage layout.
+    </p>)}</div>
   <div hidden={section!=="floor"}>{visited.includes("floor")&&floorMaps?.(floorFiles,show?.eventId??"")}</div>
   {message&&<p role="status" className="rounded border p-2 text-xs">{message}</p>}
  </section>;

@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { StageLayout, type LayoutStage, type PositionedLayoutStage } from "@/components/deck-planner/stage-layout";
 import { crewPrintDocument, printCrewPages, type CrewPrintStage } from "@/lib/stage-crew-print";
 import { stageMemoryDraft } from "@/lib/showpilot-memory-notes";
+import {eventStageKey,stageHeaderForEvent,type LinkedStageEvent} from "@/lib/showpilot-event-stage";
 import { LocalPlanningAssistant } from "@/components/showpilot-planning-assistant";
 import { allocateSingleDeckStages } from "@/lib/single-deck-allocation";
 import { EDGE_MODES, NO_EXTRAS, NO_PARTS, DEFAULT_HAVE, OPENING_FT, addParts, checkParts, parseHave, rampRunFt, stageParts } from "@/lib/stage-extras";
@@ -33,15 +34,23 @@ const STAGE_STORE_KEY = "stage-planner:stages";
 const APP_STORE_KEY = "stage-planner:app";
 const EXTRAS_STORE_KEY = "stage-planner:extras"; // per stage: stairs + rails/skirts/ramp choices
 const HAVE_STORE_KEY = "stage-planner:have"; // warehouse counts for rails/skirts/ramp
-const PLANS_STORE_KEY = "stage-planner:plans"; // named saved plans
-type Snapshot = { stages: any; app: any; extras: any };
-function takeSnapshot(): Snapshot {
-  return { stages: readStored(STAGE_STORE_KEY, {}), app: readStored(APP_STORE_KEY, {}), extras: readStored(EXTRAS_STORE_KEY, {}) };
+const PLANS_STORE_KEY = "stage-planner:plans"; // legacy global plans, never used for new events
+type StageStorageKeys={stages:string;app:string;extras:string;plans:string;layout:string};
+const scopedKeys=(event:LinkedStageEvent):StageStorageKeys=>({
+  stages:eventStageKey(event,"stages"),app:eventStageKey(event,"app"),
+  extras:eventStageKey(event,"extras"),plans:eventStageKey(event,"plans"),
+  layout:eventStageKey(event,"layout")
+});
+type Snapshot = { stages: any; app: any; extras: any; layout?:any };
+function takeSnapshot(keys:StageStorageKeys): Snapshot {
+  return { stages: readStored(keys.stages, {}), app: readStored(keys.app, {}),
+    extras: readStored(keys.extras, {}),layout:readStored(keys.layout,{}) };
 }
-function writeSnapshot(snap: Snapshot) {
-  writeStored(STAGE_STORE_KEY, snap.stages ?? {});
-  writeStored(APP_STORE_KEY, snap.app ?? {});
-  writeStored(EXTRAS_STORE_KEY, snap.extras ?? {});
+function writeSnapshot(keys:StageStorageKeys,snap: Snapshot) {
+  writeStored(keys.stages, snap.stages ?? {});
+  writeStored(keys.app, snap.app ?? {});
+  writeStored(keys.extras, snap.extras ?? {});
+  writeStored(keys.layout,snap.layout??{});
 }
 const stageQuantitySchema = z.number().int().min(1).max(INVENTORY.totalDecks);
 
@@ -54,9 +63,13 @@ type SavedStage = {
   stageName?: string;
   mostlyThree?: boolean;
   allowTwo?: boolean;
+  manual?:boolean;
+  manualPieces?:ManualPiece[];
+  looseBridges?:number;
 };
 type SavedApp = {
   stageCount?: number;
+  removedIndexes?:number[];
   showSecond?: boolean;
   showThird?: boolean;
   showFourth?: boolean;
@@ -84,10 +97,10 @@ function writeStored(key: string, value: unknown) {
     // storage unavailable — ignore
   }
 }
-function writeSavedStage(stageId: string, s: SavedStage) {
-  const all = readStored<Record<string, SavedStage>>(STAGE_STORE_KEY, {});
+function writeSavedStage(storageKey:string,stageId: string, s: SavedStage) {
+  const all = readStored<Record<string, SavedStage>>(storageKey, {});
   all[stageId] = s;
-  writeStored(STAGE_STORE_KEY, all);
+  writeStored(storageKey, all);
 }
 
 
@@ -105,6 +118,22 @@ type ManualPiece = {
   w: number;
   h: number;
 };
+
+/** Restore only valid in-bounds pieces. Old JSON must not be able to inject
+ * arbitrary elements, unbounded arrays, negative coordinates, or NaNs. */
+function restoredManualPieces(raw:unknown):ManualPiece[]{
+ if(!Array.isArray(raw)||raw.length>150)return [];
+ return raw.filter((p):p is ManualPiece=>{
+  if(!p||typeof p!=="object")return false;
+  if(typeof p.id!=="string"||!/^p\d+$/.test(p.id))return false;
+  if(p.kind!=="holder"&&p.kind!=="bridge")return false;
+  if(p.axis!=="x"&&p.axis!=="y")return false;
+  if(![1,2,3].includes(p.capacity)||p.kind==="bridge"&&p.capacity!==1)return false;
+  if(![p.x,p.y,p.w,p.h].every((v:unknown)=>typeof v==="number"&&Number.isFinite(v)&&v>=0&&v<=512))return false;
+  const n=p.kind==="bridge"?1:p.capacity;
+  return p.axis==="x"?p.w===n*4&&p.h===8:p.w===8&&p.h===n*4;
+ });
+}
 
 type Tool = { kind: "holder" | "bridge" | "erase"; capacity: 1 | 2 | 3 };
 
@@ -256,6 +285,8 @@ function manualResult(pieces: ManualPiece[], widthFt: number, lengthFt: number):
 
 function StagePanel({
   stageId,
+  stageStoreKey,
+  extraStoreKey,
   title,
   defaultWidth,
   defaultLength,
@@ -268,6 +299,8 @@ function StagePanel({
   rebuildKey = 0,
 }: {
   stageId: string;
+  stageStoreKey:string;
+  extraStoreKey:string;
   title: string;
   defaultWidth: number;
   defaultLength: number;
@@ -337,7 +370,7 @@ function StagePanel({
   // them — not the rebuild button, a page reload, or a component remount.
   const skipSave = useRef(true);
   useEffect(() => {
-    const s = readStored<Record<string, SavedStage>>(STAGE_STORE_KEY, {})[stageId];
+    const s = readStored<Record<string, SavedStage>>(stageStoreKey, {})[stageId];
     if (s) {
       const savedQuantity = stageQuantitySchema.safeParse(s.quantity);
       if (savedQuantity.success) {
@@ -351,16 +384,26 @@ function StagePanel({
       if (typeof s.stageName === "string") setStageName(s.stageName);
       if (typeof s.mostlyThree === "boolean") setMostlyThree(s.mostlyThree);
       if (typeof s.allowTwo === "boolean") setAllowTwo(s.allowTwo);
+      if(typeof s.looseBridges==="number"&&Number.isInteger(s.looseBridges)&&s.looseBridges>=0&&s.looseBridges<=72)
+        setLooseBridges(s.looseBridges);
+      const restored=restoredManualPieces(s.manualPieces);
+      if(s.manual===true&&restored.length){
+        setManual(true);setPieces(restored);
+        nextId.current=restored.reduce((max,p)=>Math.max(max,Number(p.id.slice(1))+1),0);
+      }
     }
     skipSave.current = true;
-  }, [stageId]);
+  }, [stageId,stageStoreKey]);
   useEffect(() => {
     if (skipSave.current) {
       skipSave.current = false;
       return;
     }
-    writeSavedStage(stageId, { width, length, heightIn, heightText, stageName, quantity, mostlyThree, allowTwo });
-  }, [stageId, width, length, heightIn, heightText, stageName, quantity, mostlyThree, allowTwo]);
+    writeSavedStage(stageStoreKey,stageId,{ width, length, heightIn, heightText, stageName,
+      quantity, mostlyThree, allowTwo,manual,manualPieces:manual?pieces:[],
+      looseBridges:looseBridgesRaw });
+  }, [stageId,stageStoreKey,width,length,heightIn,heightText,stageName,quantity,
+      mostlyThree,allowTwo,manual,pieces,looseBridgesRaw]);
 
   const loadAutoPlan = () => {
     const seeded = piecesFromResult(autoResult);
@@ -587,17 +630,17 @@ function StagePanel({
   const [extras, setExtras] = useState(NO_EXTRAS);
   const skipExtraSave = useRef(true);
   useEffect(() => {
-    const s = readStored<Record<string, any>>(EXTRAS_STORE_KEY, {})[stageId];
+    const s = readStored<Record<string, any>>(extraStoreKey, {})[stageId];
     if (s?.stairs) setStairs({ s5: s.stairs.s5 | 0, s6: s.stairs.s6 | 0, s7: s.stairs.s7 | 0 });
     if (s?.extras) setExtras({ ...NO_EXTRAS, ...s.extras });
     skipExtraSave.current = true;
-  }, [stageId]);
+  }, [stageId,extraStoreKey]);
   useEffect(() => {
     if (skipExtraSave.current) { skipExtraSave.current = false; return; }
-    const all = readStored<Record<string, any>>(EXTRAS_STORE_KEY, {});
+    const all = readStored<Record<string, any>>(extraStoreKey, {});
     all[stageId] = { stairs, extras };
-    writeStored(EXTRAS_STORE_KEY, all);
-  }, [stageId, stairs, extras]);
+    writeStored(extraStoreKey, all);
+  }, [stageId,extraStoreKey,stairs,extras]);
   const stairTotal = stairs.s5 + stairs.s6 + stairs.s7;
   const parts = useMemo(() => stageParts(extras, width, length, stairTotal, stageQuantity), [extras, width, length, stairTotal, stageQuantity]);
   useEffect(() => { onParts?.(parts); }, [parts, onParts]);
@@ -1242,7 +1285,9 @@ function StagePanel({
   );
 }
 
-export function DeckPlanner() {
+export function DeckPlanner({event}:{event:LinkedStageEvent}) {
+  const keys=scopedKeys(event);
+  const defaults=stageHeaderForEvent(event);
   const [stageCount, setStageCount] = useState(1);
   const [usedByStage, setUsedByStage] = useState<Stock[]>([]);
   // Stable per-stage usage callbacks: StagePanel's effect depends on onUsage,
@@ -1280,10 +1325,10 @@ export function DeckPlanner() {
     setHaveText((prev) => { const next = { ...prev, [key]: text }; writeStored(HAVE_STORE_KEY, next); return next; });
   };
   const [rebuildKey, setRebuildKey] = useState(0);
-  const [eventName, setEventName] = useState("");
+  const [eventName, setEventName] = useState(defaults.eventName);
   const [eventNameDraft, setEventNameDraft] = useState("");
-  const [showDate, setShowDate] = useState("");
-  const [buildByDate, setBuildByDate] = useState("");
+  const [showDate, setShowDate] = useState(defaults.showDate);
+  const [buildByDate, setBuildByDate] = useState(defaults.buildByDate);
   const [showDateDraft, setShowDateDraft] = useState("");
   const [buildByDateDraft, setBuildByDateDraft] = useState("");
   const [showEventModal, setShowEventModal] = useState(false);
@@ -1334,7 +1379,7 @@ export function DeckPlanner() {
   // Persist which stages are enabled and the event name across reloads.
   const skipAppSave = useRef(true);
   useEffect(() => {
-    const s = readStored<SavedApp>(APP_STORE_KEY, {});
+    const s = readStored<SavedApp>(keys.app, {});
     if (typeof s.stageCount === "number" && s.stageCount >= 1 && s.stageCount <= 10) {
       setStageCount(Math.floor(s.stageCount));
     } else if (typeof s.showSecond === "boolean") {
@@ -1346,9 +1391,12 @@ export function DeckPlanner() {
       if (s.showSecond && s.showThird && s.showFourth && s.showFifth) count = 5;
       setStageCount(count);
     }
-    if (typeof s.eventName === "string") setEventName(s.eventName);
-    if (typeof s.showDate === "string") setShowDate(s.showDate);
-    if (typeof s.buildByDate === "string") setBuildByDate(s.buildByDate);
+    if(Array.isArray(s.removedIndexes))
+      setRemovedIndexes(s.removedIndexes.filter((n):n is number=>
+        Number.isInteger(n)&&n>=0&&n<10).slice(0,10));
+    if (typeof s.eventName === "string"&&s.eventName.trim()) setEventName(s.eventName);
+    if (typeof s.showDate === "string"&&/^\d{4}-\d{2}-\d{2}$/.test(s.showDate)) setShowDate(s.showDate);
+    if (typeof s.buildByDate === "string"&&/^\d{4}-\d{2}-\d{2}$/.test(s.buildByDate)) setBuildByDate(s.buildByDate);
     skipAppSave.current = true;
   }, []);
   useEffect(() => {
@@ -1356,8 +1404,8 @@ export function DeckPlanner() {
       skipAppSave.current = false;
       return;
     }
-    writeStored(APP_STORE_KEY, { stageCount, eventName, showDate, buildByDate });
-  }, [stageCount, eventName, showDate, buildByDate]);
+    writeStored(keys.app, { stageCount, removedIndexes, eventName, showDate, buildByDate });
+  }, [stageCount, removedIndexes, eventName, showDate, buildByDate]);
 
   // Chain stock only through the stages that are still enabled, in order.
   const { remainingBefore, remainingFinal } = useMemo(() => {
@@ -1458,32 +1506,33 @@ export function DeckPlanner() {
   const [plans, setPlans] = useState<{ name: string; savedAt: number; snap: Snapshot }[]>([]);
   const [planName, setPlanName] = useState("");
   const [memoryStatus, setMemoryStatus] = useState("");
-  useEffect(() => { setPlans(readStored(PLANS_STORE_KEY, [])); }, []);
-  const persistPlans = (next: typeof plans) => { setPlans(next); writeStored(PLANS_STORE_KEY, next); };
+  useEffect(() => { setPlans(readStored(keys.plans, [])); }, []);
+  const persistPlans = (next: typeof plans) => { setPlans(next); writeStored(keys.plans, next); };
   const lastSnap = useRef<string>("");
   const undoStack = useRef<string[]>([]);
   const redoStack = useRef<string[]>([]);
   const [, bump] = useState(0);
   const applySnapshot = (snap: Snapshot) => {
-    writeSnapshot(snap);
-    lastSnap.current = JSON.stringify(takeSnapshot());
+    writeSnapshot(keys,snap);
+    lastSnap.current = JSON.stringify(takeSnapshot(keys));
     const a = snap.app ?? {};
     setStageCount(typeof a.stageCount === "number" && a.stageCount >= 1 && a.stageCount <= 10 ? Math.floor(a.stageCount) : 1);
-    setEventName(typeof a.eventName === "string" ? a.eventName : "");
-    setShowDate(typeof a.showDate === "string" ? a.showDate : "");
-    setBuildByDate(typeof a.buildByDate === "string" ? a.buildByDate : "");
+    setEventName(typeof a.eventName==="string"&&a.eventName.trim()?a.eventName:defaults.eventName);
+    setShowDate(typeof a.showDate==="string"&&a.showDate?a.showDate:defaults.showDate);
+    setBuildByDate(typeof a.buildByDate==="string"&&a.buildByDate?a.buildByDate:defaults.buildByDate);
     skipAppSave.current = true;
     setUsedByStage([]);
     setPartsByStage({});
-    setRemovedIndexes([]);
+    setRemovedIndexes(Array.isArray(a.removedIndexes)?
+      a.removedIndexes.filter((n:unknown)=>typeof n==="number"&&Number.isInteger(n)&&n>=0&&n<10):[]);
     setLayoutStages({});
     setRebuildKey((k) => k + 1);
     setClearKey((k) => k + 1);
   };
   useEffect(() => {
-    lastSnap.current = JSON.stringify(takeSnapshot());
+    lastSnap.current = JSON.stringify(takeSnapshot(keys));
     const t = window.setInterval(() => {
-      const cur = JSON.stringify(takeSnapshot());
+      const cur = JSON.stringify(takeSnapshot(keys));
       if (cur !== lastSnap.current) {
         undoStack.current.push(lastSnap.current);
         if (undoStack.current.length > 50) undoStack.current.shift();
@@ -1497,16 +1546,45 @@ export function DeckPlanner() {
   const undo = () => {
     const prev = undoStack.current.pop();
     if (!prev) return;
-    redoStack.current.push(JSON.stringify(takeSnapshot()));
+    redoStack.current.push(JSON.stringify(takeSnapshot(keys)));
     applySnapshot(JSON.parse(prev));
     bump((n) => n + 1);
   };
   const redo = () => {
     const next = redoStack.current.pop();
     if (!next) return;
-    undoStack.current.push(JSON.stringify(takeSnapshot()));
+    undoStack.current.push(JSON.stringify(takeSnapshot(keys)));
     applySnapshot(JSON.parse(next));
     bump((n) => n + 1);
+  };
+
+  // Prior ShowPilot releases kept one unassigned shared stage. Never
+  // automatically attach it to whichever event was clicked most recently:
+  // the owner must explicitly choose the correct event before copying.
+  const [legacyAvailable] = useState(()=>Object.keys(readStored<Record<string,unknown>>(
+    STAGE_STORE_KEY,{})).length>0);
+  const [legacyMessage,setLegacyMessage]=useState("");
+  const copyOldUnassignedStage=()=>{
+    const oldStages=readStored<Record<string,SavedStage>>(STAGE_STORE_KEY,{});
+    if(!Object.keys(oldStages).length)return;
+    if(!window.confirm(
+      "Copy the OLD shared stage into this event only?\n\n"+
+      "Selected: "+defaults.eventName+(event.eventId?" (Event ID "+event.eventId+")":"")+"\n\n"+
+      "This replaces this event's current stage layout if it has one. The previous unassigned stage and all other events are left untouched. Proceed?"
+    ))return;
+    const oldApp=readStored<SavedApp>(APP_STORE_KEY,{});
+    const oldExtras=readStored(EXTRAS_STORE_KEY,{});
+    undoStack.current.push(JSON.stringify(takeSnapshot(keys)));
+    redoStack.current=[];
+    applySnapshot({
+      stages:JSON.parse(JSON.stringify(oldStages)),
+      app:{stageCount:Math.max(1,Math.min(10,oldApp.stageCount??1)),
+        eventName:defaults.eventName,showDate:defaults.showDate,
+        buildByDate:defaults.buildByDate,removedIndexes:[]},
+      extras:oldExtras,layout:{positions:{},rotations:{}}
+    });
+    setLegacyMessage("The previous unassigned stage was copied to "+
+      defaults.eventName+". Other event stages were not changed.");
   };
 
   const [collapsed, setCollapsed] = useState<Record<number, boolean>>({});
@@ -1521,7 +1599,7 @@ export function DeckPlanner() {
   const duplicateStage = (i: number) => {
     if (stageCount >= 10) return;
     const from = `s${i + 1}`, to = `s${stageCount + 1}`;
-    for (const key of [STAGE_STORE_KEY, EXTRAS_STORE_KEY]) {
+    for (const key of [keys.stages,keys.extras]) {
       const all = readStored<Record<string, any>>(key, {});
       if (all[from]) { all[to] = JSON.parse(JSON.stringify(all[from])); writeStored(key, all); }
     }
@@ -1533,6 +1611,21 @@ export function DeckPlanner() {
       <div className="print-document mx-auto max-w-5xl px-1 py-2">
         <header className="print-hide mb-6">
           <h1 className="text-xl font-bold tracking-tight">Stage Deck Planner</h1>
+          <p className="text-sm font-semibold text-primary">
+           {defaults.eventName}{event.eventId?" · Event ID "+event.eventId:" · saved Events record"}
+          </p>
+          <p className="text-xs text-muted-foreground">
+           Show Date: {showDate||"Not recorded"} · Build By (first event day):
+           {" "}{buildByDate||"Not recorded"} · Stage layouts and named plans are saved for this event only.
+          </p>
+          {legacyAvailable&&<div className="mt-2 no-print flex flex-wrap items-center gap-2">
+           <button type="button" onClick={copyOldUnassignedStage}
+            className="rounded-md border border-border bg-card px-3 py-1 text-xs font-semibold hover:bg-muted">
+             Copy previous shared stage into this event
+           </button>
+           <span className="text-xs text-muted-foreground">Optional · the old shared stage is not assigned automatically.</span>
+          </div>}
+          {legacyMessage&&<p className="mt-1 text-xs text-green-600" role="status">{legacyMessage}</p>}
           <p className="mt-1 text-sm text-muted-foreground">
             Lay out a stage using the fewest 4&#39;×8&#39; decks possible. Inventory: 72 decks, 4×1-deck (4&#39;×8&#39;) + 8×2-deck (8&#39;×8&#39;) + 8×3-deck (12&#39;×8&#39;) holders, plus 1×5-step, 2×6-step and 5×7-step stairs.
             A <span className="font-medium" style={{ color: BRIDGE_COLOR }}>bridge</span> is a single deck spanning between two holders — adds coverage without using another holder.
@@ -1616,7 +1709,7 @@ export function DeckPlanner() {
               className="min-w-0 flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm" />
             <button type="button" disabled={!planName.trim()} onClick={() => {
               const name = planName.trim();
-              const entry = { name, savedAt: Date.now(), snap: takeSnapshot() };
+              const entry = { name, savedAt: Date.now(), snap: takeSnapshot(keys) };
               persistPlans([entry, ...plans.filter((x) => x.name !== name)]);
               setPlanName("");
               setMemoryStatus("");
@@ -1654,7 +1747,7 @@ export function DeckPlanner() {
                     </div>
                   </div>
                   <div className="flex gap-2">
-                    <button type="button" onClick={() => { undoStack.current.push(JSON.stringify(takeSnapshot())); redoStack.current = []; applySnapshot(pl.snap); bump((n) => n + 1); }} className="deck-tap flex-1 rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground">Open</button>
+                    <button type="button" onClick={() => { undoStack.current.push(JSON.stringify(takeSnapshot(keys))); redoStack.current = []; applySnapshot(pl.snap); bump((n) => n + 1); }} className="deck-tap flex-1 rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground">Open</button>
                     <button type="button" onClick={() => { const n = window.prompt("New name", pl.name)?.trim(); if (n) persistPlans(plans.map((x) => (x === pl ? { ...x, name: n } : x))); }} className="deck-tap rounded-md border border-border px-3 py-1 text-xs font-medium hover:bg-muted">Rename</button>
                     <button type="button" onClick={() => { if (window.confirm(`Delete "${pl.name}"?`)) persistPlans(plans.filter((x) => x !== pl)); }} className="deck-tap rounded-md border border-border px-3 py-1 text-xs font-medium text-destructive hover:bg-muted">Delete</button>
                   </div>
@@ -1804,7 +1897,8 @@ export function DeckPlanner() {
         </button>
 
         <div className={`layout-view-swap${showLayout ? "" : " hidden"}`}>
-          <StageLayout stages={activeLayoutStages} onSnapshotChange={handleLayoutSnapshot} />
+          <StageLayout key={clearKey} storageKey={keys.layout}
+            stages={activeLayoutStages} onSnapshotChange={handleLayoutSnapshot} />
         </div>
 
         <div className="print-grid">
@@ -1840,6 +1934,8 @@ export function DeckPlanner() {
               <div className={collapsed[i] ? "hidden print:block" : problem(i) ? "rounded-lg ring-2 ring-destructive/60" : ""}>
               <StagePanel
                 stageId={id}
+                stageStoreKey={keys.stages}
+                extraStoreKey={keys.extras}
                 onLayoutChange={handleLayoutChange}
                 title={enabledIndexes.length > 1 ? `Stage ${n}` : "Stage"}
                 defaultWidth={i === 0 ? 24 : i === 1 ? 16 : 8}
@@ -1922,7 +2018,7 @@ export function DeckPlanner() {
             <div className="w-full max-w-sm rounded-lg border border-border bg-card p-6 shadow-lg">
               <div className="mb-4 text-lg font-semibold">Are you sure you want to clear everything?</div>
               <div className="mb-2 text-sm text-muted-foreground">
-                All stages, dimensions, names, hand-placed pieces, and the event name will be reset.
+                Only THIS EVENT's stages, dimensions, named layouts and hand-placed pieces will be reset. The event name and source dates will be restored; other events will not change.
               </div>
               <div className="mt-6 flex justify-end gap-3">
                 <button
@@ -1936,20 +2032,21 @@ export function DeckPlanner() {
                   type="button"
                   onClick={() => {
                     setShowClearModal(false);
-                    window.localStorage.removeItem(STAGE_STORE_KEY);
-                    window.localStorage.removeItem(APP_STORE_KEY);
-                    window.localStorage.removeItem(EXTRAS_STORE_KEY);
+                    window.localStorage.removeItem(keys.stages);
+                    window.localStorage.removeItem(keys.app);
+                    window.localStorage.removeItem(keys.extras);
+                    window.localStorage.removeItem(keys.layout);
                     setPartsByStage({});
                     skipAppSave.current = true;
                     setUsedByStage([]);
                     setRemovedIndexes([]);
                     setStageCount(1);
-                    setEventName("");
-                    setEventNameDraft("");
-                    setShowDate("");
-                    setBuildByDate("");
-                    setShowDateDraft("");
-                    setBuildByDateDraft("");
+                    setEventName(defaults.eventName);
+                    setEventNameDraft(defaults.eventName);
+                    setShowDate(defaults.showDate);
+                    setBuildByDate(defaults.buildByDate);
+                    setShowDateDraft(defaults.showDate);
+                    setBuildByDateDraft(defaults.buildByDate);
                     setLayoutStages({});
                     setArrangedLayout([]);
                     setRebuildKey((k) => k + 1);
