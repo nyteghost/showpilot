@@ -98,7 +98,7 @@ export function ShowServicesTools({ page = false, selectedTab, hideTabBar = fals
           </div>
           {visited.includes("today") && <KeepAliveTabContent value="today"><ShowPilotTodayPanel active={active&&activeTab==="today"}/></KeepAliveTabContent>}
           {visited.includes("events") && <KeepAliveTabContent value="events"><EventsTab venueOnly={venueOnly} /></KeepAliveTabContent>}
-          {visited.includes("eventhub") && <KeepAliveTabContent value="eventhub"><ShowPilotEventsPanel active={active&&activeTab==="eventhub"} openEventRequest={openEventRequest} stagePlanner={<DeckTab/>} floorMaps={(files,eventId)=><FloorMapPanel initialEventDocuments={files} selectedEventId={eventId}/>} /></KeepAliveTabContent>}
+          {visited.includes("eventhub") && <KeepAliveTabContent value="eventhub"><ShowPilotEventsPanel active={active&&activeTab==="eventhub"} openEventRequest={openEventRequest} stagePlanner={show=><DeckTab key={show.eventId||show.key} show={show}/>}  floorMaps={(files,eventId)=><FloorMapPanel initialEventDocuments={files} selectedEventId={eventId}/>} /></KeepAliveTabContent>}
           {visited.includes("shifts") && <KeepAliveTabContent value="shifts"><ShiftsTab /></KeepAliveTabContent>}
           {visited.includes("vendors") && <KeepAliveTabContent value="vendors"><StandaloneVendors /></KeepAliveTabContent>}
           {visited.includes("floor") && <KeepAliveTabContent value="floor"><FloorMapPanel /></KeepAliveTabContent>}
@@ -924,13 +924,16 @@ function ShiftsTab() {
 
 const DeckPlanner = lazy(() => import("@/components/deck-planner/planner").then((m) => ({ default: m.DeckPlanner })));
 
-function DeckTab() {
+function DeckTab({show}:{show:PostConShow}) {
   return (
     <div className="pt-2">
-      <Suspense fallback={<p className="text-sm text-muted-foreground">Loading the stage planner…</p>}>
-        <DeckPlanner />
+      <Suspense fallback={<p className="text-sm text-muted-foreground">Loading the stage planner for this event…</p>}>
+        <DeckPlanner event={show}/>
       </Suspense>
-      <p className="mt-3 text-xs text-muted-foreground">Use the planner above to design, review, and save your deck layouts locally.</p>
+      <p className="mt-3 text-xs text-muted-foreground">
+       This event's stage dimensions, hand-placed decks, layout and saved plans are
+       kept separately under its Event ID in this ShowPilot user profile.
+      </p>
     </div>
   );
 }
