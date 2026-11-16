@@ -33,6 +33,46 @@ The existing **Automatic install (optional)** button remains available if you wa
 5. Windows, Linux, and company IT policies may restrict unsigned apps. Do not bypass your organization's restrictions without approval.
 
 
+### Stage & Deck Planner — one saved stage workspace per Event ID
+
+The **Events → Stage & Deck Planner** workspace is associated with the selected saved
+CGC event, not a shared stage. Select **AKA Sorority Cluster Conference (#38174)**
+and create a stage; when you open **Sneaker Con (#41193)** you'll see Sneaker Con's
+own independent stage configuration. Switching back restores the first event's
+stage sizes, heights, names, manually placed deck holders/bridges, stairs,
+rail/skirt options, named plans, and stage layout positions and rotations.
+
+The planner automatically fills the crew sheet fields from the selected Events record:
+
+- **Event Name** — the confirmed show name saved in Events.
+- **Show Date** — the Events record's show date.
+- **Build By Date** — the event's **first saved date**, from the Events record's
+  start date (or show date if that first date is unavailable).
+
+Use **Print crew sheet** to inspect or customize these fields; any manual crew-sheet
+edits are saved only for that event. The stage header always identifies the
+selected event and shows its dates.
+
+**Save behavior:** stage settings, hand-placed geometry, stage arrangement and
+named plan snapshots are stored in the per-user local ShowPilot application
+profile under **Event ID-specific keys**. They persist after closing/reopening
+the application and when installing a newer portable ZIP on the same user
+profile. There is no server upload or cross-event stage reuse. The physical
+warehouse's equipment counts are still a shared stock reference, not a
+stage design.
+
+**Previously created stages:** older builds had one shared, unassigned stage
+plan. It is **not assigned to a random event automatically**. If that previous
+stage belongs to the currently selected event, choose **Copy previous shared
+stage into this event**, verify the Event ID in the confirmation prompt, and
+confirm. The old shared data is retained; this copies it into the chosen
+event without altering other events. Legacy manually positioned deck pieces
+that the older build never saved cannot be reconstructed automatically.
+
+**Clear all stages** only resets the currently selected event's working stage.
+Other shows and their saved plans remain unchanged. A new unrelated event
+always starts with its own stage, not the one last viewed.
+
 ### Create a new monthly CGC engineering schedule from the saved master
 
 You do **not** need to supply a different pre-dated engineering XLSX each month.
