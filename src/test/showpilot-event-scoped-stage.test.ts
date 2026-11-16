@@ -82,6 +82,8 @@ describe("Stage & Deck Planner is isolated to the selected Event ID",()=>{
   const link=readFileSync(resolve(process.cwd(),"src/components/work-tools.tsx"),"utf8");
   expect(file).toContain("writeSavedStage(stageStoreKey,stageId");
   expect(file).toContain("manualPieces:manual?pieces:[]");
+  expect(file).toContain("if(s.manual===true){"); // even when all pieces were removed
+  expect(file).not.toContain("if(s.manual===true&&restored.length)");
   expect(file).toContain("writeStored(keys.app");
   expect(file).toContain("writeStored(keys.plans");
   expect(file).toContain("takeSnapshot(keys)");
