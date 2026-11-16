@@ -1558,6 +1558,35 @@ export function DeckPlanner({event}:{event:LinkedStageEvent}) {
     bump((n) => n + 1);
   };
 
+  // Prior ShowPilot releases kept one unassigned shared stage. Never
+  // automatically attach it to whichever event was clicked most recently:
+  // the owner must explicitly choose the correct event before copying.
+  const [legacyAvailable] = useState(()=>Object.keys(readStored<Record<string,unknown>>(
+    STAGE_STORE_KEY,{})).length>0);
+  const [legacyMessage,setLegacyMessage]=useState("");
+  const copyOldUnassignedStage=()=>{
+    const oldStages=readStored<Record<string,SavedStage>>(STAGE_STORE_KEY,{});
+    if(!Object.keys(oldStages).length)return;
+    if(!window.confirm(
+      "Copy the OLD shared stage into this event only?\n\n"+
+      "Selected: "+defaults.eventName+(event.eventId?" (Event ID "+event.eventId+")":"")+"\n\n"+
+      "This replaces this event's current stage layout if it has one. The previous unassigned stage and all other events are left untouched. Proceed?"
+    ))return;
+    const oldApp=readStored<SavedApp>(APP_STORE_KEY,{});
+    const oldExtras=readStored(EXTRAS_STORE_KEY,{});
+    undoStack.current.push(JSON.stringify(takeSnapshot(keys)));
+    redoStack.current=[];
+    applySnapshot({
+      stages:JSON.parse(JSON.stringify(oldStages)),
+      app:{stageCount:Math.max(1,Math.min(10,oldApp.stageCount??1)),
+        eventName:defaults.eventName,showDate:defaults.showDate,
+        buildByDate:defaults.buildByDate,removedIndexes:[]},
+      extras:oldExtras,layout:{positions:{},rotations:{}}
+    });
+    setLegacyMessage("The previous unassigned stage was copied to "+
+      defaults.eventName+". Other event stages were not changed.");
+  };
+
   const [collapsed, setCollapsed] = useState<Record<number, boolean>>({});
   // Why a stage is flagged: it can't be built from what is left, or it uses a part the warehouse is short of.
   const problem = (i: number): string => {
@@ -1587,8 +1616,16 @@ export function DeckPlanner({event}:{event:LinkedStageEvent}) {
           </p>
           <p className="text-xs text-muted-foreground">
            Show Date: {showDate||"Not recorded"} · Build By (first event day):
-           {" "}{buildByDate||"Not recorded"} · Stage layout auto-saved to this event.
+           {" "}{buildByDate||"Not recorded"} · Stage layouts and named plans are saved for this event only.
           </p>
+          {legacyAvailable&&<div className="mt-2 no-print flex flex-wrap items-center gap-2">
+           <button type="button" onClick={copyOldUnassignedStage}
+            className="rounded-md border border-border bg-card px-3 py-1 text-xs font-semibold hover:bg-muted">
+             Copy previous shared stage into this event
+           </button>
+           <span className="text-xs text-muted-foreground">Optional · the old shared stage is not assigned automatically.</span>
+          </div>}
+          {legacyMessage&&<p className="mt-1 text-xs text-green-600" role="status">{legacyMessage}</p>}
           <p className="mt-1 text-sm text-muted-foreground">
             Lay out a stage using the fewest 4&#39;×8&#39; decks possible. Inventory: 72 decks, 4×1-deck (4&#39;×8&#39;) + 8×2-deck (8&#39;×8&#39;) + 8×3-deck (12&#39;×8&#39;) holders, plus 1×5-step, 2×6-step and 5×7-step stairs.
             A <span className="font-medium" style={{ color: BRIDGE_COLOR }}>bridge</span> is a single deck spanning between two holders — adds coverage without using another holder.
