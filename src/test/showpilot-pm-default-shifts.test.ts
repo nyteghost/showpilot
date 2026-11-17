@@ -8,7 +8,10 @@ describe("CGC evening staff default 2p–10:30p",()=>{
  it("uses the new 8.5-hour PM default for Edison and Franck in tie-breaks and top-ups",()=>{
   expect(PM_DEFAULT_SHIFT).toEqual({start:840,end:1350});
   expect(shiftText(PM_DEFAULT_SHIFT)).toBe("2p-10:30p");
-  expect(workedHours(PM_DEFAULT_SHIFT)).toBe(8.5);
+  // The shift spans 8.5 clock hours with a 30-minute meal break;
+  // staffing's payroll logic intentionally counts 8 paid hours.
+  expect(PM_DEFAULT_SHIFT.end-PM_DEFAULT_SHIFT.start).toBe(510);
+  expect(workedHours(PM_DEFAULT_SHIFT)).toBe(8);
   for(const name of eveningNames){
    const staff=SHOW_STAFF.find(s=>s.name===name);
    expect(staff?.patterns?.[0]).toEqual(PM_DEFAULT_SHIFT);
