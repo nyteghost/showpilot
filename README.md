@@ -73,6 +73,18 @@ that the older build never saved cannot be reconstructed automatically.
 Other shows and their saved plans remain unchanged. A new unrelated event
 always starts with its own stage, not the one last viewed.
 
+### New PM engineering defaults (Edison and Franck Pierre-Louis)
+
+Starting with this Claude build, the **suggested default** for **Edison Dunkley**
+and **Franck Pierre-Louis** is **2:00 PM–10:30 PM** (8½-hour shift),
+instead of 12:00 PM–8:30 PM. The scheduler prefers the new time when
+equivalent choices cover the event or when filling a standard weekly shift.
+It can still suggest an earlier/later exception if real CGC event coverage
+requires one. Manually approved shifts, fixed times imported from the
+engineering XLSX, and operator date overrides stay authoritative and are
+**not overwritten**. Franck's never-work-alone restriction, Edison's
+regular days-off preferences, and the no-event CGC weekend rule are unchanged.
+
 ### Create a new monthly CGC engineering schedule from the saved master
 
 You do **not** need to supply a different pre-dated engineering XLSX each month.
