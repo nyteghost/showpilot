@@ -24,13 +24,23 @@ export const DEFAULT_STAFFING_POLICY:Required<StaffingPolicy>={
  respectExistingOff:true,managerRegularLine:false,managerMayWorkAlone:false,preferredDaysOffByName:{},usualWeekdaysByName:{},aliasesByName:{},extraPeople:[],excludedPeople:[],dayOverrides:[],maxDays:5
 };
 const hours = (list: [number, number][]) => list.map(([a, b]) => ({ start: a * 60, end: b * 60 }));
-const EVENING = hours([[12, 20.5], [12.5, 21], [13, 21.5], [13.5, 22], [14, 22.5], [14.5, 23], [15, 23.5], [15.5, 24]]);
+/** Edison and Franck's standard PM shift is now 2p-10:30p (8.5 hours).
+ * Candidate order breaks equal-coverage ties and chooses the preferred
+ * shift for ordinary 40-hour top-ups. Earlier/later 8.5-hour shifts are
+ * exceptions only when event coverage calls for them; approved fixed shifts
+ * and operator overrides always take precedence. */
+export const PM_DEFAULT_SHIFT = {start:14*60,end:22.5*60} as const;
+const EVENING = [
+  PM_DEFAULT_SHIFT,
+  ...hours([[14.5, 23], [15, 23.5], [15.5, 24],
+    [12, 20.5], [12.5, 21], [13, 21.5], [13.5, 22]])
+];
 export const SHOW_STAFF: Staff[] = [
   { name: "Madjid Lakhdari", badge: "604", title: "Show Srvc Supervisor", patterns: hours([[6, 14.5]]), offWeekdays: [1, 2], powerDays: [1, 2], baseline: { weekdays: [0, 3, 4, 5, 6], pattern: { start: 360, end: 870 } } }, // always 6a-2:30p, off Tue and Wed
   { name: "Alemneh Teshome", badge: "608", title: "Show Srvc Eng", patterns: hours([[7, 15.5]]), baseline: { weekdays: [1, 2, 3, 4, 5], pattern: { start: 420, end: 930 } }, lastResort: [0, 6] }, // Tue-Sat 7a-3:30p; Mon or Sun only if really needed
   { name: "Alexis Albert", badge: "606", title: "Show Srvc Supervisor", patterns: hours([[7, 15.5], [8, 16.5], [9, 17.5]]) }, // only 7a-3:30p, 8a-4:30p or 9a-5:30p
-  { name: "Edison Dunkley", badge: "605", title: "Show Srvc Supervisor", patterns: [...EVENING, ...hours([[16.5, 25], [19.5, 28]])], lastResort: [0, 1] }, // 12p-8:30p up to 3:30p-12a; takes the 1a / 4a close shifts; Mon and Tue off when possible
-  { name: "Franck Pierre-Louis", badge: "607", title: "Show Srvc Eng", patterns: EVENING, notAlone: true }, // 12p-8:30p up to 3:30p-12a; never works a show alone (until told otherwise)
+  { name: "Edison Dunkley", badge: "605", title: "Show Srvc Supervisor", patterns: [...EVENING, ...hours([[16.5, 25], [19.5, 28]])], lastResort: [0, 1] }, // Default 2p-10:30p; exceptions may begin earlier/end later for event coverage; 1a/4a close if needed; Mon/Tue normally off
+  { name: "Franck Pierre-Louis", badge: "607", title: "Show Srvc Eng", patterns: EVENING, notAlone: true }, // Default 2p-10:30p; earlier/later only for coverage; never works a show alone (until told otherwise)
 ];
 /** Mark (manager, 9-hour days, usually 9a-6p) takes a later 9-hour shift on Mon/Tue so Edison can keep those days off. */
 export const MARK_FLEX: Staff = { name: "Mark Brown", badge: "603", title: "Show Srvc Manager", patterns: hours([[9, 18], [10, 19], [11, 20], [12, 21], [13, 22], [14, 23], [15, 24]]), flexDays: [0, 1] };
